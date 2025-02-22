@@ -1,0 +1,46 @@
+стд::тыпи;
+
+USIZE
+[U|I][8|16|32|64|128|256|512|SIZE]
+UNT = U32
+INT = I32
+
+F[32|64]
+B1
+BOOL = B1
+
+C[1|2|4]
+CHAR = C1
+
+ABYSS
+ASS = ABYSS
+
+стд:: мфышцы
+
+char argv[50];
+SEQ<CHAR>[50]
+
+стд::поинтеры
+
+U32 foo = 69
+@U32 bar_p = ?foo
+@bar_p = 42
+
+стд::ссссылки нахуй
+
+стд::ты опять забыл взять наормально интеграл где констатнта долбаеб
+
+CONST F32  pi = 3.1315
+CONST @F32 pi_p = ?pi   ; const pointer to f32
+@CONST F32 p_pi = ?pi   ; pointer to const f32
+CONST @CONST F32 p_pi_p = ?pi ; const pointer to const f32
+
+стд::рекорд
+
+TYPE data:
+ | @ABYSS data
+ | F32    temperature
+ | BOOL   flag
+ \_
+
+
