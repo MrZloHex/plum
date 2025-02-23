@@ -1,0 +1,82 @@
+program         = { declaration | definition | comment }
+comment         = ";" ? any-char ? "\n"
+
+
+definition      = declaration block
+
+declaration     = enum_decl 
+                | type_decl 
+                | iface_decl 
+                | class_decl 
+                | function_decl
+
+
+enum_decl       = "ENUM" identifier type_params_opt ":" newline enum_block
+enum_block      = {enum_option} "\_"
+enum_option     = "|" identifier type_params_opt newline
+
+type_decl       = "TYPE" identifier type_params_opt ":" newline type_block
+type_block      = {type_field}  "\_"
+type_field      = "|" var_decl newline
+
+iface_decl      = "IFACE" identifier type_params_opt ":" "[" param_list_opt "]" iface_block
+iface_block     = {iface_section} newline "\_" ;
+iface_section   = ("- PUBLIC:"|"- PRIVATE:") newline block
+block           = { line } ;
+line            = "|" , statement , newline ;
+
+class_decl      = "CLASS" , identifier , type_params_opt , ":" ,
+                  base_type_opt , "IMPL" , "[" , iface_list , "]" ;
+base_type_opt   = [ base_type ] ;
+base_type       = identifier , type_params_opt ;
+iface_list      = identifier , type_params_opt , { "|" , identifier , type_params_opt } ;
+
+function_decl   = type_spec , identifier , ":" ,
+                  "[" , param_list_opt , "]" , newline , block , newline , "\_" ;
+param_list_opt  = [ parameter , { "|" , parameter } ] ;
+parameter       = type_spec , identifier ;
+
+statement       = assignment_stmt
+                | if_stmt
+                | for_stmt
+                | call_stmt
+                | ret_stmt
+                | expr_stmt ;
+
+assignment_stmt = lvalue , "=" , expression ;
+if_stmt         = "IF" , "[" , expression , "]" , newline , block , newline , "\_" ;
+for_stmt        = "FOR" , "[" , for_init , "|" , expression , "|" , for_update , "]" , newline , block , newline , "\_" ;
+for_init        = assignment_stmt | expression ;
+for_update      = assignment_stmt | expression ;
+ret_stmt        = "RET" , "[" , expression_list_opt , "]" ;
+expression_list_opt = [ expression , { "|" , expression } ] ;
+call_stmt       = call_expr ;
+expr_stmt       = expression ;
+
+lvalue          = [ "@" ] , identifier , { ( "." | "{" ) , expression , [ "}" ] } ;
+
+expression      = term , { operator , term } ;
+term            = factor , { factor } ;
+factor          = identifier
+                | number
+                | string
+                | "(" , expression , ")"
+                | call_expr
+                | "@" , identifier
+                | "?" , identifier ;
+
+call_expr       = [ "(" ] , prefixed_identifier , [ ")" ] ,
+                  "[" , argument_list_opt , "]" ;
+prefixed_identifier = [ "?" ] , identifier , { "." , identifier } ;
+argument_list_opt = [ expression , { "|" , expression } ] ;
+operator        = "+" | "-" | "*" | "/" | "==" | "=" | "<" | ">" | "+=" | "-=" ;
+
+type_spec       = identifier , type_params_opt ;
+type_params_opt = [ "<" , type_param_list , ">" ] ;
+type_param_list = identifier , { "," , identifier } ;
+
+identifier      = letter , { letter | digit | "_" } ;
+number          = [ "#" ] , digit , { digit } ;
+string          = "\"" , { any-character - "\"" } , "\"" ;
+newline         = { "\n" } ;
+
