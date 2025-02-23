@@ -35,6 +35,8 @@ static const char* ast_type_to_string(ASTNodeType type) {
         case AST_TYPE:          return "Type";
         case AST_LIST:          return "List";
         case AST_EMPTY:         return "Empty";
+        case AST_RETURN:        return "Return";
+        case AST_FUNC_CALL:     return "FuncCall";
         default:                return "Unknown";
     }
 }
@@ -42,8 +44,7 @@ static const char* ast_type_to_string(ASTNodeType type) {
 /*
  * print_ast prints the AST in a tree-like structure.
  * 'indent' indicates the current indentation level.
- * We assume that node->left points to the first child and
- * node->right links to the next sibling.
+ * The convention is: node->left is the first child, node->right is the next sibling.
  */
 void print_ast(ASTNode* node, int indent) {
     if (!node)
@@ -54,9 +55,9 @@ void print_ast(ASTNode* node, int indent) {
     if (node->value)
         printf(" (%s)", node->value);
     printf("\n");
-    // Recursively print children (with increased indentation)
+    // First, print children (with increased indent)
     print_ast(node->left, indent + 1);
-    // Then print siblings (same indent level)
+    // Then, print siblings (same indent level)
     print_ast(node->right, indent);
 }
 

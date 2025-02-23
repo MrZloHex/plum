@@ -7,13 +7,15 @@ typedef enum {
     AST_VAR_DECL,
     AST_EXPRESSION,
     AST_TYPE,
-    AST_LIST,    // For lists (e.g. parameters, block lines)
-    AST_EMPTY    // For an empty statement (e.g. a comment-only line)
+    AST_LIST,      // For lists (e.g. parameters, block lines, argument lists)
+    AST_EMPTY,     // For an empty statement (e.g. comment-only lines)
+    AST_RETURN,    // For return statements
+    AST_FUNC_CALL  // For function call expressions
 } ASTNodeType;
 
 typedef struct ASTNode {
     ASTNodeType type;
-    char *value;               // e.g., identifier name, literal value, or type string
+    char *value;               // e.g., identifier name, literal value, operator symbol, or type string
     struct ASTNode *left;      // first child
     struct ASTNode *right;     // next sibling
 } ASTNode;

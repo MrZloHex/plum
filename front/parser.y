@@ -1,5 +1,5 @@
 %code requires {
-  #include "ast.h"
+    #include "ast.h"
 }
 
 %{
@@ -11,7 +11,7 @@
 void yyerror(const char *s);
 int yylex(void);
 
-/* Global AST root (could be a list of functions) */
+/* Global AST root (for simplicity, we store the last parsed function) */
 ASTNode* root = NULL;
 %}
 
@@ -20,36 +20,54 @@ ASTNode* root = NULL;
     ASTNode* ast;
 }
 
-/* Token declarations with their semantic types */
+/* Tokens from types, symbols, and new operators */
 %token <str> TYPE IDENT NUMBER
 %token COLON LBRACKET RBRACKET VBAR PTR BLOCK_END EQUAL
+%token LPAREN RPAREN RET PLUS MINUS STAR SLASH
 
-/* Declare nonterminals that will carry AST nodes */
-%type <ast> program function_decl param_list_opt param_list parameter block_opt block block_line_list block_line opt_stmt stmt var_decl expression type
+/* Operator precedence for math expressions */
+%left PLUS MINUS
+%left STAR SLASH
+
+/* Nonterminals carrying AST nodes */
+%type <ast> program function_decl param_list_opt param_list parameter
+%type <ast> block_opt block block_line_list block_line opt_stmt stmt
+%type <ast> var_decl ret_stmt expression type function_call arg_list_opt arg_list
 
 %%
 program:
-      /* empty */
-    | program function_decl { root = $2; }
+      function_decl { 
+          $$ = create_node(AST_LIST, "functions", $1, NULL); 
+          root = $$;
+      }
+    | program function_decl {
+          ASTNode* list = $1;
+          ASTNode* newFunc = $2;
+          /* Append the new function to the end of the list */
+          ASTNode* p = list;
+          while(p->right)
+              p = p->right;
+          p->right = create_node(AST_LIST, "functions", newFunc, NULL);
+          $$ = list;
+          root = $$;
+      }
     ;
+
+
+
 
 function_decl:
       type IDENT COLON LBRACKET param_list_opt RBRACKET block_opt
         {
-            /* $1: return type (ASTNode)
-               $2: function name (string)
-               $5: parameter list (ASTNode, maybe NULL)
-               $7: block (ASTNode, maybe NULL)
-            */
-            ASTNode *header = create_node(AST_LIST, NULL, $1,
-                                create_node(AST_LIST, $2, $5, NULL));
+            /* Build header: combine return type and a list node with the function name and parameter list */
+            ASTNode *header = create_node(AST_LIST, NULL, $1, create_node(AST_LIST, $2, $5, NULL));
             $$ = create_node(AST_FUNCTION_DECL, NULL, header, $7);
         }
     ;
 
 param_list_opt:
       /* empty */ { $$ = NULL; }
-    | param_list     { $$ = $1; }
+    | param_list { $$ = $1; }
     ;
 
 param_list:
@@ -73,7 +91,7 @@ parameter:
 
 block_opt:
       /* empty */ { $$ = NULL; }
-    | block       { $$ = $1; }
+    | block { $$ = $1; }
     ;
 
 block:
@@ -92,24 +110,24 @@ block_line_list:
         }
     ;
 
-/* Modify block_line to always produce a non-null node */
 block_line:
-      VBAR opt_stmt {
-          if ($2 == NULL) {
-              $$ = create_node(AST_EMPTY, "", NULL, NULL);
-          } else {
-              $$ = $2;
-          }
-      }
+      VBAR opt_stmt
+        {
+            if ($2 == NULL)
+                $$ = create_node(AST_EMPTY, "", NULL, NULL);
+            else
+                $$ = $2;
+        }
     ;
 
 opt_stmt:
       /* empty */ { $$ = NULL; }
-    | stmt       { $$ = $1; }
+    | stmt { $$ = $1; }
     ;
 
 stmt:
       var_decl { $$ = $1; }
+    | ret_stmt { $$ = $1; }
     ;
 
 var_decl:
@@ -123,9 +141,54 @@ var_decl:
         }
     ;
 
+ret_stmt:
+      RET LBRACKET expression RBRACKET
+        {
+            $$ = create_node(AST_RETURN, NULL, $3, NULL);
+        }
+    ;
+
+/* Expression grammar with arithmetic, function calls, and primary expressions */
 expression:
-      NUMBER { $$ = create_node(AST_EXPRESSION, $1, NULL, NULL); }
-    | IDENT  { $$ = create_node(AST_EXPRESSION, $1, NULL, NULL); }
+      expression PLUS expression
+        { $$ = create_node(AST_EXPRESSION, "+", $1, $3); }
+    | expression MINUS expression
+        { $$ = create_node(AST_EXPRESSION, "-", $1, $3); }
+    | expression STAR expression
+        { $$ = create_node(AST_EXPRESSION, "*", $1, $3); }
+    | expression SLASH expression
+        { $$ = create_node(AST_EXPRESSION, "/", $1, $3); }
+    | function_call
+        { $$ = $1; }
+    | LPAREN expression RPAREN
+        { $$ = $2; }
+    | NUMBER
+        { $$ = create_node(AST_EXPRESSION, $1, NULL, NULL); }
+    | IDENT
+        { $$ = create_node(AST_EXPRESSION, $1, NULL, NULL); }
+    ;
+
+/* Function call: (<FN_PTR>)[ <arg_list_opt> ] */
+function_call:
+      LPAREN expression RPAREN LBRACKET arg_list_opt RBRACKET
+        { $$ = create_node(AST_FUNC_CALL, NULL, $2, $5); }
+    ;
+
+arg_list_opt:
+      /* empty */ { $$ = NULL; }
+    | arg_list { $$ = $1; }
+    ;
+
+arg_list:
+      expression { $$ = $1; }
+    | arg_list VBAR expression
+        {
+            ASTNode* p = $1;
+            while(p->right)
+                p = p->right;
+            p->right = $3;
+            $$ = $1;
+        }
     ;
 
 type:
@@ -152,7 +215,6 @@ int main(void) {
             print_ast(root, 0);
         }
     }
-    // Optionally free your AST: free_ast(root);
+    // Optionally, free the AST: free_ast(root);
     return 0;
 }
-

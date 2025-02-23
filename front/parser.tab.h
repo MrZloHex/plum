@@ -47,7 +47,7 @@ extern int yydebug;
 /* "%code requires" blocks.  */
 #line 1 "parser.y"
 
-  #include "ast.h"
+    #include "ast.h"
 
 #line 53 "parser.tab.h"
 
@@ -69,7 +69,14 @@ extern int yydebug;
     VBAR = 264,                    /* VBAR  */
     PTR = 265,                     /* PTR  */
     BLOCK_END = 266,               /* BLOCK_END  */
-    EQUAL = 267                    /* EQUAL  */
+    EQUAL = 267,                   /* EQUAL  */
+    LPAREN = 268,                  /* LPAREN  */
+    RPAREN = 269,                  /* RPAREN  */
+    RET = 270,                     /* RET  */
+    PLUS = 271,                    /* PLUS  */
+    MINUS = 272,                   /* MINUS  */
+    STAR = 273,                    /* STAR  */
+    SLASH = 274                    /* SLASH  */
   };
   typedef enum yytokentype yytoken_kind_t;
 #endif
@@ -83,7 +90,7 @@ union YYSTYPE
     char* str;
     ASTNode* ast;
 
-#line 87 "parser.tab.h"
+#line 94 "parser.tab.h"
 
 };
 typedef union YYSTYPE YYSTYPE;
