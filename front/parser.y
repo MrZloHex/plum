@@ -207,14 +207,43 @@ void yyerror(const char *s) {
     fprintf(stderr, "Error: %s\n", s);
 }
 
-int main(void) {
-    if (yyparse() == 0) {
-        printf("Parsing completed successfully!\n");
-        if (root) {
-            printf("\n--- AST ---\n");
-            print_ast(root, 0);
-        }
-    }
-    // Optionally, free the AST: free_ast(root);
+// int main(void) {
+//     if (yyparse() == 0) {
+//         printf("Parsing completed successfully!\n");
+//         if (root) {
+//             printf("\n--- AST ---\n");
+//             print_ast(root, 0);
+//         }
+//     }
+//     // Optionally, free the AST: free_ast(root);
+//     return 0;
+// }
+
+int main() {
+    // Parse input and generate AST
+    yyparse();
+
+if (root) {
+    printf("\n--- AST ---\n");
+    print_ast(root, 0);
+} else {
+    printf("AST is empty!\n");
+}
+    // Generate LLVM IR from the AST
+    generateLLVMIR(root);
+    free_ast(root);
+
     return 0;
 }
+
+
+
+
+
+
+
+
+
+
+
+
