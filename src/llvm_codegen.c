@@ -148,11 +148,11 @@ void generateLLVMIR(ASTNode* root) {
     // Dump the generated LLVM IR to standard output.
     LLVMDumpModule(module);
 
-    char* error = NULL;
-    if (LLVMPrintModuleToFile(module, "output.ll", &error) != 0) {
-        fprintf(stderr, "Error writing module: %s\n", error);
-        LLVMDisposeMessage(error);
-    }
+    // char* error = NULL;
+    // if (LLVMPrintModuleToFile(module, "output.ll", &error) != 0) {
+    //     fprintf(stderr, "Error writing module: %s\n", error);
+    //     LLVMDisposeMessage(error);
+    // }
     // Cleanup: In a full implementation, free LLVM objects when done.
 }
 
