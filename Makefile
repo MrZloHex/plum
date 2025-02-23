@@ -101,7 +101,6 @@ $(OBJ)/%.o: $(GEN)/%.c
 	@echo "  CC       $(patsubst $(OBJ)/%,%,$@)"
 	$(Q) $(CC) -o $@ -c $< $(CFLAGS)
 
-
 ifneq ($(strip $(LIB)),)
 $(OBJ)/%.o: $(LIB)/%.c
     @mkdir -p $(@D)
