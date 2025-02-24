@@ -11,7 +11,7 @@
 void yyerror(const char *s);
 int yylex(void);
 
-Node *root = NULL;
+extern Node *root;
 %}
 
 %union {
@@ -44,7 +44,6 @@ program:
         { pr = pr->as.programme.next; }
         pr->as.programme.next = node_make_programme($2);
         $$ = $1;
-        root == $$;
     }
 ;
 
@@ -220,28 +219,10 @@ type:
 ;
 %%
 
-void yyerror(const char *s) {
+void
+yyerror(const char *s)
+{
     fprintf(stderr, "Error: %s\n", s);
 }
-
-int main() {
-    // Parse input and generate AST
-    yyparse();
-    node_dump_programme(root, 0);
-    // Generate LLVM IR from the AST
-    //generateLLVMIR(root);
-
-    return 0;
-}
-
-
-
-
-
-
-
-
-
-
 
 
