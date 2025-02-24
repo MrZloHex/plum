@@ -3,61 +3,271 @@
 #include <stdlib.h>
 #include <string.h>
 
-ASTNode* create_node(ASTNodeType type, const char* value, ASTNode* left, ASTNode* right) {
-    ASTNode* node = malloc(sizeof(ASTNode));
-    if (!node) {
-        fprintf(stderr, "Out of memory!\n");
+#define NODE_ALLOC(n)                          \
+    Node *n = (Node *)calloc(1, sizeof(Node)); \
+    if (!n)                                    \
+    { exit(69); }
+
+#define PRINT_OFFSET(off)               \
+    for (size_t i = 0; i < off; ++i)    \
+    { putc('\t', stdout); }
+
+Node *
+node_make_fndef(Node *decl, Node *block)
+{
+    NODE_ALLOC(fn);
+
+    fn->type = NT_FN_DEF;
+    fn->as.fn_def.decl = decl;
+    fn->as.fn_def.block = block;
+
+    return fn;
+}
+
+void
+node_dump_fndef(Node *fndef, size_t offset)
+{
+    PRINT_OFFSET(offset) printf("FNDEF\n");
+    node_dump_fndecl(fndef->as.fn_def.decl, offset+1);
+    node_dump_block(fndef->as.fn_def.block, offset+1);
+}
+
+Node *
+node_make_fndecl(Node *type, Node *id, Node *params)
+{
+    NODE_ALLOC(fn);
+
+    fn->type = NT_FN_DECL;
+    fn->as.fn_decl.type = type;
+    fn->as.fn_decl.ident = id;
+    fn->as.fn_decl.params = params;
+
+    return fn;
+}
+
+void
+node_dump_fndecl(Node *fndecl, size_t offset)
+{
+    PRINT_OFFSET(offset) printf("FNDECL\n");
+    node_dump_type(fndecl->as.fn_decl.type, offset+1);
+    node_dump_ident(fndecl->as.fn_decl.ident, offset+1);
+    node_dump_parametre(fndecl->as.fn_decl.params, offset+1);
+}
+
+
+Node *
+node_make_ident(const N_Ident value)
+{
+    NODE_ALLOC(n);
+    
+    n->type = NT_IDENT;
+    n->as.ident = strdup(value);
+
+    return n;
+}
+
+void
+node_dump_ident(Node *id, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("ID `%s`\n", id->as.ident);
+}
+
+
+Node *
+node_make_var_decl(Node *type, Node *id)
+{
+    NODE_ALLOC(n);
+    
+    n->type = NT_VAR_DECL;
+    n->as.var_decl.type = type;
+    n->as.var_decl.ident = id;
+
+    return n;
+}
+
+void
+node_dump_var_decl(Node *var, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("VAR DECL\n");
+    node_dump_type(var->as.var_decl.type, offset+1);
+    node_dump_ident(var->as.var_decl.ident, offset+1);
+}
+
+Node *
+node_make_type(const char *type)
+{
+    NODE_ALLOC(n);
+    
+    n->type = NT_TYPE;
+    if (strcmp(type, "U32") == 0)
+    {
+        n->as.type = T_U32;
+    }
+    else if (strcmp(type, "U8") == 0)
+    {
+        n->as.type = T_U8;
+    }
+    else
+    {
+        fprintf(stderr, "UNKNOWN TYPE `%s`\n", type);
         exit(1);
     }
-    node->type = type;
-    node->value = value ? strdup(value) : NULL;
-    node->left = left;
-    node->right = right;
-    return node;
+
+    return n;
 }
 
-void free_ast(ASTNode* node) {
-    if (!node)
-        return;
-    free_ast(node->left);
-    free_ast(node->right);
-    if (node->value)
-        free(node->value);
-    free(node);
+void
+node_dump_type(Node *type, size_t offset)
+{
+    static char *types[T_QUANT] = { "U8", "U16", "U32" };
+    PRINT_OFFSET(offset);
+    printf("TYPE %s\n", types[type->as.type]);
 }
 
-static const char* ast_type_to_string(ASTNodeType type) {
-    switch(type) {
-        case AST_FUNCTION_DECL: return "FunctionDecl";
-        case AST_PARAMETER:     return "Parameter";
-        case AST_VAR_DECL:      return "VarDecl";
-        case AST_EXPRESSION:    return "Expression";
-        case AST_TYPE:          return "Type";
-        case AST_LIST:          return "List";
-        case AST_EMPTY:         return "Empty";
-        case AST_RETURN:        return "Return";
-        case AST_FUNC_CALL:     return "FuncCall";
-        default:                return "Unknown";
+Node *
+node_make_bin_op(BinOpType op, Node *left, Node *right)
+{
+    Node *n = malloc(sizeof(Node));
+    
+    n->type = NT_BIN_OP;
+    n->as.bin_op.type = op;
+    n->as.bin_op.left = left;
+    n->as.bin_op.right = right;
+
+    return n;
+}
+
+void
+node_dump_bin_op(Node *op, size_t offset)
+{
+    static char *bo_type[BOT_QUANT] = { "ASSIGN", "PLUS" };
+    PRINT_OFFSET(offset);
+    printf("BIN OP %s\n", bo_type[op->as.bin_op.type]);
+    PRINT_OFFSET(offset);
+    printf(" left:\n");
+    node_dump_expr(op->as.bin_op.left, offset+1);
+    PRINT_OFFSET(offset);
+    printf(" right:\n");
+    node_dump_expr(op->as.bin_op.right, offset+1);
+}
+
+Node *
+node_make_parametre(Node *type, Node *id)
+{
+    NODE_ALLOC(list);   
+    
+    list->type = NT_PARAMETRE;
+    list->as.parametre.ident = id;
+    list->as.parametre.type  = type;
+
+    return list;
+}
+
+void
+node_dump_parametre(Node *list, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("PARAMS\n");
+    while (list)
+    {
+        node_dump_type(list->as.parametre.type, offset+1);
+        node_dump_ident(list->as.parametre.ident, offset+1);
+        list = list->as.parametre.next;
     }
 }
 
-/*
- * print_ast prints the AST in a tree-like structure.
- * 'indent' indicates the current indentation level.
- * The convention is: node->left is the first child, node->right is the next sibling.
- */
-void print_ast(ASTNode* node, int indent) {
-    if (!node)
-        return;
-    for (int i = 0; i < indent; i++)
-        printf("    ");  // 4 spaces per indent level
-    printf("|-- %s", ast_type_to_string(node->type));
-    if (node->value)
-        printf(" (%s)", node->value);
-    printf("\n");
-    // First, print children (with increased indent)
-    print_ast(node->left, indent + 1);
-    // Then, print siblings (same indent level)
-    print_ast(node->right, indent);
+Node *
+node_make_ret(Node *expr)
+{
+    NODE_ALLOC(ret);
+
+    ret->type = NT_RET;
+    ret->as.ret.expr = expr;
+
+    return ret;
+}
+
+void
+node_dump_ret(Node *ret, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("RETURN\n");
+    node_dump_expr(ret->as.ret.expr, offset+1);
+}
+
+
+Node *
+node_make_block(Node *stmt)
+{
+    NODE_ALLOC(bl);
+
+    bl->type = NT_BLOCK;
+    bl->as.block.stmt = stmt;
+
+    return bl;
+}
+
+void
+node_dump_block(Node *block, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("BLOCK\n");
+    while (block)
+    {
+        node_dump_stmt(block->as.block.stmt, offset+1);
+        block = block->as.block.next;
+    }
+}
+
+Node *
+node_make_stmt(StmtType type, Node *stmt)
+{
+    NODE_ALLOC(s);
+
+    s->type = NT_STATEMENT;
+    s->as.stmt.type = type;
+    s->as.stmt.stmt = stmt;
+
+    return s;
+}
+
+void
+node_dump_stmt(Node *stmt, size_t offset)
+{
+    static char *st_types[ST_QUANT] = { "EXPR", "VAR DECL", "RET" };
+    PRINT_OFFSET(offset);
+    printf("STMT %s\n", st_types[stmt->as.stmt.type]);
+    if (stmt->as.stmt.type == ST_EXPR)
+    { node_dump_expr(stmt->as.stmt.stmt, offset+1); }
+    else if (stmt->as.stmt.type == ST_VAR_DECL)
+    { node_dump_var_decl(stmt->as.stmt.stmt, offset+1); }
+    else if (stmt->as.stmt.type == ST_RET)
+    { node_dump_ret(stmt->as.stmt.stmt, offset+1); }
+}
+
+Node *
+node_make_expr(ExprType type, Node *expr)
+{
+    NODE_ALLOC(e);
+
+    e->type = NT_EXPR;
+    e->as.expr.type = type;
+    e->as.expr.expr = expr;
+
+    return e;
+}
+
+void
+node_dump_expr(Node *expr, size_t offset)
+{
+    static char *et_types[ET_QUANT] = { "IDENT", "BIN OP" };
+    PRINT_OFFSET(offset);
+    printf("EXPR %s\n", et_types[expr->as.expr.type]);
+    if (expr->as.expr.type == ET_IDENT)
+    { node_dump_ident(expr->as.expr.expr, offset+1); }
+    else if (expr->as.expr.type == ET_BIN_OP)
+    { node_dump_bin_op(expr->as.expr.expr, offset+1); }
 }
 

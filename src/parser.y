@@ -12,12 +12,12 @@ void yyerror(const char *s);
 int yylex(void);
 
 /* Global AST root (for simplicity, we store the last parsed function) */
-ASTNode* root = NULL;
+Node *root = NULL;
 %}
 
 %union {
     char* str;
-    ASTNode* ast;
+    Node *node;
 }
 
 /* Tokens from types, symbols, and new operators */
@@ -30,208 +30,190 @@ ASTNode* root = NULL;
 %left STAR SLASH
 
 /* Nonterminals carrying AST nodes */
-%type <ast> program function_decl param_list_opt param_list parameter
-%type <ast> block_opt block block_line_list block_line opt_stmt stmt
-%type <ast> var_decl ret_stmt expression type function_call arg_list_opt arg_list
+%type <node> program fn_decl fn_def param_list_opt param_list parametre
+%type <node> block block_line_list block_line stmt
+%type <node> var_decl ret_stmt expression type function_call arg_list_opt arg_list
 
 %%
 program:
-      function_decl { 
-          $$ = create_node(AST_LIST, "functions", $1, NULL); 
-          root = $$;
-      }
-    | program function_decl {
-          ASTNode* list = $1;
-          ASTNode* newFunc = $2;
-          /* Append the new function to the end of the list */
-          ASTNode* p = list;
-          while(p->right)
-              p = p->right;
-          p->right = create_node(AST_LIST, "functions", newFunc, NULL);
-          $$ = list;
-          root = $$;
-      }
-    ;
+    fn_def
+    { 
+        $$ = $1;
+        root = $$;
+    }
+;
 
+fn_def:
+    fn_decl
+    {
+        // TODO
+        exit(42);
+    }
+    | fn_decl block
+    { $$ = node_make_fndef($1, $2); }
+;
 
-
-
-function_decl:
-      type IDENT COLON LBRACKET param_list_opt RBRACKET block_opt
-        {
-            /* Build header: combine return type and a list node with the function name and parameter list */
-            ASTNode *header = create_node(AST_LIST, NULL, $1, create_node(AST_LIST, $2, $5, NULL));
-            $$ = create_node(AST_FUNCTION_DECL, NULL, header, $7);
-        }
-    ;
+fn_decl:
+    type IDENT COLON LBRACKET param_list_opt RBRACKET
+    {
+        Node *id = node_make_ident($2);
+        $$ = node_make_fndecl($1, id, $5);
+    }
+;
 
 param_list_opt:
-      /* empty */ { $$ = NULL; }
-    | param_list { $$ = $1; }
-    ;
+    /* empty */
+    { $$ = NULL; }
+    | param_list
+    { $$ = $1; }
+;
 
 param_list:
-      parameter { $$ = $1; }
-    | param_list VBAR parameter
-        {
-            ASTNode* p = $1;
-            while(p->right)
-                p = p->right;
-            p->right = $3;
-            $$ = $1;
-        }
-    ;
+    parametre
+    { $$ = $1; }
+    | param_list VBAR parametre
+    {
+        Node *list = $1;
+        while(list->as.parametre.next)
+        { list = list->as.parametre.next; }
+        list->as.parametre.next = $3;
+        $$ = $1;
+    }
+;
 
-parameter:
-      type IDENT
-        {
-            $$ = create_node(AST_PARAMETER, $2, $1, NULL);
-        }
-    ;
-
-block_opt:
-      /* empty */ { $$ = NULL; }
-    | block { $$ = $1; }
-    ;
+parametre:
+    type IDENT
+    {
+        Node *id = node_make_ident($2);
+        $$ = node_make_parametre($1, id);
+    }
+;
 
 block:
-      block_line_list BLOCK_END { $$ = $1; }
-    ;
+    block_line_list BLOCK_END
+    { $$ = $1; }
+;
 
 block_line_list:
-      block_line { $$ = $1; }
+    block_line
+    { $$ = $1; }
     | block_line_list block_line
-        {
-            ASTNode* p = $1;
-            while(p->right)
-                p = p->right;
-            p->right = $2;
-            $$ = $1;
-        }
-    ;
+    {
+        Node *list = $1;
+        while(list->as.block.next)
+        { list = list->as.block.next; }
+        list->as.block.next = $2;
+        $$ = $1;
+    }
+;
 
 block_line:
-      VBAR opt_stmt
-        {
-            if ($2 == NULL)
-                $$ = create_node(AST_EMPTY, "", NULL, NULL);
-            else
-                $$ = $2;
-        }
-    ;
-
-opt_stmt:
-      /* empty */ { $$ = NULL; }
-    | stmt { $$ = $1; }
-    ;
+    VBAR stmt
+    { $$ = node_make_block($2); }
+;
 
 stmt:
-      var_decl { $$ = $1; }
-    | ret_stmt { $$ = $1; }
-    ;
+    /* empty */
+    { $$ = NULL; }
+    | expression
+    { $$ = node_make_stmt(ST_EXPR, $1); }
+    | var_decl
+    { $$ = node_make_stmt(ST_VAR_DECL, $1); }
+    | ret_stmt
+    { $$ = node_make_stmt(ST_RET, $1); }
+;
 
 var_decl:
-      type IDENT
-        {
-            $$ = create_node(AST_VAR_DECL, $2, $1, NULL);
-        }
-    | type IDENT EQUAL expression
-        {
-            $$ = create_node(AST_VAR_DECL, $2, $1, $4);
-        }
-    ;
+    type IDENT
+    {
+        Node *id = node_make_ident($2);
+        $$ = node_make_var_decl($1, id);
+    }
+;
 
 ret_stmt:
-      RET LBRACKET expression RBRACKET
-        {
-            $$ = create_node(AST_RETURN, NULL, $3, NULL);
-        }
-    ;
+    RET LBRACKET expression RBRACKET
+    {
+        $$ = node_make_ret($3);
+    }
+;
 
 /* Expression grammar with arithmetic, function calls, and primary expressions */
 expression:
-      expression PLUS expression
-        { $$ = create_node(AST_EXPRESSION, "+", $1, $3); }
+    LPAREN expression RPAREN
+    { $$ = $2; }
+    | expression EQUAL expression
+    {
+        Node *e = node_make_bin_op(BOT_ASSIGN, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
+    | expression PLUS expression
+    {
+        Node *e = node_make_bin_op(BOT_PLUS, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
     | expression MINUS expression
-        { $$ = create_node(AST_EXPRESSION, "-", $1, $3); }
+    {  }
     | expression STAR expression
-        { $$ = create_node(AST_EXPRESSION, "*", $1, $3); }
+    {  }
     | expression SLASH expression
-        { $$ = create_node(AST_EXPRESSION, "/", $1, $3); }
+    {  }
     | function_call
-        { $$ = $1; }
-    | LPAREN expression RPAREN
-        { $$ = $2; }
+    { }
     | NUMBER
-        { $$ = create_node(AST_EXPRESSION, $1, NULL, NULL); }
+    {  }
     | IDENT
-        { $$ = create_node(AST_EXPRESSION, $1, NULL, NULL); }
-    ;
+    {
+        Node *e = node_make_ident($1);
+        $$ = node_make_expr(ET_IDENT, e);
+    }
+;
 
 /* Function call: (<FN_PTR>)[ <arg_list_opt> ] */
 function_call:
-      LPAREN expression RPAREN LBRACKET arg_list_opt RBRACKET
-        { $$ = create_node(AST_FUNC_CALL, NULL, $2, $5); }
-    ;
+    LPAREN expression RPAREN LBRACKET arg_list_opt RBRACKET
+    { }
+;
 
 arg_list_opt:
-      /* empty */ { $$ = NULL; }
-    | arg_list { $$ = $1; }
-    ;
+    /* empty */
+    { $$ = NULL; }
+    | arg_list
+    { $$ = $1; }
+;
 
 arg_list:
-      expression { $$ = $1; }
+    expression
+    { $$ = $1; }
     | arg_list VBAR expression
-        {
-            ASTNode* p = $1;
-            while(p->right)
-                p = p->right;
-            p->right = $3;
-            $$ = $1;
-        }
-    ;
+    {}
+;
 
 type:
-      TYPE { $$ = create_node(AST_TYPE, $1, NULL, NULL); }
+    TYPE
+    {
+        $$ = node_make_type($1);
+    }
     | PTR type
-        {
-            char* newType = malloc(strlen($2->value) + 2);
-            sprintf(newType, "@%s", $2->value);
-            $$ = create_node(AST_TYPE, newType, NULL, NULL);
-            free(newType);
-        }
-    ;
+    {
+        // char* newType = malloc(strlen($2->value) + 2);
+        // sprintf(newType, "@%s", $2->value);
+        // $$ = create_node(AST_PTR, NULL, $2, NULL);
+        // free(newType);
+    }
+;
 %%
 
 void yyerror(const char *s) {
     fprintf(stderr, "Error: %s\n", s);
 }
 
-// int main(void) {
-//     if (yyparse() == 0) {
-//         printf("Parsing completed successfully!\n");
-//         if (root) {
-//             printf("\n--- AST ---\n");
-//             print_ast(root, 0);
-//         }
-//     }
-//     // Optionally, free the AST: free_ast(root);
-//     return 0;
-// }
-
 int main() {
     // Parse input and generate AST
     yyparse();
-
-if (root) {
-    printf("\n--- AST ---\n");
-    print_ast(root, 0);
-} else {
-    printf("AST is empty!\n");
-}
+    node_dump_fndef(root, 0);
     // Generate LLVM IR from the AST
-    generateLLVMIR(root);
-    free_ast(root);
+    //generateLLVMIR(root);
 
     return 0;
 }
