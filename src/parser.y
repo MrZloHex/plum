@@ -11,7 +11,6 @@
 void yyerror(const char *s);
 int yylex(void);
 
-/* Global AST root (for simplicity, we store the last parsed function) */
 Node *root = NULL;
 %}
 
@@ -20,16 +19,13 @@ Node *root = NULL;
     Node *node;
 }
 
-/* Tokens from types, symbols, and new operators */
 %token <str> TYPE IDENT NUMBER
 %token COLON LBRACKET RBRACKET VBAR PTR BLOCK_END EQUAL
 %token LPAREN RPAREN RET PLUS MINUS STAR SLASH
 
-/* Operator precedence for math expressions */
 %left PLUS MINUS
 %left STAR SLASH
 
-/* Nonterminals carrying AST nodes */
 %type <node> program fn_decl fn_def param_list_opt param_list parametre
 %type <node> block block_line_list block_line stmt
 %type <node> var_decl ret_stmt expression type function_call arg_list_opt arg_list
@@ -38,8 +34,17 @@ Node *root = NULL;
 program:
     fn_def
     { 
-        $$ = $1;
+        $$ = node_make_programme($1);
         root = $$;
+    }
+    | program fn_def
+    {
+        Node *pr = $1;
+        while(pr->as.programme.next)
+        { pr = pr->as.programme.next; }
+        pr->as.programme.next = node_make_programme($2);
+        $$ = $1;
+        root == $$;
     }
 ;
 
@@ -138,7 +143,6 @@ ret_stmt:
     }
 ;
 
-/* Expression grammar with arithmetic, function calls, and primary expressions */
 expression:
     LPAREN expression RPAREN
     { $$ = $2; }
@@ -159,9 +163,12 @@ expression:
     | expression SLASH expression
     {  }
     | function_call
-    { }
+    { $$ = node_make_expr(ET_FN_CALL, $1); }
     | NUMBER
-    {  }
+    {
+        Node *e = node_make_num_lit($1);
+        $$ = node_make_expr(ET_NUM_LIT, e);
+    }
     | IDENT
     {
         Node *e = node_make_ident($1);
@@ -169,10 +176,12 @@ expression:
     }
 ;
 
-/* Function call: (<FN_PTR>)[ <arg_list_opt> ] */
 function_call:
-    LPAREN expression RPAREN LBRACKET arg_list_opt RBRACKET
-    { }
+    LPAREN IDENT RPAREN LBRACKET arg_list_opt RBRACKET
+    {
+        Node *ident = node_make_ident($2);
+        $$ = node_make_fncall(ident, $5);
+    }
 ;
 
 arg_list_opt:
@@ -184,10 +193,17 @@ arg_list_opt:
 
 arg_list:
     expression
-    { $$ = $1; }
+    { $$ = node_make_argument($1); }
     | arg_list VBAR expression
-    {}
+    {
+        Node *list = $1;
+        while(list->as.arguments.next)
+        { list = list->as.arguments.next; }
+        list->as.arguments.next = node_make_argument($3);
+        $$ = $1;
+    }
 ;
+
 
 type:
     TYPE
@@ -211,7 +227,7 @@ void yyerror(const char *s) {
 int main() {
     // Parse input and generate AST
     yyparse();
-    node_dump_fndef(root, 0);
+    node_dump_programme(root, 0);
     // Generate LLVM IR from the AST
     //generateLLVMIR(root);
 

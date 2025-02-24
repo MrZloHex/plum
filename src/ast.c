@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+
+// TODO: MAKE IT ARENA
 #define NODE_ALLOC(n)                          \
     Node *n = (Node *)calloc(1, sizeof(Node)); \
     if (!n)                                    \
@@ -11,6 +13,34 @@
 #define PRINT_OFFSET(off)               \
     for (size_t i = 0; i < off; ++i)    \
     { putc('\t', stdout); }
+
+
+Node *
+node_make_programme(Node *fndef)
+{
+    NODE_ALLOC(p);
+
+    p->type = NT_PROGRAMME;
+    p->as.programme.fndef = fndef;
+
+    return p;
+}
+
+void
+node_dump_programme(Node *pr, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("PROGRAMME\n");
+    size_t c = 0;
+    while (pr)
+    {
+        PRINT_OFFSET(offset);
+        printf(" - %zu:\n", c++);
+        node_dump_fndef(pr->as.programme.fndef, offset+1);
+        pr = pr->as.programme.next;
+    }
+}
+
 
 Node *
 node_make_fndef(Node *decl, Node *block)
@@ -73,6 +103,23 @@ node_dump_ident(Node *id, size_t offset)
     printf("ID `%s`\n", id->as.ident);
 }
 
+Node *
+node_make_num_lit(const char *value)
+{
+    NODE_ALLOC(n);
+    
+    n->type = NT_NUM_LIT;
+    n->as.num_lit = atoi(value);
+
+    return n;
+}
+
+void
+node_dump_num_lit(Node *lit, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("NUM LIT %d\n", lit->as.num_lit);
+}
 
 Node *
 node_make_var_decl(Node *type, Node *id)
@@ -109,6 +156,10 @@ node_make_type(const char *type)
     {
         n->as.type = T_U8;
     }
+    else if (strcmp(type, "I32") == 0)
+    {
+        n->as.type = T_I32;
+    }
     else
     {
         fprintf(stderr, "UNKNOWN TYPE `%s`\n", type);
@@ -121,7 +172,11 @@ node_make_type(const char *type)
 void
 node_dump_type(Node *type, size_t offset)
 {
-    static char *types[T_QUANT] = { "U8", "U16", "U32" };
+    static char *types[T_QUANT] =
+    {
+        "U8", "U16", "U32", "U64",
+        "I8", "I16", "I32", "I64"
+    };
     PRINT_OFFSET(offset);
     printf("TYPE %s\n", types[type->as.type]);
 }
@@ -170,8 +225,11 @@ node_dump_parametre(Node *list, size_t offset)
 {
     PRINT_OFFSET(offset);
     printf("PARAMS\n");
+    size_t c = 0;
     while (list)
     {
+        PRINT_OFFSET(offset);
+        printf(" - %zu:\n", c++);
         node_dump_type(list->as.parametre.type, offset+1);
         node_dump_ident(list->as.parametre.ident, offset+1);
         list = list->as.parametre.next;
@@ -214,8 +272,11 @@ node_dump_block(Node *block, size_t offset)
 {
     PRINT_OFFSET(offset);
     printf("BLOCK\n");
+    size_t c = 0;
     while (block)
     {
+        PRINT_OFFSET(offset);
+        printf(" - %zu:\n", c++);
         node_dump_stmt(block->as.block.stmt, offset+1);
         block = block->as.block.next;
     }
@@ -262,12 +323,62 @@ node_make_expr(ExprType type, Node *expr)
 void
 node_dump_expr(Node *expr, size_t offset)
 {
-    static char *et_types[ET_QUANT] = { "IDENT", "BIN OP" };
+    static char *et_types[ET_QUANT] = { "IDENT", "NUM LIT", "BIN OP", "FN CALL" };
     PRINT_OFFSET(offset);
     printf("EXPR %s\n", et_types[expr->as.expr.type]);
     if (expr->as.expr.type == ET_IDENT)
     { node_dump_ident(expr->as.expr.expr, offset+1); }
+    else if (expr->as.expr.type == ET_NUM_LIT)
+    { node_dump_num_lit(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_BIN_OP)
     { node_dump_bin_op(expr->as.expr.expr, offset+1); }
+    else if (expr->as.expr.type == ET_FN_CALL)
+    { node_dump_fncall(expr->as.expr.expr, offset+1); }
 }
 
+Node *
+node_make_fncall(Node *id, Node *args)
+{
+    NODE_ALLOC(c);
+
+    c->type = NT_FN_CALL;
+    c->as.fn_call.ident = id;
+    c->as.fn_call.args  = args;
+
+    return c;
+}
+
+void
+node_dump_fncall(Node *call, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("FN CALL\n");
+    node_dump_ident(call->as.fn_call.ident, offset+1);
+    node_dump_argument(call->as.fn_call.args, offset+1);
+}
+
+Node *
+node_make_argument(Node *expr)
+{
+    NODE_ALLOC(a);
+
+    a->type = NT_ARGUMENTS;
+    a->as.arguments.arg = expr;
+
+    return a;
+}
+
+void
+node_dump_argument(Node *args, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("ARGUMENTS\n");
+    size_t c = 0;
+    while (args)
+    {
+        PRINT_OFFSET(offset);
+        printf(" - %zu:\n", c++);
+        node_dump_expr(args->as.arguments.arg, offset+1);
+        args = args->as.arguments.next;
+    }
+}

@@ -18,6 +18,11 @@ typedef enum
    T_U8,
    T_U16,
    T_U32,
+   T_U64,
+   T_I8,
+   T_I16,
+   T_I32,
+   T_I64,
    T_QUANT
 } N_Type;
 
@@ -52,7 +57,9 @@ typedef struct
 typedef enum
 {
     ET_IDENT,
+    ET_NUM_LIT,
     ET_BIN_OP,
+    ET_FN_CALL,
     ET_QUANT
 } ExprType;
 
@@ -89,6 +96,8 @@ typedef struct
 
 typedef char *N_Ident;
 
+typedef int N_NumLit;
+
 // FUNCTION DEFINITION
 
 typedef struct
@@ -111,12 +120,33 @@ typedef struct
     struct Node_S *block;
 } N_FnDef;
 
+typedef struct
+{
+    struct Node_S *arg;
+    struct Node_S *next;
+} N_Arguments;
+
+typedef struct
+{
+    struct Node_S *ident;
+    struct Node_S *args;
+} N_FnCall;
+
+// PROGRAMME
+
+typedef struct
+{
+    struct Node_S *fndef;
+    struct Node_S *next;
+} N_Programme;
+
 // BASE
 
 typedef enum
 {
     NT_EXPR,
     NT_IDENT,
+    NT_NUM_LIT,
     NT_BIN_OP,
     NT_TYPE,
     NT_VAR_DECL,
@@ -124,8 +154,11 @@ typedef enum
     NT_FN_DEF,
     NT_FN_DECL,
     NT_PARAMETRE,
+    NT_FN_CALL,
+    NT_ARGUMENTS,
     NT_BLOCK,
-    NT_STATEMENT
+    NT_STATEMENT,
+    NT_PROGRAMME
 } NodeType;
 
 typedef struct Node_S
@@ -135,15 +168,19 @@ typedef struct Node_S
     {
         N_Expression expr;
         N_Ident      ident;
+        N_NumLit     num_lit;
         N_Bin_Op     bin_op;
         N_Type       type;
         N_Var_Decl   var_decl;
         N_FnDef      fn_def;
         N_FnDecl     fn_decl;
         N_Parametre  parametre;
+        N_FnCall     fn_call;
+        N_Arguments  arguments;
         N_Block      block;
         N_Ret        ret;
         N_Statement  stmt;
+        N_Programme  programme;
     } as;
 } Node;
 
