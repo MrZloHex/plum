@@ -12,6 +12,7 @@ void yyerror(const char *s);
 int yylex(void);
 
 extern Node *root;
+
 %}
 
 %union {

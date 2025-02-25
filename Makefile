@@ -39,7 +39,7 @@ YACC		 = bison
 LEX 	 	 = flex
 
 CFLAGS_BASE  = -Wall -Wextra -std=c2x -Wstrict-aliasing
-CFLAGS_BASE += -Wno-old-style-declaration
+CFLAGS_BASE += -Wno-old-style-declaration -Wno-unused-function
 CFLAGS_BASE += -MMD -MP
 CFLAGS_BASE += -Iinc -Ilib
 CFLAGS_BASE += $(shell llvm-config --cflags)
