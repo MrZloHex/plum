@@ -29,6 +29,9 @@ Node *
 node_make_chr_lit(const char *value);
 
 Node *
+node_make_str_lit(const char *value);
+
+Node *
 node_make_var_decl(Node *type, Node *id);
 
 Node *
@@ -79,6 +82,9 @@ node_dump_num_lit(Node *lit, size_t offset);
 
 void
 node_dump_chr_lit(Node *lit, size_t offset);
+
+void
+node_dump_str_lit(Node *lit, size_t offset);
 
 void
 node_dump_var_decl(Node *var, size_t offset);

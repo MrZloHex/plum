@@ -16,6 +16,9 @@ typedef struct
 typedef enum
 {
    T_ABYSS,
+   T_C1,
+   T_C2,
+   T_C4,
    T_U8,
    T_U16,
    T_U32,
@@ -66,6 +69,7 @@ typedef enum
     ET_IDENT,
     ET_NUM_LIT,
     ET_CHR_LIT,
+    ET_STR_LIT,
     ET_BIN_OP,
     ET_FN_CALL,
     ET_QUANT
@@ -104,8 +108,9 @@ typedef struct
 
 typedef char *N_Ident;
 
-typedef int  N_NumLit;
-typedef char N_ChrLit;
+typedef int   N_NumLit;
+typedef char  N_ChrLit;
+typedef char *N_StrLit;
 
 // FUNCTION DEFINITION
 
@@ -170,6 +175,7 @@ typedef enum
     NT_IDENT,
     NT_NUM_LIT,
     NT_CHR_LIT,
+    NT_STR_LIT,
     NT_BIN_OP,
     NT_TYPE,
     NT_VAR_DECL,
@@ -194,6 +200,7 @@ typedef struct Node_S
         N_Ident      ident;
         N_NumLit     num_lit;
         N_ChrLit     chr_lit;
+        N_StrLit     str_lit;
         N_Bin_Op     bin_op;
         N_Type       type;
         N_Var_Decl   var_decl;

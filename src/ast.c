@@ -184,6 +184,24 @@ node_dump_chr_lit(Node *lit, size_t offset)
 }
 
 Node *
+node_make_str_lit(const char *value)
+{
+    NODE_ALLOC(n);
+    
+    n->type = NT_STR_LIT;
+    n->as.str_lit = strdup(value);
+
+    return n;
+}
+
+void
+node_dump_str_lit(Node *lit, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("STR LIT %s\n", lit->as.str_lit);
+}
+
+Node *
 node_make_var_decl(Node *type, Node *id)
 {
     NODE_ALLOC(n);
@@ -212,21 +230,29 @@ node_make_type(const char *type)
     n->type = NT_TYPE;
     n->as.type.ptrs = 0;
     if (strcmp(type, "ABYSS") == 0)
-    {
-        n->as.type.type = T_ABYSS;
-    }
-    else if (strcmp(type, "U32") == 0)
-    {
-        n->as.type.type = T_U32;
-    }
+    { n->as.type.type = T_ABYSS; }
+    else if (strcmp(type, "C1") == 0)
+    { n->as.type.type = T_C1; }
+    else if (strcmp(type, "C2") == 0)
+    { n->as.type.type = T_C2; }
+    else if (strcmp(type, "C4") == 0)
+    { n->as.type.type = T_C4; }
     else if (strcmp(type, "U8") == 0)
-    {
-        n->as.type.type = T_U8;
-    }
+    { n->as.type.type = T_U8; }
+    else if (strcmp(type, "U16") == 0)
+    { n->as.type.type = T_U16; }
+    else if (strcmp(type, "U32") == 0)
+    { n->as.type.type = T_U32; }
+    else if (strcmp(type, "U64") == 0)
+    { n->as.type.type = T_U64; }
+    else if (strcmp(type, "I8") == 0)
+    { n->as.type.type = T_I8; }
+    else if (strcmp(type, "I16") == 0)
+    { n->as.type.type = T_I16; }
     else if (strcmp(type, "I32") == 0)
-    {
-        n->as.type.type = T_I32;
-    }
+    { n->as.type.type = T_I32; }
+    else if (strcmp(type, "I64") == 0)
+    { n->as.type.type = T_I64; }
     else
     {
         fprintf(stderr, "UNKNOWN TYPE `%s`\n", type);
@@ -249,6 +275,7 @@ node_dump_type(Node *type, size_t offset)
     static char *types[T_QUANT] =
     {
         "ABYSS",
+        "C1", "C2", "C4",
         "U8", "U16", "U32", "U64",
         "I8", "I16", "I32", "I64"
     };
@@ -410,6 +437,8 @@ node_dump_expr(Node *expr, size_t offset)
     { node_dump_num_lit(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_CHR_LIT)
     { node_dump_chr_lit(expr->as.expr.expr, offset+1); }
+    else if (expr->as.expr.type == ET_STR_LIT)
+    { node_dump_str_lit(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_BIN_OP)
     { node_dump_bin_op(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_FN_CALL)

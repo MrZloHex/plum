@@ -170,7 +170,8 @@ expression:
     { $$ = node_make_expr(ET_FN_CALL, $1); }
     | STR_LITERAL
     {
-        printf("STR LIT\n");
+        Node *e = node_make_str_lit($1);
+        $$ = node_make_expr(ET_STR_LIT, e);
     }
     | CHR_LITERAL
     {

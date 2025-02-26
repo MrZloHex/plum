@@ -78,6 +78,7 @@ parse_cli_options(int argc, char *argv[])
 #include "ast.h"
 #include "ir.h"
 #include "parser.h"
+#include "dynstr.h"
 
 extern FILE *yyin;
 Node *root = NULL;
@@ -129,13 +130,21 @@ main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    DynString output;
+    dynstr_init(&output, 1024);
+    generateIR(root, &output);
+
     if (opts.emit_type)
     {
         if (strcmp(opts.emit_type, "AST") == 0)
         { node_dump_programme(root, 0); }
         else if (strcmp(opts.emit_type, "IR") == 0)
-        { generateIR(root); }
+        { fprintf(fout, "%s\n", output.data); }
     }
+
+
+    dynstr_deinit(&output);
+
 
     return 0;
 }
