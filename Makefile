@@ -38,6 +38,9 @@ CC      	 = gcc
 YACC		 = bison
 LEX 	 	 = flex
 
+LEXFLAGS     = 
+YACCFLAGS	 = -Wall -Wcounterexamples
+
 CFLAGS_BASE  = -Wall -Wextra -std=c2x -Wstrict-aliasing
 CFLAGS_BASE += -Wno-old-style-declaration -Wno-unused-function
 CFLAGS_BASE += -MMD -MP
@@ -85,11 +88,11 @@ $(BIN)/$(TARGET): $(OBJECTS)
 
 $(SRC)/%.c: $(SRC)/%.y
 	@echo "  YC       $(patsubst $(SRC)/%,%,$@)"
-	$(Q) $(YACC) $< -o $@ --header=$(patsubst $(SRC)/%.c,$(INC)/%.h, $@)
+	$(Q) $(YACC) $< -o $@ --header=$(patsubst $(SRC)/%.c,$(INC)/%.h, $@) $(YACCFLAGS)
 
 $(SRC)/%.c: $(SRC)/%.l
 	@echo "  LX       $(patsubst $(SRC)/%,%,$@)"
-	$(Q) $(LEX) -o $@ $<
+	$(Q) $(LEX) -o $@ $< $(LEXFLAGS)
 
 $(OBJ)/%.o: $(SRC)/%.c
 	@mkdir -p $(@D)

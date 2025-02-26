@@ -20,7 +20,8 @@ extern Node *root;
     Node *node;
 }
 
-%token <str> TYPE IDENT NUMBER KWORD
+%token <str> TYPE IDENT KWORD
+%token <str> NUM_LITERAL CHR_LITERAL STR_LITERAL
 %token COLON LBRACKET RBRACKET VBAR PTR BLOCK_END EQUAL
 %token LPAREN RPAREN RET PLUS MINUS STAR SLASH
 
@@ -173,7 +174,7 @@ expression:
     {  }
     | function_call
     { $$ = node_make_expr(ET_FN_CALL, $1); }
-    | NUMBER
+    | NUM_LITERAL
     {
         Node *e = node_make_num_lit($1);
         $$ = node_make_expr(ET_NUM_LIT, e);
@@ -216,13 +217,9 @@ arg_list:
 
 type:
     TYPE
-    {
-        $$ = node_make_type($1);
-    }
+    { $$ = node_make_type($1); }
     | PTR type
-    {
-        $$ = node_make_type_ptr($2);
-    }
+    { $$ = node_make_type_ptr($2); }
 ;
 %%
 

@@ -34,7 +34,9 @@ C(1|2|4)                    { yylval.str = strdup(yytext); return TYPE; }
 "*"                         { return STAR; }
 "/"                         { return SLASH; }
 
-[0-9]+                      { yylval.str = strdup(yytext); return NUMBER; }
+'\'[^\']\''                 { yylval.str = strdup(yytext); return CHR_LITERAL; }
+\"([^\"\\]|\\.)*\"          { yylval.str = strdup(yytext); return STR_LITERAL; }
+[0-9]+                      { yylval.str = strdup(yytext); return NUM_LITERAL; }
 [a-zA-Z_][a-zA-Z0-9_]*      { yylval.str = strdup(yytext); return IDENT; }
 
 ";".*                       { /* skip comment lines */ }
