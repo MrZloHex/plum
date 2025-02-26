@@ -451,7 +451,8 @@ node_make_expr(ExprType type, Node *expr)
 void
 node_dump_expr(Node *expr, size_t offset)
 {
-    static char *et_types[ET_QUANT] = { "IDENT", "NUM LIT", "CHR LIT", "BIN OP", "FN CALL" };
+    static char *et_types[ET_QUANT] =
+    { "IDENT", "NUM LIT", "CHR LIT", "STR LIT", "BIN OP", "FN CALL" };
     PRINT_OFFSET(offset);
     printf("EXPR %s\n", et_types[expr->as.expr.type]);
     if (expr->as.expr.type == ET_IDENT)

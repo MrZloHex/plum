@@ -10,6 +10,14 @@ ast_init(AST *ast, Node *root)
     ast_stack_push(&ast->stack, root);
 }
 
+void
+ast_reinit(AST *ast)
+{
+    ast_stack_deinit(&ast->stack);
+    ast_stack_init(&ast->stack, 32);
+    ast_stack_push(&ast->stack, ast->root);
+}
+
 #define PUSH_NODE(EL)                           \
     if (EL)                                     \
     { ast_stack_push(&ast->stack, EL); }

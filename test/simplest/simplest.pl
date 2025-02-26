@@ -1,12 +1,12 @@
 ; SOME COMMENT
 
-U32 foo: [ U32 a | U32 b ]
+U8 foo: [ U8 a | U8 b ]
  | RET [ a + b ]
  \_
 
 I32 main: [ ]
- | U32 a
- | U32 b
+ | U8 a
+ | U8 b
  | a = 34
  | b = 35
  | U32 res

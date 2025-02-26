@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #define DYNSTR_IMPL
 #include "dynstr.h"
 
@@ -88,43 +89,66 @@ printType(Node *node, DynString *str)
 }
 
 /* Forward declarations of internal generator functions */
-static void generateProgram(Node *node, DynString *str);
-static void generateFnDef(Node *node, DynString *str);
-static void generateFnDecl(Node *node, DynString *str);
-static void generateBlock(Node *node, DynString *str);
-static void generateStatement(Node *node, DynString *str);
-static void generateExpr(Node *node, int targetReg, DynString *str);
-static void generateVarDecl(Node *node, DynString *str);
-static void generateBinOp(Node *node, int targetReg, DynString *str);
-static void generateFnCall(Node *node, int targetReg, DynString *str);
+static void generateProgram(Node *node, DynString *str, Meta *meta);
+static void generateFnDef(Node *node, DynString *str, Meta *meta);
+static void generateFnDecl(Node *node, DynString *str, Meta *meta);
+static void generateBlock(Node *node, DynString *str, Meta *meta);
+static void generateStatement(Node *node, DynString *str, Meta *meta);
+static void generateExpr(Node *node, int targetReg, DynString *str, Meta *meta, Node *type);
+static void generateVarDecl(Node *node, DynString *str, Meta *meta);
+static void generateBinOp(Node *node, int targetReg, DynString *str, Meta *meta, Node *type);
+static void generateFnCall(Node *node, int targetReg, DynString *str, Meta *meta);
 
 void
-generateIR(Node *node, DynString *str)
+generate_literals(Meta *meta, DynString *str)
 {
-    if (!node)
+    // @.str.1 = constant [6 x i8] c"HELLO\00"
+    for (size_t i = 0; i < meta->strs.size; ++i)
+    {
+        char *raw = meta->strs.data[i]->as.str_lit;
+        DynString s;
+        dynstr_init(&s, strlen(raw)+10);
+        dynstr_append_str(&s, raw);
+        dynstr_insert_str(&s, strlen(raw) - 1, "\\00");
+
+        dynstr_append_fstr(str, "@.str.%zu = constant [%d x i8] c%s\n", i+1, strlen(raw)-1, s.data);
+        dynstr_deinit(&s);
+    }
+    dynstr_append(str, '\n');
+}
+
+void
+generateIR(AST *ast, Meta *meta, DynString *str)
+{
+    if (!ast || !meta || !str)
     { return; }
 
+    generate_literals(meta, str);
+
+    Node *node = ast->root;
     if (node->type == NT_PROGRAMME)
-    { generateProgram(node, str); }
+    { generateProgram(node, str, meta); }
     else
     { dynstr_append_fstr(str, "; Unsupported top-level node type %d\n", node->type); }
 }
 
 /* Generate a programme: a linked list of function definitions */
 static void
-generateProgram(Node *node, DynString *str) 
+generateProgram(Node *node, DynString *str, Meta *meta) 
 {
     for (Node *prog = node; prog != NULL; prog = prog->as.programme.next)
     {
          if (prog->as.programme.stmt->as.prg_stmt.type == PST_FN_DEF)
-         { generateFnDef(prog->as.programme.stmt->as.prg_stmt.prg_stmt, str); }
+         { generateFnDef(prog->as.programme.stmt->as.prg_stmt.prg_stmt, str, meta); }
          else if (prog->as.programme.stmt->as.prg_stmt.type == PST_FN_DECL)
-         { generateFnDecl(prog->as.programme.stmt->as.prg_stmt.prg_stmt, str); }
+         { generateFnDecl(prog->as.programme.stmt->as.prg_stmt.prg_stmt, str, meta); }
     }
 }
 
+static MetaScope *curr_scope = NULL;
+
 static void
-generateFnDef(Node *node, DynString *str) 
+generateFnDef(Node *node, DynString *str, Meta *meta) 
 {
     if (!node || node->type != NT_FN_DEF)
     { return; }
@@ -139,6 +163,10 @@ generateFnDef(Node *node, DynString *str)
     printType(fnDecl->as.fn_decl.type, str);
     
     Node *fname = unwrap(fnDecl->as.fn_decl.ident);
+
+    // SAVE CURRENT SCOPE
+    curr_scope = meta_find_scope(meta, fname->as.ident);
+    
     if (fname && fname->type == NT_IDENT)
     { dynstr_append_fstr(str, " @%s(", (char*)fname->as.ident); }
     else
@@ -187,16 +215,16 @@ generateFnDef(Node *node, DynString *str)
          }
     }
     
-    generateBlock(fnBlock, str);
+    generateBlock(fnBlock, str, meta);
     
     dynstr_append_str(str, "}\n\n");
     clear_params();
 }
 
 static void
-generateFnDecl(Node *node, DynString *str)
+generateFnDecl(Node *node, DynString *str, Meta *meta)
 {
-    if (!node || node->type != NT_FN_DECL || !str)
+    if (!node || node->type != NT_FN_DECL || !str || !meta)
     { return; }
 
     Node *fnDecl = node;
@@ -236,38 +264,41 @@ generateFnDecl(Node *node, DynString *str)
 
 /* Generate a block: a linked list of statements */
 static void
-generateBlock(Node *node, DynString *str)
+generateBlock(Node *node, DynString *str, Meta *meta)
 {
-    if (!node || node->type != NT_BLOCK || !str)
+    if (!node || node->type != NT_BLOCK || !str || !meta)
     { return; }
 
     for (Node *blk = node; blk != NULL; blk = blk->as.block.next)
     {
-         generateStatement(blk->as.block.stmt, str);
+         generateStatement(blk->as.block.stmt, str, meta);
     }
 }
 
 /* Generate a statement */
 static void
-generateStatement(Node *node, DynString *str)
+generateStatement(Node *node, DynString *str, Meta *meta)
 {
-    if (!node || node->type != NT_STATEMENT || !str)
+    if (!node || node->type != NT_STATEMENT || !str || !meta)
     { return; }
 
     switch (node->as.stmt.type)
     {
          case ST_VAR_DECL:
-              generateVarDecl(node->as.stmt.stmt, str);
+              generateVarDecl(node->as.stmt.stmt, str, meta);
               break;
          case ST_EXPR: {
               int reg = new_reg();
-              generateExpr(node->as.stmt.stmt, reg, str);
+              generateExpr(node->as.stmt.stmt, reg, str, meta, NULL);
               break;
          }
          case ST_RET: {
               int reg = new_reg();
-              generateExpr(node->as.stmt.stmt, reg, str);
-              dynstr_append_fstr(str, "  ret i32 %%r%d\n", reg);
+              Node *fn_type = curr_scope->scope->as.var_decl.type;
+              generateExpr(node->as.stmt.stmt, reg, str, meta, fn_type);
+              dynstr_append_str(str, "  ret ");
+              printType(fn_type, str);
+              dynstr_append_fstr(str, " %%r%d\n", reg);
               break;
          }
          default:
@@ -278,9 +309,9 @@ generateStatement(Node *node, DynString *str)
 
 /* Generate a variable declaration */
 static void
-generateVarDecl(Node *node, DynString *str)
+generateVarDecl(Node *node, DynString *str, Meta *meta)
 {
-    if (!node || node->type != NT_VAR_DECL || !str)
+    if (!node || node->type != NT_VAR_DECL || !str || !meta)
     { return; }
 
     Node *vname = unwrap(node->as.var_decl.ident);
@@ -295,11 +326,12 @@ generateVarDecl(Node *node, DynString *str)
 
 /* Generate an expression */
 static void
-generateExpr(Node *node, int targetReg, DynString *str)
+generateExpr(Node *node, int targetReg, DynString *str, Meta *meta, Node *type)
 {
-    if (!node || !str)
+    if (!node || !str || !meta)
     { return; }
 
+    printf("CURR `%s`\n\n\n\n", str->data);
     node = unwrap(node);
     switch (node->type)
     {
@@ -323,13 +355,13 @@ generateExpr(Node *node, int targetReg, DynString *str)
               dynstr_append_fstr(str, "  %%r%d = add i32 0, %d\n", targetReg, node->as.num_lit);
               break;
          case NT_BIN_OP:
-              generateBinOp(node, targetReg, str);
+              generateBinOp(node, targetReg, str, meta, type);
               break;
          case NT_FN_CALL:
-              generateFnCall(node, targetReg, str);
+              generateFnCall(node, targetReg, str, meta);
               break;
          case NT_RET:
-              generateExpr(node->as.ret.expr, targetReg, str);
+              generateExpr(node->as.ret.expr, targetReg, str, meta, type);
               break;
          default:
               dynstr_append_fstr(str, "  ; Unsupported expression node type %d\n", node->type);
@@ -339,50 +371,57 @@ generateExpr(Node *node, int targetReg, DynString *str)
 
 /* Generate a binary operation */
 static void
-generateBinOp(Node *node, int targetReg, DynString *str)
+generateBinOp(Node *node, int targetReg, DynString *str, Meta *meta, Node *type)
 {
-    if (!node || node->type != NT_BIN_OP || !str)
+    assert(type && "NO TYPE");
+    if (!node || node->type != NT_BIN_OP || !str || !meta)
     { return; }
 
     switch (node->as.bin_op.type)
     {
-         case BOT_PLUS: {
+        case BOT_PLUS: {
               int leftReg = new_reg();
-              int rightReg = new_reg();
-              generateExpr(node->as.bin_op.left, leftReg, str);
-              generateExpr(node->as.bin_op.right, rightReg, str);
-              dynstr_append_fstr(str, "  %%r%d = add i32 %%r%d, %%r%d\n", targetReg, leftReg, rightReg);
-              break;
-         }
-         case BOT_ASSIGN: {
-              int rightReg = new_reg();
-              generateExpr(node->as.bin_op.right, rightReg, str);
-              Node *lhs = unwrap(node->as.bin_op.left);
-              if (lhs && lhs->type == NT_IDENT) {
-                  char *name = (char*)lhs->as.ident;
-                  if (is_parameter(name)) {
-                      dynstr_append_fstr(str, "  store i32 %%r%d, i32* %%%s_addr\n", rightReg, name);
-                      dynstr_append_fstr(str, "  %%r%d = load i32, i32* %%%s_addr\n", targetReg, name);
-                  } else {
-                      dynstr_append_fstr(str, "  store i32 %%r%d, i32* %%%s\n", rightReg, name);
-                      dynstr_append_fstr(str, "  %%r%d = load i32, i32* %%%s\n", targetReg, name);
-                  }
-              } else {
-                  dynstr_append_fstr(str, "  ; Left-hand side of assignment is not an identifier\n");
-              }
-              break;
-         }
-         default:
-              dynstr_append_fstr(str, "  ; Unsupported binary operation %d\n", node->as.bin_op.type);
-              break;
+             int rightReg = new_reg();
+             generateExpr(node->as.bin_op.left, leftReg, str, meta, type);
+             generateExpr(node->as.bin_op.right, rightReg, str, meta, type);
+             dynstr_append_fstr(str, "  %%r%d = add", targetReg);
+             printType(type, str);
+             dynstr_append_fstr(str, " %%r%d, %%r%d\n", targetReg, leftReg, rightReg);
+             break;
+        }
+        case BOT_ASSIGN: {
+             int rightReg = new_reg();
+             generateExpr(node->as.bin_op.right, rightReg, str, meta, type);
+             Node *lhs = unwrap(node->as.bin_op.left);
+             if (lhs && lhs->type == NT_IDENT) {
+                 char *name = (char*)lhs->as.ident;
+                 if (is_parameter(name)) {
+                     dynstr_append_fstr(str, "  store i32 %%r%d, i32* %%%s_addr\n", rightReg, name);
+                     dynstr_append_fstr(str, "  %%r%d = load i32, i32* %%%s_addr\n", targetReg, name);
+                 } else {
+                     dynstr_append_str(str, "  store ");
+                     printType(meta_find_type_in_scope(curr_scope, name), str);
+                     dynstr_append_fstr(str, " %%r%d, ", rightReg);
+                     printType(meta_find_type_in_scope(curr_scope, name), str);
+                     dynstr_append_fstr(str, "* %%%s\n", name);
+                     dynstr_append_fstr(str, "  %%r%d = load i32, i32* %%%s\n", targetReg, name);
+                 }
+             } else {
+                 dynstr_append_fstr(str, "  ; Left-hand side of assignment is not an identifier\n");
+             }
+             break;
+        }
+        default:
+             dynstr_append_fstr(str, "  ; Unsupported binary operation %d\n", node->as.bin_op.type);
+             break;
     }
 }
 
 /* Generate a function call */
 static void
-generateFnCall(Node *node, int targetReg, DynString *str)
+generateFnCall(Node *node, int targetReg, DynString *str, Meta *meta)
 {
-    if (!node || node->type != NT_FN_CALL || !str)
+    if (!node || node->type != NT_FN_CALL || !str || !meta)
     { return; }
 
     int argRegs[16];  /* support up to 16 arguments */
@@ -391,7 +430,8 @@ generateFnCall(Node *node, int targetReg, DynString *str)
     while (arg && arg->type == NT_ARGUMENTS)
     {
          int reg = new_reg();
-         generateExpr(arg->as.arguments.arg, reg, str);
+         assert(0 && "HERE");
+         generateExpr(arg->as.arguments.arg, reg, str, meta, NULL);
          argRegs[argCount++] = reg;
          arg = arg->as.arguments.next;
     }

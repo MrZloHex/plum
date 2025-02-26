@@ -1,6 +1,7 @@
 #include "meta_ir.h"
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 
 void
 meta_init(Meta *meta)
@@ -13,7 +14,7 @@ meta_init(Meta *meta)
 void
 meta_collect(Meta *meta, AST *ast)
 {
-    size_t c = 0;
+    // size_t c = 0;
     Node *curr = ast_next(ast);
     MetaScope curr_scope;
     bool in_scope = false;
@@ -68,6 +69,11 @@ meta_collect(Meta *meta, AST *ast)
                 in_scope = true;
                 mnv_init(&curr_scope.vars, 32);
                 ast_next(ast);
+
+                Node *type = ast_next(ast);
+                Node *ident = ast_next(ast);
+                Node *var = node_make_var_decl(type, ident);
+                curr_scope.scope = var;
             }
             else if (curr->type == NT_FN_DECL)
             {
@@ -80,20 +86,57 @@ meta_collect(Meta *meta, AST *ast)
             { assert(0 && "SMTH OUTSIDE SCOPE "); } 
         }
         
-
-
-        c++;
+        // c++;
         curr = ast_next(ast);
     }
 
     if (in_scope)
     {
-        printf("OUT SCOPE\n");
+        // printf("OUT SCOPE\n");
         in_scope = false;
         scopes_append(&meta->scopes, curr_scope);
     }
 
     // printf("NODE END\n");
+}
+
+Node *
+meta_find_type(Meta *meta, const char *name)
+{
+    for (size_t i = 0; i < meta->scopes.size; ++i)
+    {
+        MetaScope scope = meta->scopes.data[i];
+        return meta_find_type_in_scope(&scope, name);
+    }
+    return NULL;
+}
+
+Node *
+meta_find_type_in_scope(MetaScope *scope, const char *name)
+{
+    for (size_t j = 0; j < scope->vars.size; ++j)
+    {
+        Node *var = scope->vars.data[j];
+        if (strcmp(var->as.var_decl.ident->as.ident, name) == 0)
+        {
+            return var->as.var_decl.type;
+        }
+    }
+    return NULL;
+}
+
+MetaScope *
+meta_find_scope(Meta *meta, const char *name)
+{
+    for (size_t i = 0; i < meta->scopes.size; ++i)
+    {
+        MetaScope scope = meta->scopes.data[i];
+        if (strcmp(scope.scope->as.var_decl.ident->as.ident, name) == 0)
+        {
+            return &meta->scopes.data[i];
+        }
+    }
+    return NULL;
 }
 
 void
@@ -102,9 +145,10 @@ meta_dump(Meta *meta)
     printf("SCOPES:\n");
     for (size_t i = 0; i < meta->scopes.size; ++i)
     {
-        printf("\t%zu\n", i);
-        printf("\tVARIABLES:\n");
         MetaScope scope = meta->scopes.data[i];
+        printf("\t%zu\n", i);
+        node_dump_var_decl(scope.scope, 1);
+        printf("\tVARIABLES:\n");
         for (size_t j = 0; j < scope.vars.size; ++j)
         {
             node_dump_var_decl(scope.vars.data[j], 2);

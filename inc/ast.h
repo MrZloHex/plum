@@ -15,6 +15,9 @@ typedef struct
 void
 ast_init(AST *ast, Node *root);
 
+void
+ast_reinit(AST *ast);
+
 Node *
 ast_next(AST *ast);
 

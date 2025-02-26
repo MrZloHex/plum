@@ -143,11 +143,12 @@ main(int argc, char *argv[])
     meta_collect(&meta, &ast);
     printf("\n\n===========META==============\n");
     meta_dump(&meta);
+    printf("===========META==============\n");
 
-    assert(0 && "STOP");
     DynString output;
     dynstr_init(&output, 1024);
-    // generateIR(root, &output);
+    ast_reinit(&ast);
+    generateIR(&ast, &meta, &output);
 
     if (opts.emit_type)
     {
@@ -156,7 +157,6 @@ main(int argc, char *argv[])
         else if (strcmp(opts.emit_type, "IR") == 0)
         { fprintf(fout, "%s\n", output.data); }
     }
-
 
     dynstr_deinit(&output);
 

@@ -81,9 +81,9 @@ dynstr_init(DynString *str, size_t initial_capacity)
     str->data = (char *)malloc(sizeof(char) * (initial_capacity + 1));
     if (!str->data)
     { return -1; }
+    memset(str->data, 0, initial_capacity);
     str->size = 0;
     str->capacity = initial_capacity;
-    str->data[0] = '\0';
     return 0;
 }
 
