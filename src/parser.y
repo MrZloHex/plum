@@ -25,6 +25,7 @@ extern Node *root;
 %token COLON LBRACKET RBRACKET VBAR PTR BLOCK_END EQUAL
 %token LPAREN RPAREN RET PLUS MINUS STAR SLASH
 
+%left EQUAL
 %left PLUS MINUS
 %left STAR SLASH
 
@@ -51,20 +52,13 @@ program:
 ;
 
 prg_stmt:
-    /* empty */
-    { $$ = NULL; }
-    | fn_def
+    fn_def
     { $$ = node_make_prg_stmt(PST_FN_DEF, $1); }
     | fn_decl
     { $$ = node_make_prg_stmt(PST_FN_DECL, $1); }
 
 fn_def:
-    fn_decl
-    {
-        // TODO
-        exit(42);
-    }
-    | fn_decl block
+    fn_decl block
     { $$ = node_make_fndef($1, $2); }
 ;
 
@@ -77,7 +71,7 @@ fn_decl:
 ;
 
 param_list_opt:
-    /* empty */
+    %empty
     { $$ = NULL; }
     | param_list
     { $$ = $1; }
@@ -128,7 +122,7 @@ block_line:
 ;
 
 stmt:
-    /* empty */
+    %empty
     { $$ = NULL; }
     | expression
     { $$ = node_make_stmt(ST_EXPR, $1); }
@@ -195,7 +189,7 @@ function_call:
 ;
 
 arg_list_opt:
-    /* empty */
+    %empty
     { $$ = NULL; }
     | arg_list
     { $$ = $1; }
