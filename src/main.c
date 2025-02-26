@@ -76,9 +76,12 @@ parse_cli_options(int argc, char *argv[])
 
 
 #include "ast.h"
-#include "ir.h"
 #include "parser.h"
+#include "ir.h"
+#include "meta_ir.h"
 #include "dynstr.h"
+
+#include <assert.h>
 
 extern FILE *yyin;
 Node *root = NULL;
@@ -86,6 +89,7 @@ Node *root = NULL;
 int
 main(int argc, char *argv[])
 {
+
     Options opts = parse_cli_options(argc, argv);
     if (opts.file_start_index >= argc)
     {
@@ -130,9 +134,18 @@ main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    { node_dump_programme(root, 0); }
+    AST ast;
+    ast_init(&ast, root);
+
+    Meta meta;
+    meta_init(&meta);
+    meta_collect(&meta, &ast);
+
+    assert(0 && "STOP");
     DynString output;
     dynstr_init(&output, 1024);
-    generateIR(root, &output);
+    // generateIR(root, &output);
 
     if (opts.emit_type)
     {

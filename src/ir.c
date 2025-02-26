@@ -10,6 +10,11 @@ static int
 new_reg(void)
 { return reg_counter++; }
 
+static int str_counter = 0;
+static int
+new_str(void)
+{ return str_counter++; }
+
 typedef struct ParamEntry
 {
     char *name;
@@ -310,6 +315,8 @@ generateExpr(Node *node, int targetReg, DynString *str)
               dynstr_append_fstr(str, "  %%r%d = add i32 0, %d\n", targetReg, node->as.chr_lit);
               break;
          case NT_STR_LIT:
+              size_t str_n = new_str();
+              dynstr_append_fstr(str, "  %%r%d = add i32 0, %d\n", targetReg, node->as.chr_lit);
               dynstr_append_str(str, "STRING LITERAL\n");
               break;
          case NT_NUM_LIT:

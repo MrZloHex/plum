@@ -57,7 +57,7 @@ else
 	$(error Unknown build mode: $(BUILD). Use BUILD=debug or BUILD=release)
 endif
 
-LDFLAGS  = $(shell llvm-config --ldflags) -lLLVM-18 -lfl
+LDFLAGS  = $(shell llvm-config --ldflags) -lLLVM-19 -lfl
 
 TARGET   = plc
 
