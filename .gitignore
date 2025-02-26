@@ -6,4 +6,4 @@ bin/
 src/lexer.c
 src/parser.c
 inc/parser.h
-
+test.sh
