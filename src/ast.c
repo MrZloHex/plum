@@ -144,6 +144,45 @@ node_dump_num_lit(Node *lit, size_t offset)
     printf("NUM LIT %d\n", lit->as.num_lit);
 }
 
+static int
+chr_lit_to_int(const char *lit)
+{
+    if (!lit)
+    { return 0; }
+    if (lit[1] == '\\')
+    {
+        switch(lit[2]) {
+            case 'n': return '\n';
+            case 't': return '\t';
+            case 'r': return '\r';
+            case '\\': return '\\';
+            case '\'': return '\'';
+            case '\"': return '\"';
+            default: return lit[2];
+        }
+    }
+    else
+    { return lit[1]; }
+}
+
+Node *
+node_make_chr_lit(const char *value)
+{
+    NODE_ALLOC(n);
+    
+    n->type = NT_CHR_LIT;
+    n->as.chr_lit = chr_lit_to_int(value);
+
+    return n;
+}
+
+void
+node_dump_chr_lit(Node *lit, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("CHR LIT %c\n", lit->as.chr_lit);
+}
+
 Node *
 node_make_var_decl(Node *type, Node *id)
 {
@@ -362,13 +401,15 @@ node_make_expr(ExprType type, Node *expr)
 void
 node_dump_expr(Node *expr, size_t offset)
 {
-    static char *et_types[ET_QUANT] = { "IDENT", "NUM LIT", "BIN OP", "FN CALL" };
+    static char *et_types[ET_QUANT] = { "IDENT", "NUM LIT", "CHR LIT", "BIN OP", "FN CALL" };
     PRINT_OFFSET(offset);
     printf("EXPR %s\n", et_types[expr->as.expr.type]);
     if (expr->as.expr.type == ET_IDENT)
     { node_dump_ident(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_NUM_LIT)
     { node_dump_num_lit(expr->as.expr.expr, offset+1); }
+    else if (expr->as.expr.type == ET_CHR_LIT)
+    { node_dump_chr_lit(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_BIN_OP)
     { node_dump_bin_op(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_FN_CALL)

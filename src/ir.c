@@ -269,6 +269,9 @@ static void generateExpr(Node *node, int targetReg) {
               }
               break;
          }
+         case NT_CHR_LIT:
+              printf("  %%r%d = add i32 0, %d\n", targetReg, node->as.chr_lit);
+              break;
          case NT_NUM_LIT:
               printf("  %%r%d = add i32 0, %d\n", targetReg, node->as.num_lit);
               break;

@@ -168,6 +168,15 @@ expression:
     {  }
     | function_call
     { $$ = node_make_expr(ET_FN_CALL, $1); }
+    | STR_LITERAL
+    {
+        printf("STR LIT\n");
+    }
+    | CHR_LITERAL
+    {
+        Node *e = node_make_chr_lit($1);
+        $$ = node_make_expr(ET_CHR_LIT, e);
+    }
     | NUM_LITERAL
     {
         Node *e = node_make_num_lit($1);

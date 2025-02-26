@@ -65,6 +65,7 @@ typedef enum
 {
     ET_IDENT,
     ET_NUM_LIT,
+    ET_CHR_LIT,
     ET_BIN_OP,
     ET_FN_CALL,
     ET_QUANT
@@ -103,7 +104,8 @@ typedef struct
 
 typedef char *N_Ident;
 
-typedef int N_NumLit;
+typedef int  N_NumLit;
+typedef char N_ChrLit;
 
 // FUNCTION DEFINITION
 
@@ -167,6 +169,7 @@ typedef enum
     NT_EXPR,
     NT_IDENT,
     NT_NUM_LIT,
+    NT_CHR_LIT,
     NT_BIN_OP,
     NT_TYPE,
     NT_VAR_DECL,
@@ -190,6 +193,7 @@ typedef struct Node_S
         N_Expression expr;
         N_Ident      ident;
         N_NumLit     num_lit;
+        N_ChrLit     chr_lit;
         N_Bin_Op     bin_op;
         N_Type       type;
         N_Var_Decl   var_decl;
