@@ -188,8 +188,11 @@ typedef enum
     NT_BLOCK,
     NT_STATEMENT,
     NT_PRG_STMT,
-    NT_PROGRAMME
+    NT_PROGRAMME,
+    NT_QUANT
 } NodeType;
+
+extern const char *node_types_str[NT_QUANT];
 
 typedef struct Node_S
 {

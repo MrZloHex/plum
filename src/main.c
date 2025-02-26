@@ -141,6 +141,8 @@ main(int argc, char *argv[])
     Meta meta;
     meta_init(&meta);
     meta_collect(&meta, &ast);
+    printf("\n\n===========META==============\n");
+    meta_dump(&meta);
 
     assert(0 && "STOP");
     DynString output;

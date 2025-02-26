@@ -1,4 +1,5 @@
 #include "ast.h"
+#include <stdio.h>
 #include <assert.h>
 
 void
@@ -94,36 +95,18 @@ ast_next(AST *ast)
             PUSH_NODE(curr->as.expr.expr);
         } break;
 
-        case NT_IDENT:
-        {
-            assert(0 && "IDENT");
-        } break;
-
-        case NT_NUM_LIT:
-        {
-            assert(0 && "NUM");
-        } break;
-
-        case NT_CHR_LIT:
-        {
-            assert(0 && "CHR");
-        } break;
-
-        case NT_STR_LIT:
-        {
-            assert(0 && "STR");
-        } break;
-
         case NT_BIN_OP:
         {
             PUSH_NODE(curr->as.bin_op.left);
             PUSH_NODE(curr->as.bin_op.right);
         } break;
 
+        case NT_IDENT:
+        case NT_NUM_LIT:
+        case NT_CHR_LIT:
+        case NT_STR_LIT:
         case NT_TYPE:
-        {
-            assert(0 && "TYPE");
-        } break;
+            break;
     }
 
     return curr;
