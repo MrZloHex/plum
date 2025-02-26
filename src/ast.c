@@ -16,12 +16,12 @@
 
 
 Node *
-node_make_programme(Node *fndef)
+node_make_programme(Node *stmt)
 {
     NODE_ALLOC(p);
 
     p->type = NT_PROGRAMME;
-    p->as.programme.fndef = fndef;
+    p->as.programme.stmt = stmt;
 
     return p;
 }
@@ -36,11 +36,34 @@ node_dump_programme(Node *pr, size_t offset)
     {
         PRINT_OFFSET(offset);
         printf(" - %zu:\n", c++);
-        node_dump_fndef(pr->as.programme.fndef, offset+1);
+        node_dump_prg_stmt(pr->as.programme.stmt, offset+1);
         pr = pr->as.programme.next;
     }
 }
 
+Node *
+node_make_prg_stmt(PrgStmtType type, Node *stmt)
+{
+    NODE_ALLOC(s);
+
+    s->type = NT_PRG_STMT;
+    s->as.prg_stmt.type = type;
+    s->as.prg_stmt.prg_stmt = stmt;
+
+    return s;
+}
+
+void
+node_dump_prg_stmt(Node *stmt, size_t offset)
+{
+    static char *ps_types[PST_QUANT] = { "FN DECL", "FN DEF" };
+    PRINT_OFFSET(offset);
+    printf("PRG STMT %s\n", ps_types[stmt->as.prg_stmt.type]);
+    if (stmt->as.prg_stmt.type == PST_FN_DEF)
+    { node_dump_fndef(stmt->as.prg_stmt.prg_stmt, offset+1); }
+    else if (stmt->as.prg_stmt.type == PST_FN_DECL)
+    { node_dump_fndecl(stmt->as.prg_stmt.prg_stmt, offset+1); }
+}
 
 Node *
 node_make_fndef(Node *decl, Node *block)
@@ -148,7 +171,11 @@ node_make_type(const char *type)
     NODE_ALLOC(n);
     
     n->type = NT_TYPE;
-    if (strcmp(type, "U32") == 0)
+    if (strcmp(type, "ABYSS") == 0)
+    {
+        n->as.type = T_ABYSS;
+    }
+    else if (strcmp(type, "U32") == 0)
     {
         n->as.type = T_U32;
     }
@@ -174,6 +201,7 @@ node_dump_type(Node *type, size_t offset)
 {
     static char *types[T_QUANT] =
     {
+        "ABYSS",
         "U8", "U16", "U32", "U64",
         "I8", "I16", "I32", "I64"
     };

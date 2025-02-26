@@ -20,25 +20,26 @@ extern Node *root;
     Node *node;
 }
 
-%token <str> TYPE IDENT NUMBER
+%token <str> TYPE IDENT NUMBER KWORD
 %token COLON LBRACKET RBRACKET VBAR PTR BLOCK_END EQUAL
 %token LPAREN RPAREN RET PLUS MINUS STAR SLASH
 
 %left PLUS MINUS
 %left STAR SLASH
 
-%type <node> program fn_decl fn_def param_list_opt param_list parametre
+%type <node> program prg_stmt
+%type <node> fn_decl fn_def param_list_opt param_list parametre
 %type <node> block block_line_list block_line stmt
 %type <node> var_decl ret_stmt expression type function_call arg_list_opt arg_list
 
 %%
 program:
-    fn_def
+    prg_stmt 
     { 
         $$ = node_make_programme($1);
         root = $$;
     }
-    | program fn_def
+    | program prg_stmt 
     {
         Node *pr = $1;
         while(pr->as.programme.next)
@@ -47,6 +48,14 @@ program:
         $$ = $1;
     }
 ;
+
+prg_stmt:
+    /* empty */
+    { $$ = NULL; }
+    | fn_def
+    { $$ = node_make_prg_stmt(PST_FN_DEF, $1); }
+    | fn_decl
+    { $$ = node_make_prg_stmt(PST_FN_DECL, $1); }
 
 fn_def:
     fn_decl

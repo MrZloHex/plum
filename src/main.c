@@ -95,10 +95,22 @@ main(int argc, char *argv[])
 
     FILE *fout = NULL;
     if (opts.output_file)
-    { fout = fopen(opts.output_file, "w"); }
+    {
+        fout = fopen(opts.output_file, "w");
+        if (!fout)
+        {
+            fprintf(stderr, "Failed to open output file: %s\n", opts.output_file);
+            exit(EXIT_FAILURE);
+        }
+    }
+    else
+    {
+        fout = stdout;
+    }
+
     if (!fout)
     {
-        fprintf(stderr, "Failed to open output file: %s\n", opts.output_file);
+        fprintf(stderr, "failed to open output file: %s\n", opts.output_file);
         exit(EXIT_FAILURE);
     }
 

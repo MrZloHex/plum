@@ -12,6 +12,10 @@ F(32|64)                    { yylval.str = strdup(yytext); return TYPE; }
 "B1"                        { yylval.str = strdup(yytext); return TYPE; }
 C(1|2|4)                    { yylval.str = strdup(yytext); return TYPE; }
 [IU](8|16|32|64|SIZE)       { yylval.str = strdup(yytext); return TYPE; }
+"IF"                        { yylval.str = strdup(yytext); return KWORD; }
+"ELSE"                      { yylval.str = strdup(yytext); return KWORD; }
+"LOOP"                      { yylval.str = strdup(yytext); return KWORD; }
+"BREAK"                     { yylval.str = strdup(yytext); return KWORD; }
 
 
 "@"                         { return PTR; }

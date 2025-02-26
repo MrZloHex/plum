@@ -93,7 +93,10 @@ void generateIR(Node *node) {
 /* Generate a programme: a linked list of function definitions */
 static void generateProgram(Node *node) {
     for (Node *prog = node; prog != NULL; prog = prog->as.programme.next) {
-         generateFnDef(prog->as.programme.fndef);
+         if (prog->as.programme.stmt->as.prg_stmt.type == PST_FN_DEF)
+         { generateFnDef(prog->as.programme.stmt->as.prg_stmt.prg_stmt); }
+         else if (prog->as.programme.stmt->as.prg_stmt.type == PST_FN_DECL)
+         { printf("TRYING TO PRINT FN DECL\n"); }
     }
 }
 

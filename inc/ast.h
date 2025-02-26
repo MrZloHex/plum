@@ -8,6 +8,9 @@ Node *
 node_make_programme(Node *fndef);
 
 Node *
+node_make_prg_stmt(PrgStmtType type, Node *stmt);
+
+Node *
 node_make_fndef(Node *decl, Node *block);
 
 Node *
@@ -52,6 +55,9 @@ node_make_argument(Node *expr);
 
 void
 node_dump_programme(Node *prog, size_t offset);
+
+void
+node_dump_prg_stmt(Node *stmt, size_t offset);
 
 void
 node_dump_fndef(Node *fndef, size_t offset);

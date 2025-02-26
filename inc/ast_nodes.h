@@ -15,6 +15,7 @@ typedef struct
 
 typedef enum
 {
+   T_ABYSS,
    T_U8,
    T_U16,
    T_U32,
@@ -134,9 +135,22 @@ typedef struct
 
 // PROGRAMME
 
+typedef enum
+{
+    PST_FN_DECL,
+    PST_FN_DEF,
+    PST_QUANT
+} PrgStmtType;
+
 typedef struct
 {
-    struct Node_S *fndef;
+    PrgStmtType type;
+    struct Node_S *prg_stmt;
+} N_PrgStmt;
+
+typedef struct
+{
+    struct Node_S *stmt;
     struct Node_S *next;
 } N_Programme;
 
@@ -158,6 +172,7 @@ typedef enum
     NT_ARGUMENTS,
     NT_BLOCK,
     NT_STATEMENT,
+    NT_PRG_STMT,
     NT_PROGRAMME
 } NodeType;
 
@@ -180,6 +195,7 @@ typedef struct Node_S
         N_Block      block;
         N_Ret        ret;
         N_Statement  stmt;
+        N_PrgStmt    prg_stmt;
         N_Programme  programme;
     } as;
 } Node;
