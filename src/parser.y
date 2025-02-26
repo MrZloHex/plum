@@ -221,10 +221,7 @@ type:
     }
     | PTR type
     {
-        // char* newType = malloc(strlen($2->value) + 2);
-        // sprintf(newType, "@%s", $2->value);
-        // $$ = create_node(AST_PTR, NULL, $2, NULL);
-        // free(newType);
+        $$ = node_make_type_ptr($2);
     }
 ;
 %%

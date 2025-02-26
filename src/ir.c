@@ -57,22 +57,28 @@ static void printType(Node *node) {
         return;
     }
     N_Type t = node->as.type;
-    switch(t) {
-         case T_U8:   printf("i8"); break;
-         case T_U16:  printf("i16"); break;
-         case T_U32:  printf("i32"); break;
-         case T_U64:  printf("i64"); break;
-         case T_I8:   printf("i8"); break;
-         case T_I16:  printf("i16"); break;
-         case T_I32:  printf("i32"); break;
-         case T_I64:  printf("i64"); break;
-         default:     printf("i32"); break;
+    if (t.ptrs == 0)
+    {
+        switch(t.type) {
+             case T_U8:   printf("i8"); break;
+             case T_U16:  printf("i16"); break;
+             case T_U32:  printf("i32"); break;
+             case T_U64:  printf("i64"); break;
+             case T_I8:   printf("i8"); break;
+             case T_I16:  printf("i16"); break;
+             case T_I32:  printf("i32"); break;
+             case T_I64:  printf("i64"); break;
+             default:     printf("i32"); break;
+        }
     }
+    else
+    { printf("ptr"); }
 }
 
 /* Forward declarations of internal generator functions */
 static void generateProgram(Node *node);
 static void generateFnDef(Node *node);
+static void generateFnDecl(Node *node);
 static void generateBlock(Node *node);
 static void generateStatement(Node *node);
 static void generateExpr(Node *node, int targetReg);
@@ -96,7 +102,7 @@ static void generateProgram(Node *node) {
          if (prog->as.programme.stmt->as.prg_stmt.type == PST_FN_DEF)
          { generateFnDef(prog->as.programme.stmt->as.prg_stmt.prg_stmt); }
          else if (prog->as.programme.stmt->as.prg_stmt.type == PST_FN_DECL)
-         { printf("TRYING TO PRINT FN DECL\n"); }
+         { generateFnDecl(prog->as.programme.stmt->as.prg_stmt.prg_stmt); }
     }
 }
 
@@ -160,6 +166,44 @@ static void generateFnDef(Node *node) {
     generateBlock(fnBlock);
     
     printf("}\n\n");
+    clear_params();
+}
+
+static void
+generateFnDecl(Node *node)
+{
+    if (!node || node->type != NT_FN_DECL)
+    { return; }
+
+    Node *fnDecl = node;
+    
+    printf("declare ");
+    printType(fnDecl->as.fn_decl.type);
+    
+    Node *fname = unwrap(fnDecl->as.fn_decl.ident);
+    if (fname && fname->type == NT_IDENT)
+         printf(" @%s(", (char*)fname->as.ident);
+    else
+         printf(" @<unknown>(");
+    
+    Node *param = fnDecl->as.fn_decl.params;
+    int first = 1;
+    while (param) {
+         if (param->type != NT_PARAMETRE)
+             break;
+         if (!first)
+             printf(", ");
+         printType(param->as.parametre.type);
+         Node *pname = unwrap(param->as.parametre.ident);
+         if (pname && pname->type == NT_IDENT)
+             printf(" noundef");
+         else
+             printf(" %%<unknown>");
+         first = 0;
+         param = param->as.parametre.next;
+    }
+    printf(")\n");
+    
     clear_params();
 }
 

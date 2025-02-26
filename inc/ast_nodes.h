@@ -25,6 +25,12 @@ typedef enum
    T_I32,
    T_I64,
    T_QUANT
+} BaseTypes;
+
+typedef struct
+{
+    unsigned int ptrs;
+    BaseTypes type;
 } N_Type;
 
 // STATEMENTS

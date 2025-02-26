@@ -32,6 +32,9 @@ Node *
 node_make_type(const char *type);
 
 Node *
+node_make_type_ptr(Node *type);
+
+Node *
 node_make_bin_op(BinOpType op, Node *left, Node *right);
 
 Node *

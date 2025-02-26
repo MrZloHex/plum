@@ -171,21 +171,22 @@ node_make_type(const char *type)
     NODE_ALLOC(n);
     
     n->type = NT_TYPE;
+    n->as.type.ptrs = 0;
     if (strcmp(type, "ABYSS") == 0)
     {
-        n->as.type = T_ABYSS;
+        n->as.type.type = T_ABYSS;
     }
     else if (strcmp(type, "U32") == 0)
     {
-        n->as.type = T_U32;
+        n->as.type.type = T_U32;
     }
     else if (strcmp(type, "U8") == 0)
     {
-        n->as.type = T_U8;
+        n->as.type.type = T_U8;
     }
     else if (strcmp(type, "I32") == 0)
     {
-        n->as.type = T_I32;
+        n->as.type.type = T_I32;
     }
     else
     {
@@ -194,6 +195,13 @@ node_make_type(const char *type)
     }
 
     return n;
+}
+
+Node *
+node_make_type_ptr(Node *type)
+{
+    type->as.type.ptrs += 1;
+    return type;
 }
 
 void
@@ -206,7 +214,10 @@ node_dump_type(Node *type, size_t offset)
         "I8", "I16", "I32", "I64"
     };
     PRINT_OFFSET(offset);
-    printf("TYPE %s\n", types[type->as.type]);
+    printf("TYPE ");
+    for (unsigned int i = 0; i < type->as.type.ptrs; ++i)
+    { printf("POINTER TO "); }
+    printf("%s\n", types[type->as.type.type]);
 }
 
 Node *
