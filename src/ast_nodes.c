@@ -380,7 +380,8 @@ node_dump_ret(Node *ret, size_t offset)
 {
     PRINT_OFFSET(offset);
     printf("RETURN\n");
-    node_dump_expr(ret->as.ret.expr, offset+1);
+    if (ret->as.ret.expr)
+    { node_dump_expr(ret->as.ret.expr, offset+1); }
 }
 
 

@@ -21,7 +21,7 @@ meta_collect(Meta *meta, AST *ast)
     bool skip_decl = false;
     while (curr)
     {
-        // printf("NODE T %s\n", node_types_str[curr->type]);
+        printf("NODE T %s\n", node_types_str[curr->type]);
         if (in_scope)
         {
             if (curr->type == NT_FN_DEF || curr->type == NT_FN_DECL)
@@ -40,7 +40,7 @@ meta_collect(Meta *meta, AST *ast)
                 Node *ident = ast_next(ast);
                 Node *var = node_make_var_decl(type, ident);
                 // node_dump_var_decl(var, 1);
-                mnv_append(&curr_scope.vars, var);
+                mnv_append(&curr_scope.params, var);
             }
             if (curr->type == NT_VAR_DECL)
             {
@@ -67,7 +67,8 @@ meta_collect(Meta *meta, AST *ast)
             {
                 // printf("IN SCOPE\n");
                 in_scope = true;
-                mnv_init(&curr_scope.vars, 32);
+                mnv_init(&curr_scope.vars,  32);
+                mnv_init(&curr_scope.params, 8);
                 ast_next(ast);
 
                 Node *type = ast_next(ast);
@@ -99,6 +100,28 @@ meta_collect(Meta *meta, AST *ast)
 
     // printf("NODE END\n");
 }
+
+int
+meta_is_param(MetaScope *scope, const char *name)
+{
+    for (size_t i = 0; i < scope->vars.size; ++i)
+    {
+        Node *var = scope->vars.data[i];
+        if (strcmp(var->as.var_decl.ident->as.ident, name) == 0)
+        { return 0; }
+    }
+
+    for (size_t i = 0; i < scope->params.size; ++i)
+    {
+        Node *var = scope->params.data[i];
+        if (strcmp(var->as.var_decl.ident->as.ident, name) == 0)
+        { return 1; }
+    }
+
+    return -1;
+}
+
+
 
 Node *
 meta_find_type(Meta *meta, const char *name)
@@ -148,6 +171,11 @@ meta_dump(Meta *meta)
         MetaScope scope = meta->scopes.data[i];
         printf("\t%zu\n", i);
         node_dump_var_decl(scope.scope, 1);
+        printf("\tPARAMS:\n");
+        for (size_t j = 0; j < scope.params.size; ++j)
+        {
+            node_dump_var_decl(scope.params.data[j], 2);
+        }
         printf("\tVARIABLES:\n");
         for (size_t j = 0; j < scope.vars.size; ++j)
         {

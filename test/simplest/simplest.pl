@@ -1,5 +1,11 @@
 ; SOME COMMENT
 
+ABYSS baz: [ @ABYSS qwe | U8 asd]
+
+ABYSS bar: [ @ABYSS qwe | U8 asd]
+ | RET [ ] 
+ \_
+
 U8 foo: [ U8 a | U8 b ]
  | RET [ a + b ]
  \_

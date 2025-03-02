@@ -10,6 +10,7 @@ DECLARE_DYNARRAY(mnv, MNVec, Node *);
 typedef struct
 {
     MNVec vars;
+    MNVec params;
     Node *scope;
 } MetaScope;
 
@@ -26,6 +27,9 @@ meta_init(Meta *meta);
 
 void
 meta_collect(Meta *meta, AST *ast);
+
+int
+meta_is_param(MetaScope *scope, const char *name);
 
 Node *
 meta_find_type(Meta *meta, const char *name);

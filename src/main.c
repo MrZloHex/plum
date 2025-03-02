@@ -86,9 +86,17 @@ parse_cli_options(int argc, char *argv[])
 extern FILE *yyin;
 Node *root = NULL;
 
+#include "unistd.h"
+#include "linux/limits.h"
+
 int
 main(int argc, char *argv[])
 {
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) != NULL)
+    {
+         printf("Current working dir: %s\n", cwd);
+    }
 
     Options opts = parse_cli_options(argc, argv);
     if (opts.file_start_index >= argc)
@@ -145,21 +153,18 @@ main(int argc, char *argv[])
     meta_dump(&meta);
     printf("===========META==============\n");
 
-    DynString output;
-    dynstr_init(&output, 1024);
+    IR ir;
     ast_reinit(&ast);
-    generateIR(&ast, &meta, &output);
+    ir_init(&ir, &meta, &ast);
+    ir_generate(&ir);
 
     if (opts.emit_type)
     {
         if (strcmp(opts.emit_type, "AST") == 0)
         { node_dump_programme(root, 0); }
-        else if (strcmp(opts.emit_type, "IR") == 0)
-        { fprintf(fout, "%s\n", output.data); }
+        // else if (strcmp(opts.emit_type, "IR") == 0)
+        // { fprintf(fout, "%s\n", ir.ir.data); }
     }
-
-    dynstr_deinit(&output);
-
 
     return 0;
 }

@@ -29,6 +29,7 @@ extern Node *root;
 %left PLUS MINUS
 %left STAR SLASH
 
+
 %type <node> program prg_stmt
 %type <node> fn_decl fn_def param_list_opt param_list parametre
 %type <node> block block_line_list block_line stmt
@@ -145,6 +146,8 @@ ret_stmt:
     {
         $$ = node_make_ret($3);
     }
+    | RET LBRACKET RBRACKET
+    { $$ = node_make_ret(NULL); }
 ;
 
 expression:

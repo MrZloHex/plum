@@ -5,8 +5,23 @@
 #include "meta_ir.h"
 #include "dynstr.h"
 
+typedef struct
+{
+    Meta     *meta;
+    AST      *ast;
+    DynString glbl;
+    DynString text;
+    DynString decl;
+    
+
+    MetaScope *curr;
+} IR;
+
 void
-generateIR(AST *ast, Meta *meta, DynString *str);
+ir_init(IR *ir, Meta *meta, AST *ast);
+
+void
+ir_generate(IR *ir);
 
 #endif /* GEN_H */
 

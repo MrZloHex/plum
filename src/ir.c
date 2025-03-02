@@ -6,10 +6,335 @@
 #define DYNSTR_IMPL
 #include "dynstr.h"
 
+
+
+#warning "REFACTOR IT"
 static int reg_counter = 0;
 static int
 new_reg(void)
 { return reg_counter++; }
+
+void
+ir_init(IR *ir, Meta *meta, AST *ast)
+{
+    ir->ast = ast;
+    ir->meta = meta;
+    dynstr_init(&ir->glbl, 1024);
+    dynstr_init(&ir->text, 4096);
+    dynstr_init(&ir->decl, 1024);
+}
+
+static char *
+gen_type(Node *type)
+{
+    if (type->as.type.ptrs > 0)
+    { return "ptr"; }
+
+    switch(type->as.type.type)
+    {
+        case T_C1:    return "i8";
+        case T_C2:    return "i16";
+        case T_C4:    return "i32";
+        case T_U8:    return "i8";
+        case T_U16:   return "i16";
+        case T_U32:   return "i32";
+        case T_U64:   return "i64";
+        case T_I8:    return "i8";
+        case T_I16:   return "i16";
+        case T_I32:   return "i32";
+        case T_I64:   return "i64";
+        case T_ABYSS: return "void";
+        case T_QUANT: assert(0 && "UNREACHABLE");
+    }
+
+    assert(0 && "UNKOWN TYPE");
+}
+
+static DynString
+gen_params(IR *ir, DynString *str, bool name)
+{ 
+    Node *p = ast_next(ir->ast);
+    assert(p->type == NT_PARAMETRE && "NOT PARAM");
+
+    DynString addr;
+    if (name)
+    { dynstr_init(&addr, 8); }
+
+    dynstr_append(str, '(');
+    Node *param = p;
+    for (;;)
+    {
+        printf("PARAM %s\n", node_types_str[param->type]);
+        Node *type = ast_next(ir->ast);
+        Node *id   = ast_next(ir->ast);
+        assert(type->type == NT_TYPE  && "NOT TYPE");
+        assert(id->type   == NT_IDENT && "NOT ID");
+
+        dynstr_append_fstr
+        (
+            str, "%s noundef %s%s, ",
+            gen_type(type),
+            name ? "%" : "",
+            name ? id->as.ident : ""
+        );
+
+        if (name)
+        {
+            dynstr_append_fstr
+            (
+                &addr, "  %%%s_addr = alloca %s\n",
+                id->as.ident, gen_type(type)
+            );
+            dynstr_append_fstr
+            (
+                &addr, "  store %s %%%s, %s%s %%%s_addr\n",
+                gen_type(type), id->as.ident,
+                gen_type(type),
+                (type->as.type.ptrs ? "" : "*"),
+                id->as.ident
+            );
+        }
+
+        param = param->as.parametre.next;
+        if (param)
+        { ast_next(ir->ast); } // PARAMETRE
+        else
+        { break; }
+        
+    }
+    dynstr_set(str, str->size-2, ')');
+    dynstr_set(str, str->size-1, '\n');
+
+    return addr;
+}
+
+static void
+gen_fn_decl(IR *ir)
+{
+    ast_next(ir->ast); // DECL
+    Node *type = ast_next(ir->ast);
+    Node *id   = ast_next(ir->ast);
+    assert(type->type == NT_TYPE  && "NOT TYPE");
+    assert(id->type   == NT_IDENT && "NOT ID");
+
+    dynstr_append_fstr
+    (
+        &ir->decl, "declare %s @%s",
+        gen_type(type),
+        id->as.ident
+    );
+
+#warning "ADD HANDLING EMPTY PARAM LIST IN FN DECL"
+    gen_params(ir, &ir->decl, false);
+}
+
+static void
+gen_ident(IR *ir, int r, Node *etype)
+{
+    Node *id = ast_next(ir->ast);
+    assert(id->type == NT_IDENT && "NOT IDENT");
+
+    int is_param = meta_is_param(ir->curr, id->as.ident);
+    if (is_param < 0)
+    { assert(0 && "NO SUCH IDENT"); }
+
+    dynstr_append_fstr
+    (
+        &ir->text, "  %%r%d = load %s, %s* %%%s%s\n",
+        r, gen_type(etype), gen_type(etype),
+        id->as.ident, (is_param ? "_addr" : "")
+    );
+}
+
+static void
+gen_expr(IR *ir, int r, Node *exp_type);
+
+static void
+gen_bin_op(IR *ir, int res, Node *exp_type)
+{
+    Node *binop = ast_next(ir->ast);
+    assert(binop->type == NT_BIN_OP && "NOT BIN OP");
+
+    if (binop->as.bin_op.type == BOT_PLUS)
+    {
+        int lr = new_reg();
+        int rr = new_reg();
+
+        gen_expr(ir, lr, exp_type);
+        gen_expr(ir, rr, exp_type);
+        
+        dynstr_append_fstr
+        (
+            &ir->text, "  %%r%d = add %s %%r%d, %%r%d\n",
+            res, gen_type(exp_type),
+            lr, rr
+        );
+    }
+    else
+    {
+        assert(0 && "NOT IMPL");
+    }
+}
+
+static void
+gen_expr(IR *ir, int r, Node *exp_type)
+{
+
+    Node *expr = ast_next(ir->ast);
+    assert(expr->type == NT_EXPR && "NOT EXPR");
+    
+    if (expr->as.expr.type == ET_BIN_OP)
+    {
+        gen_bin_op(ir, r, exp_type);
+    }
+    else if (expr->as.expr.type == ET_IDENT)
+    {
+        gen_ident(ir, r, exp_type);
+    }
+    else
+    {
+        assert(0 && "NOT IMPL");
+    }
+}
+
+static void
+gen_var_decl(IR *ir)
+{
+    Node *decl = ast_next(ir->ast);
+    assert(decl->type == NT_VAR_DECL && "NOT VAR DECL");
+    Node *id   = ast_next(ir->ast);
+    Node *type = ast_next(ir->ast);
+    printf(" TYPE %s\n", node_types_str[type->type]);
+    assert(type->type == NT_TYPE  && "NOT TYPE");
+    assert(id->type   == NT_IDENT && "NOT ID");
+
+    dynstr_append_fstr
+    (
+        &ir->text, "  %%%s = alloca %s\n",
+        id->as.ident, gen_type(type)
+    );
+    dynstr_append_fstr
+    (
+        &ir->text, "  store %s %%%s, %s%s %%%s_addr\n",
+        gen_type(type), id->as.ident,
+        gen_type(type),
+        (type->as.type.ptrs ? "" : "*"),
+        id->as.ident
+    );
+}
+
+static void
+gen_return(IR *ir)
+{
+    Node *r = ast_next(ir->ast);
+    assert(r->type == NT_RET && "NOT RETURN");
+
+    Node *fn_type = ir->curr->scope->as.var_decl.type;
+    if (fn_type->as.type.type == T_ABYSS)
+    {
+        dynstr_append_str(&ir->text, "  ret void\n");
+        return;
+    }
+    else
+    {
+        int ret = new_reg();
+        gen_expr(ir, ret, fn_type);
+        dynstr_append_fstr(&ir->text, "  ret %s %%r%d\n", gen_type(fn_type), ret);
+    }
+}
+
+static void
+gen_block(IR *ir)
+{
+    Node *stmt = ast_next(ir->ast);
+    assert(stmt->type == NT_STATEMENT && "NOT A STATEMENT");
+
+    if (stmt->as.stmt.type == ST_RET)
+    { gen_return(ir); }
+    else if (stmt->as.stmt.type == ST_VAR_DECL)
+    {
+        gen_var_decl(ir);
+    }
+    else
+    {
+        assert(0 && "NOT IMPL");
+    }
+        
+    // ast_next(ir->ast);
+}
+
+static void
+gen_fn_def(IR *ir)
+{
+    ast_next(ir->ast); // DEF
+    ast_next(ir->ast); // DECL
+    Node *type = ast_next(ir->ast);
+    Node *id   = ast_next(ir->ast);
+    assert(type->type == NT_TYPE  && "NOT TYPE");
+    assert(id->type   == NT_IDENT && "NOT ID");
+
+    ir->curr = meta_find_scope(ir->meta, id->as.ident);
+
+    dynstr_append_fstr
+    (
+        &ir->text, "define dso_local %s @%s",
+        gen_type(type),
+        id->as.ident
+    );
+
+
+    if (ir->curr->params.size)
+    {
+        DynString p = gen_params(ir, &ir->text, true);
+        dynstr_set(&ir->text, ir->text.size-1, ' ');
+        dynstr_append_str(&ir->text, "{\n");
+
+        dynstr_append_str(&ir->text, p.data);
+        dynstr_deinit(&p);
+    }
+
+    Node *b = ast_next(ir->ast);
+    assert(b->type == NT_BLOCK && "NOT A BLOCK");
+    gen_block(ir);
+
+    dynstr_append_str(&ir->text, "}\n\n");
+}
+
+static void
+gen_programme(IR *ir)
+{
+aga:
+    Node *s = ast_next(ir->ast);
+    assert(s->type == NT_PRG_STMT && "NOT PRG STMT");
+    if (s->as.prg_stmt.type == PST_FN_DECL)
+    { gen_fn_decl(ir); }
+    if (s->as.prg_stmt.type == PST_FN_DEF)
+    { gen_fn_def(ir); }
+
+    s = ast_next(ir->ast);
+    assert(s && "NULL");
+    printf("\n%s\n", ir->decl.data);
+    printf("\n%s\n", ir->text.data);
+    printf("NEXT %s\n", node_types_str[s->type]);
+    if (s->type == NT_STATEMENT)
+        node_dump_stmt(s, 1);
+    if (s->type == NT_PRG_STMT)
+        node_dump_prg_stmt(s, 1);
+    
+    if (s->type == NT_PROGRAMME)
+    { goto aga; }
+}
+
+void
+ir_generate(IR *ir)
+{
+    Node *n = ast_next(ir->ast);
+    if (n->type == NT_PROGRAMME)
+    { gen_programme(ir); }
+}
+
+
+
 
 static int str_counter = 0;
 static int
