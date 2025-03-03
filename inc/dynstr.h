@@ -19,6 +19,7 @@
 
 
 #include <stdlib.h>
+#include <stdio.h>
 
 typedef struct
 {
@@ -27,8 +28,22 @@ typedef struct
     size_t  capacity;
 } DynString;
 
+#define dynstr_init(str, src) _Generic((src),               \
+    size_t:         dynstr_init_with_cap,                   \
+    int:            dynstr_init_with_cap,                   \
+    char *:         dynstr_init_with_cstr,                  \
+    const char *:   dynstr_init_with_cstr,                  \
+    FILE *:         dynstr_init_with_file                   \
+)(str, src)
+
 int
-dynstr_init(DynString *str, size_t initial_capacity);
+dynstr_init_with_cap(DynString *str, size_t initial_capacity);
+
+int
+dynstr_init_with_cstr(DynString *str, const char *cstr);
+
+int
+dynstr_init_with_file(DynString *str, FILE *f);
 
 void
 dynstr_deinit(DynString *str);
@@ -72,8 +87,51 @@ dynstr_remove(DynString *str, size_t index);
 
 #include <stdarg.h>
 
+
 int
-dynstr_init(DynString *str, size_t initial_capacity)
+dynstr_init_with_cstr(DynString *str, const char *cstr)
+{
+    if (!cstr)
+    { return -1; }
+    size_t len = strlen(cstr);
+    if (dynstr_init_with_cap(str, len+10) < 0)
+    { return -1; }
+    return dynstr_append_str(str, cstr);
+}
+
+int
+dynstr_init_with_file(DynString *str, FILE *f)
+{
+    if (!str || !f)
+    { return -1; }
+
+    if (fseek(f, 0, SEEK_END) != 0)
+    { return -1; }
+    long filesize = ftell(f);
+    if (filesize < 0)
+    { return -1; }
+    rewind(f);
+    
+    /* Allocate memory to hold the file content */
+    str->data = (char *)malloc(sizeof(char) * (filesize + 1));
+    if (!str->data)
+    { return -1; }
+    
+    size_t read_bytes = fread(str->data, 1, filesize, f);
+    if (read_bytes != (size_t)filesize)
+    {
+        free(str->data);
+        return -1;
+    }
+    
+    str->data[filesize] = '\0';
+    str->size = filesize;
+    str->capacity = filesize;
+    return 0;
+}
+
+int
+dynstr_init_with_cap(DynString *str, size_t initial_capacity)
 {
     if (!str || initial_capacity == 0)
     { return -1; }

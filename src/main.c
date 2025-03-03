@@ -129,10 +129,21 @@ main(int argc, char *argv[])
 
     char *source_file = argv[opts.file_start_index];
 
-    yyin = fopen(source_file, "r");
-    if (!yyin)
+    FILE *src_f = fopen(source_file, "r");
+    if (!src_f)
     {
         fprintf(stderr, "Failed to open source file: %s\n", source_file);
+        exit(EXIT_FAILURE);
+    }
+    DynString src;
+    dynstr_init(&src, src_f);
+
+    // TODO: preprocess
+
+    yyin = fmemopen(src.data, src.size, "r");
+    if (!yyin) {
+        fprintf(stderr, "Failed to open virtual preprocessed file\n");
+        free(yyin);
         exit(EXIT_FAILURE);
     }
 
@@ -165,6 +176,9 @@ main(int argc, char *argv[])
         else if (strcmp(opts.emit_type, "IR") == 0)
         { fprintf(fout, "%s\n", ir.ir.data); }
     }
+
+    dynstr_deinit(&src);
+    free(yyin);
 
     return 0;
 }
