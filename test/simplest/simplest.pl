@@ -19,3 +19,4 @@ I32 main: [ ]
  | res = (foo)[ a | b ]
  | RET [ res ]
  \_
+

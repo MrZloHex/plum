@@ -162,8 +162,8 @@ main(int argc, char *argv[])
     {
         if (strcmp(opts.emit_type, "AST") == 0)
         { node_dump_programme(root, 0); }
-        // else if (strcmp(opts.emit_type, "IR") == 0)
-        // { fprintf(fout, "%s\n", ir.ir.data); }
+        else if (strcmp(opts.emit_type, "IR") == 0)
+        { fprintf(fout, "%s\n", ir.ir.data); }
     }
 
     return 0;

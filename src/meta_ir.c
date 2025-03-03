@@ -21,7 +21,7 @@ meta_collect(Meta *meta, AST *ast)
     bool skip_decl = false;
     while (curr)
     {
-        printf("NODE T %s\n", node_types_str[curr->type]);
+        // printf("NODE T %s\n", node_types_str[curr->type]);
         if (in_scope)
         {
             if (curr->type == NT_FN_DEF || curr->type == NT_FN_DECL)

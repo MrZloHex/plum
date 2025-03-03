@@ -4,6 +4,14 @@
 #include "ast.h"
 #include "meta_ir.h"
 #include "dynstr.h"
+#include "dynarray.h"
+
+typedef struct
+{
+    Node *type;
+    int reg;
+} ArgumentREG;
+DECLARE_DYNARRAY(argreg, ArgRegs, ArgumentREG);
 
 typedef struct
 {
@@ -13,8 +21,10 @@ typedef struct
     DynString text;
     DynString decl;
     
-
     MetaScope *curr;
+    ArgRegs    args;
+
+    DynString ir;
 } IR;
 
 void
