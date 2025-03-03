@@ -1,10 +1,10 @@
 ; TEST OF CALLING EXTERNAL FUNCTION FROM C
 
 ABYSS println: [ @C1 str ]
- | C1 newline
+ | I32 newline
  | newline = '\n'
  | (puts)[str]
- | (purchar)[newline]
+ | (putchar)[newline]
  | RET []
  \_
 

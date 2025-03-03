@@ -44,6 +44,9 @@ meta_find_type_in_scope(MetaScope *scope, const char *name);
 MetaScope *
 meta_find_scope(Meta *meta, const char *name);
 
+int
+meta_find_str(Meta *meta, const char *lit);
+
 void
 meta_dump(Meta *meta);
 

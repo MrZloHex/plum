@@ -151,6 +151,14 @@ meta_find_type(Meta *meta, const char *name)
 Node *
 meta_find_type_in_scope(MetaScope *scope, const char *name)
 {
+    for (size_t j = 0; j < scope->params.size; ++j)
+    {
+        Node *var = scope->params.data[j];
+        if (strcmp(var->as.var_decl.ident->as.ident, name) == 0)
+        {
+            return var->as.var_decl.type;
+        }
+    }
     for (size_t j = 0; j < scope->vars.size; ++j)
     {
         Node *var = scope->vars.data[j];
@@ -174,6 +182,20 @@ meta_find_scope(Meta *meta, const char *name)
         }
     }
     return NULL;
+}
+
+int
+meta_find_str(Meta *meta, const char *lit)
+{
+    for (size_t i = 0; i < meta->strs.size; ++i)
+    {
+        Node *l = meta->strs.data[i];
+        if (strcmp(l->as.str_lit, lit) == 0)
+        {
+            return (int)i;
+        }
+    }
+    return -1;
 }
 
 void

@@ -145,12 +145,29 @@ gen_ident(IR *ir, int r, Node *etype)
 
     dynstr_append_fstr
     (
-        &ir->text, "  %%r%d = load %s, %s* %%%s%s\n",
+        &ir->text, "  %%r%d = load %s, %s%s %%%s%s\n",
         r, gen_type(etype), gen_type(etype),
+        (etype->as.type.ptrs ? "" : "*"),
         id->as.ident, (is_param ? "_addr" : "")
     );
 
     return etype;
+}
+
+static void
+gen_str_lit(IR *ir, int r)
+{
+    Node *lit = ast_next(ir->ast);
+    assert(lit->type == NT_STR_LIT && "NOT STR LIT");
+
+    int temp = new_reg();
+    dynstr_append_fstr(&ir->text, "  %%r%d = alloca ptr\n", temp);
+    dynstr_append_fstr
+    (
+        &ir->text, "  store ptr @.str.%d, ptr %%r%d\n",
+        meta_find_str(ir->meta, lit->as.str_lit), temp
+    );
+    dynstr_append_fstr(&ir->text, "  %%r%d = load ptr, ptr %%r%d\n", r, temp);
 }
 
 static void
@@ -217,10 +234,15 @@ gen_fn_call(IR *ir, int r)
     Node *fn = meta_find_func(ir->meta, id->as.ident);
     assert(fn && "FN DECL NOT FOUND");
 
+    dynstr_append_str(&ir->text, "  ");
+
+    if (r >= 0)
+    { dynstr_append_fstr(&ir->text, "%%r%d = ", r); }
+
     dynstr_append_fstr
     ( 
-        &ir->text, "  %%r%d = call %s @%s(",
-        r, gen_type(fn->as.fn_decl.type), id->as.ident
+        &ir->text, "call %s @%s(",
+        gen_type(fn->as.fn_decl.type), id->as.ident
     );
 
     for (size_t i = 0; i < ir->args.size; ++i)
@@ -275,9 +297,11 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
         // I KNOW THAT LVALUE IS IDENT
         dynstr_append_fstr
         (
-            &ir->text, "  store %s %%r%d, %s* %%%s\n",
+            &ir->text, "  store %s %%r%d, %s%s %%%s\n",
             gen_type(type), rr,
-            gen_type(type), id->as.ident
+            gen_type(type), 
+            (type->as.type.ptrs ? "" : "*"),
+            id->as.ident
         );
         // AND NOW SKIP IT
         ast_next(ir->ast);
@@ -303,6 +327,8 @@ gen_expr(IR *ir, int r, Node *exp_type)
     { gen_num_lit(ir, r, exp_type); }
     else if (expr->as.expr.type == ET_CHR_LIT)
     { gen_chr_lit(ir, r, exp_type); }
+    else if (expr->as.expr.type == ET_STR_LIT)
+    { gen_str_lit(ir, r); }
     else if (expr->as.expr.type == ET_FN_CALL)
     { gen_fn_call(ir, r); }
     else
@@ -410,9 +436,9 @@ gen_fn_def(IR *ir)
         assert(b->type == NT_BLOCK && "NOT A BLOCK");
         gen_stmt(ir);
 
-        printf("==============BLOCK=============\n");
-        printf("%s\n", ir->text.data);
-        printf("================================\n");
+        // printf("==============BLOCK=============\n");
+        // printf("%s\n", ir->text.data);
+        // printf("================================\n");
     
         block = block->as.block.next;
         if (block)
@@ -445,13 +471,35 @@ gen_programme(IR *ir)
     }
 }
 
+static void
+gen_string_literals(IR *ir)
+{
+    for (size_t i = 0; i < ir->meta->strs.size; ++i)
+    {
+        char *raw = ir->meta->strs.data[i]->as.str_lit;
+        DynString s;
+        dynstr_init(&s, strlen(raw)+10);
+        dynstr_append_str(&s, raw);
+        dynstr_insert_str(&s, strlen(raw) - 1, "\\00");
+
+        dynstr_append_fstr
+        (
+             &ir->glbl, "@.str.%zu = constant [%d x i8] c%s\n",
+             i, strlen(raw)-1, s.data
+        );
+        dynstr_deinit(&s);
+    }
+
+    dynstr_append(&ir->glbl, '\n');
+}
+
 void
 ir_generate(IR *ir)
 {
     Node *n = ast_next(ir->ast);
     if (n->type == NT_PROGRAMME)
     { gen_programme(ir); }
-
+    gen_string_literals(ir);
 
     dynstr_append_str(&ir->ir, ir->glbl.data);
     dynstr_append_str(&ir->ir, ir->text.data);
