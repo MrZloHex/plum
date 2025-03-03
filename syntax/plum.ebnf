@@ -1,82 +1,77 @@
-program         = { declaration | definition | comment }
-comment         = ";" ? any-char ? "\n"
+program               ::= prg_stmt
+                        | program prg_stmt
+prg_stmt              ::= fn_def
+                        | fn_decl
 
+fn_def                ::= fn_decl block
+fn_decl               ::= type IDENT COLON LBRACKET param_list_opt RBRACKET
 
-definition      = declaration block
+param_list_opt        ::= ε
+                        | param_list
+param_list            ::= parametre
+                        | param_list VBAR parametre
+parametre             ::= type IDENT
 
-declaration     = enum_decl 
-                | type_decl 
-                | iface_decl 
-                | class_decl 
-                | function_decl
+block                 ::= block_line_list BLOCK_END
+block_line_list       ::= block_line
+                        | block_line_list block_line
+block_line            ::= VBAR stmt
 
+stmt                  ::= ε
+                        | expression
+                        | var_decl
+                        | ret_stmt
 
-enum_decl       = "ENUM" identifier type_params_opt ":" newline enum_block
-enum_block      = {enum_option} "\_"
-enum_option     = "|" identifier type_params_opt newline
+var_decl              ::= type IDENT
+ret_stmt              ::= RET LBRACKET expression RBRACKET
+                        | RET LBRACKET RBRACKET
 
-type_decl       = "TYPE" identifier type_params_opt ":" newline type_block
-type_block      = {type_field}  "\_"
-type_field      = "|" var_decl newline
+expression            ::= LPAREN expression RPAREN
+                        | expression EQUAL expression
+                        | expression PLUS expression 
+                        | expression MINUS expression
+                        | expression STAR expression
+                        | expression SLASH expression 
+                        | function_call
+                        | STR_LITERAL
+                        | CHR_LITERAL
+                        | NUM_LITERAL
+                        | IDENT
 
-iface_decl      = "IFACE" identifier type_params_opt ":" "[" param_list_opt "]" iface_block
-iface_block     = {iface_section} newline "\_" ;
-iface_section   = ("- PUBLIC:"|"- PRIVATE:") newline block
-block           = { line } ;
-line            = "|" , statement , newline ;
+function_call        ::= LPAREN IDENT RPAREN LBRACKET arg_list_opt RBRACKET
+arg_list_opt         ::= ε
+                       | arg_list
+arg_list             ::= expression
+                       | arg_list VBAR expression
 
-class_decl      = "CLASS" , identifier , type_params_opt , ":" ,
-                  base_type_opt , "IMPL" , "[" , iface_list , "]" ;
-base_type_opt   = [ base_type ] ;
-base_type       = identifier , type_params_opt ;
-iface_list      = identifier , type_params_opt , { "|" , identifier , type_params_opt } ;
+type                 ::= TYPE
+                       | PTR type
 
-function_decl   = type_spec , identifier , ":" ,
-                  "[" , param_list_opt , "]" , newline , block , newline , "\_" ;
-param_list_opt  = [ parameter , { "|" , parameter } ] ;
-parameter       = type_spec , identifier ;
-
-statement       = assignment_stmt
-                | if_stmt
-                | for_stmt
-                | call_stmt
-                | ret_stmt
-                | expr_stmt ;
-
-assignment_stmt = lvalue , "=" , expression ;
-if_stmt         = "IF" , "[" , expression , "]" , newline , block , newline , "\_" ;
-for_stmt        = "FOR" , "[" , for_init , "|" , expression , "|" , for_update , "]" , newline , block , newline , "\_" ;
-for_init        = assignment_stmt | expression ;
-for_update      = assignment_stmt | expression ;
-ret_stmt        = "RET" , "[" , expression_list_opt , "]" ;
-expression_list_opt = [ expression , { "|" , expression } ] ;
-call_stmt       = call_expr ;
-expr_stmt       = expression ;
-
-lvalue          = [ "@" ] , identifier , { ( "." | "{" ) , expression , [ "}" ] } ;
-
-expression      = term , { operator , term } ;
-term            = factor , { factor } ;
-factor          = identifier
-                | number
-                | string
-                | "(" , expression , ")"
-                | call_expr
-                | "@" , identifier
-                | "?" , identifier ;
-
-call_expr       = [ "(" ] , prefixed_identifier , [ ")" ] ,
-                  "[" , argument_list_opt , "]" ;
-prefixed_identifier = [ "?" ] , identifier , { "." , identifier } ;
-argument_list_opt = [ expression , { "|" , expression } ] ;
-operator        = "+" | "-" | "*" | "/" | "==" | "=" | "<" | ">" | "+=" | "-=" ;
-
-type_spec       = identifier , type_params_opt ;
-type_params_opt = [ "<" , type_param_list , ">" ] ;
-type_param_list = identifier , { "," , identifier } ;
-
-identifier      = letter , { letter | digit | "_" } ;
-number          = [ "#" ] , digit , { digit } ;
-string          = "\"" , { any-character - "\"" } , "\"" ;
-newline         = { "\n" } ;
+TYPE                 ::= "ABYSS"
+                       | "F(32|64)"
+                       | "B1"
+                       | "C(1|2|4)"
+                       | "[IU](8|16|32|64|SIZE)"
+KWORD                ::= "IF"
+                       | "ELSE"
+                       | "LOOP"
+                       | "BREAK"
+PTR                  ::= "@"
+RET                  ::= "RET"
+LPAREN               ::= "("
+RPAREN               ::= ")"
+LBRACKET             ::= "["
+RBRACKET             ::= "]"
+BLOCK_END            ::= "\\_"
+COLON                ::= ":"
+EQUAL                ::= "="
+VBAR                 ::= "|"
+PLUS                 ::= "+"
+MINUS                ::= "-"
+STAR                 ::= "*"
+SLASH                ::= "/"
+CHR_LITERAL          ::= '\''([^\\\']|\\.)'\'
+STR_LITERAL          ::= "\""([^\"\\]|\\.)*\""
+NUM_LITERAL          ::= [0-9]+
+IDENT                ::= [a-zA-Z_][a-zA-Z0-9_]*
 
