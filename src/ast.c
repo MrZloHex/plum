@@ -115,6 +115,9 @@ ast_next(AST *ast)
         case NT_STR_LIT:
         case NT_TYPE:
             break;
+
+        case NT_QUANT:
+            assert(0 && "UNREACHABLE");
     }
 
     return curr;

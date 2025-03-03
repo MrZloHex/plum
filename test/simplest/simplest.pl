@@ -15,7 +15,7 @@ I32 main: [ ]
  | U8 b
  | a = 34
  | b = 35
- | U32 res
+ | U8 res
  | res = (foo)[ a | b ]
  | RET [ res ]
  \_

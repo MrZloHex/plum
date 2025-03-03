@@ -154,6 +154,21 @@ gen_ident(IR *ir, int r, Node *etype)
 }
 
 static void
+gen_chr_lit(IR *ir, int r, Node *etype)
+{
+    Node *lit = ast_next(ir->ast);
+    assert(lit->type == NT_CHR_LIT && "NOT CHR LIT");
+    assert(etype && "HUY");
+    assert(etype->type == NT_TYPE && "NOT TYPE");
+
+    dynstr_append_fstr
+    ( 
+        &ir->text, "  %%r%d = add %s 0, %d\n" ,
+        r, gen_type(etype), lit->as.chr_lit
+    );
+}
+
+static void
 gen_num_lit(IR *ir, int r, Node *etype)
 {
     Node *lit = ast_next(ir->ast);
@@ -172,11 +187,10 @@ static Node *
 gen_expr(IR *ir, int r, Node *exp_type);
 
 static void
-gen_fn_call(IR *ir, int r, Node *etype)
+gen_fn_call(IR *ir, int r)
 {
     Node *call = ast_next(ir->ast);
     assert(call->type == NT_FN_CALL && "NOT FN CALL");
-    assert(etype->type == NT_TYPE && "NOT TYPE");
 
     Node *id = ast_next(ir->ast);
     assert(id->type == NT_IDENT && "NOT ID");
@@ -200,10 +214,13 @@ gen_fn_call(IR *ir, int r, Node *etype)
         { break; }
     }
 
+    Node *fn = meta_find_func(ir->meta, id->as.ident);
+    assert(fn && "FN DECL NOT FOUND");
+
     dynstr_append_fstr
     ( 
         &ir->text, "  %%r%d = call %s @%s(",
-        r, gen_type(etype), id->as.ident
+        r, gen_type(fn->as.fn_decl.type), id->as.ident
     );
 
     for (size_t i = 0; i < ir->args.size; ++i)
@@ -284,8 +301,10 @@ gen_expr(IR *ir, int r, Node *exp_type)
     { return gen_ident(ir, r, exp_type); }
     else if (expr->as.expr.type == ET_NUM_LIT)
     { gen_num_lit(ir, r, exp_type); }
+    else if (expr->as.expr.type == ET_CHR_LIT)
+    { gen_chr_lit(ir, r, exp_type); }
     else if (expr->as.expr.type == ET_FN_CALL)
-    { gen_fn_call(ir, r, exp_type); }
+    { gen_fn_call(ir, r); }
     else
     {
         assert(0 && "NOT IMPL");
@@ -390,6 +409,10 @@ gen_fn_def(IR *ir)
     {
         assert(b->type == NT_BLOCK && "NOT A BLOCK");
         gen_stmt(ir);
+
+        printf("==============BLOCK=============\n");
+        printf("%s\n", ir->text.data);
+        printf("================================\n");
     
         block = block->as.block.next;
         if (block)

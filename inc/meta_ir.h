@@ -20,6 +20,7 @@ typedef struct
 {
     Scopes scopes;
     MNVec strs;
+    MNVec funcs;
 } Meta;
 
 void
@@ -30,6 +31,9 @@ meta_collect(Meta *meta, AST *ast);
 
 int
 meta_is_param(MetaScope *scope, const char *name);
+
+Node *
+meta_find_func(Meta *meta, const char *name);
 
 Node *
 meta_find_type(Meta *meta, const char *name);

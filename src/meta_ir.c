@@ -8,6 +8,7 @@ meta_init(Meta *meta)
 {
     scopes_init(&meta->scopes, 16);
     mnv_init(&meta->strs, 16);
+    mnv_init(&meta->funcs, 16);
 }
 
 
@@ -69,7 +70,9 @@ meta_collect(Meta *meta, AST *ast)
                 in_scope = true;
                 mnv_init(&curr_scope.vars,  32);
                 mnv_init(&curr_scope.params, 8);
-                ast_next(ast);
+                Node *decl = ast_next(ast);
+                assert(decl->type == NT_FN_DECL && "NOT A FN DECL");
+                mnv_append(&meta->funcs, decl);
 
                 Node *type = ast_next(ast);
                 Node *ident = ast_next(ast);
@@ -78,7 +81,8 @@ meta_collect(Meta *meta, AST *ast)
             }
             else if (curr->type == NT_FN_DECL)
             {
-                // printf("DECL SKIP\n");
+                //printf("DECL SKIP\n");
+                mnv_append(&meta->funcs, curr);
                 skip_decl = true;
             }
             else if (curr->type == NT_PRG_STMT || curr->type == NT_PROGRAMME)
@@ -121,7 +125,17 @@ meta_is_param(MetaScope *scope, const char *name)
     return -1;
 }
 
-
+Node *
+meta_find_func(Meta *meta, const char *name)
+{
+    for (size_t i = 0; i < meta->funcs.size; ++i)
+    {
+        Node *fn = meta->funcs.data[i];
+        if (strcmp(fn->as.fn_decl.ident->as.ident, name) == 0)
+        { return fn; }
+    }
+    return NULL;
+}
 
 Node *
 meta_find_type(Meta *meta, const char *name)
@@ -188,6 +202,13 @@ meta_dump(Meta *meta)
     {
         printf("\t%zu\n", i);
         node_dump_str_lit(meta->strs.data[i], 1);
+    }
+
+    printf("DECLARATIONS:\n");
+    for (size_t i = 0; i < meta->funcs.size; ++i)
+    {
+        printf("\t%zu\n", i);
+        node_dump_fndecl(meta->funcs.data[i], 1);
     }
 }
 
