@@ -81,6 +81,9 @@ dynstr_capacity(const DynString *str);
 int
 dynstr_remove(DynString *str, size_t index);
 
+int
+dynstr_remove_range(DynString *str, size_t start, size_t count);
+
 #endif /* __DYNSTRING_H__ */
 
 #ifdef DYNSTR_IMPL
@@ -308,6 +311,24 @@ dynstr_remove(DynString *str, size_t index)
         str->data[i] = str->data[i + 1];
     }
     str->size--;
+    return 0;
+}
+
+int
+dynstr_remove_range(DynString *str, size_t start, size_t count)
+{
+    if (!str || start >= str->size)
+    { return -1; }
+
+    if (start + count > str->size)
+    { count = str->size - start; }
+
+    /* Shift left the characters after the removed range */
+    for (size_t i = start; i <= str->size - count; ++i)
+    {
+        str->data[i] = str->data[i + count];
+    }
+    str->size -= count;
     return 0;
 }
 

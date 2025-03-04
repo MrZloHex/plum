@@ -75,6 +75,7 @@ parse_cli_options(int argc, char *argv[])
 }
 
 
+#include "preproc.h"
 #include "ast.h"
 #include "parser.h"
 #include "ir.h"
@@ -94,9 +95,7 @@ main(int argc, char *argv[])
 {
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd)) != NULL)
-    {
-         printf("Current working dir: %s\n", cwd);
-    }
+    { printf("Current working dir: %s\n", cwd); }
 
     Options opts = parse_cli_options(argc, argv);
     if (opts.file_start_index >= argc)
@@ -117,9 +116,7 @@ main(int argc, char *argv[])
         }
     }
     else
-    {
-        fout = stdout;
-    }
+    { fout = stdout; }
 
     if (!fout)
     {
@@ -127,7 +124,14 @@ main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    char *source_file = argv[opts.file_start_index];
+    char *source_file = realpath(argv[opts.file_start_index], NULL);
+
+    char *f = strrchr(source_file, '/');
+    *f = 0;
+    chdir(source_file);
+    if (getcwd(cwd, sizeof(cwd)) != NULL)
+    { printf("Current working dir: %s\n", cwd); }
+    *f = '/';
 
     FILE *src_f = fopen(source_file, "r");
     if (!src_f)
@@ -135,10 +139,13 @@ main(int argc, char *argv[])
         fprintf(stderr, "Failed to open source file: %s\n", source_file);
         exit(EXIT_FAILURE);
     }
+
     DynString src;
     dynstr_init(&src, src_f);
 
-    // TODO: preprocess
+    preprocess(&src);
+
+    printf("PREPROCESSED \n```\n%s\n```\n", src.data);
 
     yyin = fmemopen(src.data, src.size, "r");
     if (!yyin) {
@@ -179,6 +186,7 @@ main(int argc, char *argv[])
 
     dynstr_deinit(&src);
     free(yyin);
+    free(source_file);
 
     return 0;
 }
