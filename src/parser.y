@@ -16,16 +16,22 @@ extern Node *root;
 %}
 
 %union {
+    size_t indent;
     char* str;
+    size_t vbars;
     Node *node;
 }
 
 %token <str> TYPE IDENT
 %token <str> NUM_LITERAL CHR_LITERAL STR_LITERAL
-%token COLON LBRACKET RBRACKET VBAR PTR BLOCK_END EQUAL
+%token <vbars> VBAR
+%token BLOCK_END
+%token COLON LBRACKET RBRACKET PTR EQUAL
 %token LPAREN RPAREN RET PLUS MINUS STAR SLASH
 %token IF ELIF ELSE LOOP BREAK
 %token B1_FALSE B1_TRUE
+
+%token INDENT
 
 %left EQUAL
 %left PLUS MINUS
@@ -37,6 +43,10 @@ extern Node *root;
 %type <node> block block_line_list block_line stmt
 %type <node> var_decl ret_stmt expression type function_call arg_list_opt arg_list
 %type <node> if_stmt
+%type <vbars> indent_seq
+
+%debug
+%error-verbose
 
 %%
 program:
@@ -121,8 +131,15 @@ block_line_list:
 ;
 
 block_line:
-    VBAR stmt
+    indent_seq stmt
     { $$ = node_make_block($2); }
+;
+
+indent_seq:
+    VBAR
+    { $$ = 1; }
+    | VBAR indent_seq
+    { $$ = 1 + $2; }
 ;
 
 stmt:
@@ -134,8 +151,8 @@ stmt:
     { $$ = node_make_stmt(ST_VAR_DECL, $1); }
     | ret_stmt
     { $$ = node_make_stmt(ST_RET, $1); }
-    | if_stmt
-    { $$ = node_make_stmt(ST_IF, $1); }
+    // | if_stmt
+    // { $$ = node_make_stmt(ST_IF, $1); }
 ;
 
 if_stmt:
@@ -241,7 +258,6 @@ arg_list:
     }
 ;
 
-
 type:
     TYPE
     { $$ = node_make_type($1); }
@@ -250,10 +266,19 @@ type:
 ;
 %%
 
-void
-yyerror(const char *s)
-{
+void yyerror(const char *s) {
+    extern char *yytext;
+    extern int yylineno;
+    extern FILE *yyin;  // Input file pointer
+
     fprintf(stderr, "Error: %s\n", s);
+    fprintf(stderr, " at line %d: '%s'\n", yylineno, yytext);
+
+    /* Optionally print surrounding context */
+    fseek(yyin, -50, SEEK_CUR);
+    char buffer[100];
+    fgets(buffer, 100, yyin);
+    fprintf(stderr, "Context: %s\n", buffer);
 }
 
 

@@ -21,18 +21,20 @@ C(1|2|4)                    { yylval.str = strdup(yytext); return TYPE; }
 "ELSE"                      { return ELSE; }
 "LOOP"                      { return LOOP; }
 "BREAK"                     { return BREAK; }
+"RET"                       { return RET; }
+
+"|"                         { yylval.vbars = 1; return VBAR; }
+
+[ \t]*\|([ \t]*\|)*[ \t]*\\_ { return BLOCK_END; }
+"\\_"                       { return BLOCK_END; }
 
 "@"                         { return PTR; }
-
-"RET"                       { return RET; }
 "("                         { return LPAREN; }
 ")"                         { return RPAREN; }
 "["                         { return LBRACKET; }
 "]"                         { return RBRACKET; }
-"\\_"                       { return BLOCK_END; }
 ":"                         { return COLON; }
 "="                         { return EQUAL; }
-"|"                         { return VBAR; }
 "+"                         { return PLUS; }
 "-"                         { return MINUS; }
 "*"                         { return STAR; }
@@ -44,6 +46,6 @@ C(1|2|4)                    { yylval.str = strdup(yytext); return TYPE; }
 [a-zA-Z_][a-zA-Z0-9_]*      { yylval.str = strdup(yytext); return IDENT; }
 
 ";".*                       { /* skip comment lines */ }
-[ \t\n]+                    { /* skip whitespace */ }
+[ \t\n]+                      { /* skip whitespace */ }
 .                           { /* ignore any other character */ }
 %%

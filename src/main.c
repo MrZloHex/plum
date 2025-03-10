@@ -153,7 +153,8 @@ main(int argc, char *argv[])
         free(yyin);
         exit(EXIT_FAILURE);
     }
-
+    
+    // yydebug = 1;
     if (yyparse() != 0)
     {
         fprintf(stderr, "Failed to parse source code: %s\n", source_file);
