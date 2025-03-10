@@ -20,10 +20,12 @@ extern Node *root;
     Node *node;
 }
 
-%token <str> TYPE IDENT KWORD
+%token <str> TYPE IDENT
 %token <str> NUM_LITERAL CHR_LITERAL STR_LITERAL
 %token COLON LBRACKET RBRACKET VBAR PTR BLOCK_END EQUAL
 %token LPAREN RPAREN RET PLUS MINUS STAR SLASH
+%token IF ELIF ELSE LOOP BREAK
+%token B1_FALSE B1_TRUE
 
 %left EQUAL
 %left PLUS MINUS
@@ -34,6 +36,7 @@ extern Node *root;
 %type <node> fn_decl fn_def param_list_opt param_list parametre
 %type <node> block block_line_list block_line stmt
 %type <node> var_decl ret_stmt expression type function_call arg_list_opt arg_list
+%type <node> if_stmt
 
 %%
 program:
@@ -131,6 +134,13 @@ stmt:
     { $$ = node_make_stmt(ST_VAR_DECL, $1); }
     | ret_stmt
     { $$ = node_make_stmt(ST_RET, $1); }
+    | if_stmt
+    { $$ = node_make_stmt(ST_IF, $1); }
+;
+
+if_stmt:
+    IF LBRACKET expression RBRACKET block
+    { $$ = node_make_if($3, $5); }
 ;
 
 var_decl:
@@ -190,6 +200,16 @@ expression:
     {
         Node *e = node_make_ident($1);
         $$ = node_make_expr(ET_IDENT, e);
+    }
+    | B1_TRUE
+    {
+        Node *e = node_make_bool_lit(BL_TRUE);
+        $$ = node_make_expr(ET_BOOL_LIT, e);
+    }
+    | B1_FALSE
+    {
+        Node *e = node_make_bool_lit(BL_FALSE);
+        $$ = node_make_expr(ET_BOOL_LIT, e);
     }
 ;
 

@@ -16,6 +16,7 @@ typedef struct
 typedef enum
 {
    T_ABYSS,
+   T_B1,
    T_C1,
    T_C2,
    T_C4,
@@ -43,6 +44,7 @@ typedef enum
     ST_EXPR,
     ST_VAR_DECL,
     ST_RET,
+    ST_IF,
     ST_QUANT
 } StmtType;
 
@@ -52,6 +54,13 @@ typedef struct
     struct Node_S *stmt;
 } N_Statement;
 
+// IF
+
+typedef struct
+{
+    struct Node_S *expr;
+    struct Node_S *block;
+} N_If;
 
 // DECLARATIONS
 
@@ -70,6 +79,7 @@ typedef enum
     ET_NUM_LIT,
     ET_CHR_LIT,
     ET_STR_LIT,
+    ET_BOOL_LIT,
     ET_BIN_OP,
     ET_FN_CALL,
     ET_QUANT
@@ -111,6 +121,11 @@ typedef char *N_Ident;
 typedef int   N_NumLit;
 typedef char  N_ChrLit;
 typedef char *N_StrLit;
+typedef enum
+{
+    BL_FALSE,
+    BL_TRUE
+} N_BoolLit;
 
 // FUNCTION DEFINITION
 
@@ -176,9 +191,11 @@ typedef enum
     NT_NUM_LIT,
     NT_CHR_LIT,
     NT_STR_LIT,
+    NT_BOOL_LIT,
     NT_BIN_OP,
     NT_TYPE,
     NT_VAR_DECL,
+    NT_IF_STMT,
     NT_RET,
     NT_FN_DEF,
     NT_FN_DECL,
@@ -204,9 +221,11 @@ typedef struct Node_S
         N_NumLit     num_lit;
         N_ChrLit     chr_lit;
         N_StrLit     str_lit;
+        N_BoolLit    bool_lit;
         N_Bin_Op     bin_op;
         N_Type       type;
         N_Var_Decl   var_decl;
+        N_If         if_stmt;
         N_FnDef      fn_def;
         N_FnDecl     fn_decl;
         N_Parametre  parametre;
@@ -252,6 +271,9 @@ Node *
 node_make_str_lit(const char *value);
 
 Node *
+node_make_bool_lit(N_BoolLit lit);
+
+Node *
 node_make_var_decl(Node *type, Node *id);
 
 Node *
@@ -281,6 +303,9 @@ node_make_fncall(Node *id, Node *args);
 Node *
 node_make_argument(Node *expr);
 
+Node *
+node_make_if(Node *expr, Node *block);
+
 
 void
 node_dump_programme(Node *prog, size_t offset);
@@ -305,6 +330,9 @@ node_dump_chr_lit(Node *lit, size_t offset);
 
 void
 node_dump_str_lit(Node *lit, size_t offset);
+
+void
+node_dump_bool_lit(Node *lit, size_t offset);
 
 void
 node_dump_var_decl(Node *var, size_t offset);
@@ -336,5 +364,7 @@ node_dump_fncall(Node *call, size_t offset);
 void
 node_dump_argument(Node *args, size_t offset);
 
+void
+node_dump_if(Node *if_stmt, size_t offset);
 
 #endif /* __AST_NODES_H__ */

@@ -225,6 +225,24 @@ node_dump_str_lit(Node *lit, size_t offset)
 }
 
 Node *
+node_make_bool_lit(N_BoolLit lit)
+{
+    NODE_ALLOC(n);
+
+    n->type = NT_BOOL_LIT;
+    n->as.bool_lit = lit;
+
+    return n;
+}
+
+void
+node_dump_bool_lit(Node *lit, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("BOOL LIT %s\n", lit->as.bool_lit ? "TRUE" : "FALSE");
+}
+
+Node *
 node_make_var_decl(Node *type, Node *id)
 {
     NODE_ALLOC(n);
@@ -254,6 +272,8 @@ node_make_type(const char *type)
     n->as.type.ptrs = 0;
     if (strcmp(type, "ABYSS") == 0)
     { n->as.type.type = T_ABYSS; }
+    else if (strcmp(type, "B1") == 0)
+    { n->as.type.type = T_B1; }
     else if (strcmp(type, "C1") == 0)
     { n->as.type.type = T_C1; }
     else if (strcmp(type, "C2") == 0)
@@ -298,6 +318,7 @@ node_dump_type(Node *type, size_t offset)
     static char *types[T_QUANT] =
     {
         "ABYSS",
+        "B1",
         "C1", "C2", "C4",
         "U8", "U16", "U32", "U64",
         "I8", "I16", "I32", "I64"
@@ -389,6 +410,10 @@ Node *
 node_make_block(Node *stmt)
 {
     NODE_ALLOC(bl);
+    
+    printf("MAKE BLOCK\n");
+    node_dump_stmt(stmt, 1);
+
 
     bl->type = NT_BLOCK;
     bl->as.block.stmt = stmt;
@@ -426,7 +451,7 @@ node_make_stmt(StmtType type, Node *stmt)
 void
 node_dump_stmt(Node *stmt, size_t offset)
 {
-    static char *st_types[ST_QUANT] = { "EXPR", "VAR DECL", "RET" };
+    static char *st_types[ST_QUANT] = { "EXPR", "VAR DECL", "RET", "IF" };
     PRINT_OFFSET(offset);
     printf("STMT %s\n", st_types[stmt->as.stmt.type]);
     if (stmt->as.stmt.type == ST_EXPR)
@@ -435,6 +460,8 @@ node_dump_stmt(Node *stmt, size_t offset)
     { node_dump_var_decl(stmt->as.stmt.stmt, offset+1); }
     else if (stmt->as.stmt.type == ST_RET)
     { node_dump_ret(stmt->as.stmt.stmt, offset+1); }
+    else if (stmt->as.stmt.type == ST_IF)
+    { node_dump_if(stmt->as.stmt.stmt, offset+1); }
 }
 
 Node *
@@ -453,7 +480,7 @@ void
 node_dump_expr(Node *expr, size_t offset)
 {
     static char *et_types[ET_QUANT] =
-    { "IDENT", "NUM LIT", "CHR LIT", "STR LIT", "BIN OP", "FN CALL" };
+    { "IDENT", "NUM LIT", "CHR LIT", "STR LIT", "BOOL LIT", "BIN OP", "FN CALL" };
     PRINT_OFFSET(offset);
     printf("EXPR %s\n", et_types[expr->as.expr.type]);
     if (expr->as.expr.type == ET_IDENT)
@@ -464,6 +491,8 @@ node_dump_expr(Node *expr, size_t offset)
     { node_dump_chr_lit(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_STR_LIT)
     { node_dump_str_lit(expr->as.expr.expr, offset+1); }
+    else if (expr->as.expr.type == ET_BOOL_LIT)
+    { node_dump_bool_lit(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_BIN_OP)
     { node_dump_bin_op(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_FN_CALL)
@@ -516,3 +545,29 @@ node_dump_argument(Node *args, size_t offset)
         args = args->as.arguments.next;
     }
 }
+
+Node *
+node_make_if(Node *expr, Node *block)
+{
+    NODE_ALLOC(a);
+
+    a->type = NT_IF_STMT;
+    a->as.if_stmt.expr = expr;
+    a->as.if_stmt.block = block;
+
+    return a;
+}
+
+void
+node_dump_if(Node *if_stmt, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("IF STMT\n");
+    PRINT_OFFSET(offset);
+    printf(" expr: \n");
+    node_dump_expr(if_stmt->as.if_stmt.expr, offset+1);
+    PRINT_OFFSET(offset);
+    printf(" scope: \n");
+    node_dump_block(if_stmt->as.if_stmt.block, offset+1);
+}
+

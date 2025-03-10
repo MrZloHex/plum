@@ -37,6 +37,8 @@ IFACE VectorFace<T>: [ @VectorType<T> me ]
  |  | @me.data = (malloc)[ base_cap ]
  |  | IF [ @me.data == NULL ]
  |  |  | RET [ #-1 ]
+ |  | ELSE
+ |  |  |
  |  |  \_
  |  |
  |  | @me.size = #0
