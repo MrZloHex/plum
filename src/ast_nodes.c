@@ -411,8 +411,8 @@ node_make_block(Node *stmt)
 {
     NODE_ALLOC(bl);
     
-    printf("MAKE BLOCK\n");
-    node_dump_stmt(stmt, 1);
+    // printf("MAKE BLOCK\n");
+    // node_dump_stmt(stmt, 1);
 
 
     bl->type = NT_BLOCK;

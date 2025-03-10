@@ -46,7 +46,7 @@ extern Node *root;
 %type <vbars> indent_seq
 
 %debug
-%error-verbose
+%define parse.error verbose
 
 %%
 program:
@@ -151,8 +151,8 @@ stmt:
     { $$ = node_make_stmt(ST_VAR_DECL, $1); }
     | ret_stmt
     { $$ = node_make_stmt(ST_RET, $1); }
-    // | if_stmt
-    // { $$ = node_make_stmt(ST_IF, $1); }
+    | if_stmt
+    { $$ = node_make_stmt(ST_IF, $1); }
 ;
 
 if_stmt:
