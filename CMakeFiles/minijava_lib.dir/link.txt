@@ -1,0 +1,2 @@
+/usr/bin/ar qc lib/libminijava_lib.a CMakeFiles/minijava_lib.dir/src/lexer.cpp.o CMakeFiles/minijava_lib.dir/src/parser.cpp.o
+/usr/bin/ranlib lib/libminijava_lib.a

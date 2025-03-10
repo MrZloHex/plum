@@ -1,0 +1,7 @@
+/home/mzh/from_github/minijava-compiler/CMakeFiles/minijava_compiler.dir
+/home/mzh/from_github/minijava-compiler/CMakeFiles/minijava_lib.dir
+/home/mzh/from_github/minijava-compiler/CMakeFiles/lexer_test.dir
+/home/mzh/from_github/minijava-compiler/CMakeFiles/parser_test.dir
+/home/mzh/from_github/minijava-compiler/CMakeFiles/test.dir
+/home/mzh/from_github/minijava-compiler/CMakeFiles/edit_cache.dir
+/home/mzh/from_github/minijava-compiler/CMakeFiles/rebuild_cache.dir
