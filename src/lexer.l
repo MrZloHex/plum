@@ -27,6 +27,8 @@ C(1|2|4)                    { yylval.str = strdup(yytext); return TYPE; }
 
 [ \t]*\|([ \t]*\|)*[ \t]*\\_ { return BLOCK_END; }
 "\\_"                       { return BLOCK_END; }
+[ \t]*\|([ \t]*\|)*[ \t]*\\ { return BLOCK_CONTINUE; }
+"\\"                        { return BLOCK_CONTINUE; }
 
 "@"                         { return PTR; }
 "("                         { return LPAREN; }

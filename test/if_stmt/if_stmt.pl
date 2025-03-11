@@ -12,11 +12,15 @@ I32 main: []
  | @C1 str
  | str = "Hello from PLUM!"
  | @C1 hello
- | hello = "if working"
  | B1 why
  | why = FALSE
  | IF [ why ]
- |  |  (println) [ hello ]
+ |  | hello = "if working"
+ |  | (println)[ hello ]
+ |  \
+ | ELSE
+ |  | hello = "else working"
+ |  | (println)[ hello ]
  |  \_
  | (println)[ str ]
  | RET [ 0 ]

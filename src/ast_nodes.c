@@ -411,10 +411,6 @@ node_make_block(Node *stmt)
 {
     NODE_ALLOC(bl);
     
-    // printf("MAKE BLOCK\n");
-    // node_dump_stmt(stmt, 1);
-
-
     bl->type = NT_BLOCK;
     bl->as.block.stmt = stmt;
 
@@ -451,7 +447,7 @@ node_make_stmt(StmtType type, Node *stmt)
 void
 node_dump_stmt(Node *stmt, size_t offset)
 {
-    static char *st_types[ST_QUANT] = { "EXPR", "VAR DECL", "RET", "IF" };
+    static char *st_types[ST_QUANT] = { "EXPR", "VAR DECL", "RET", "COND" };
     PRINT_OFFSET(offset);
     printf("STMT %s\n", st_types[stmt->as.stmt.type]);
     if (stmt->as.stmt.type == ST_EXPR)
@@ -460,8 +456,8 @@ node_dump_stmt(Node *stmt, size_t offset)
     { node_dump_var_decl(stmt->as.stmt.stmt, offset+1); }
     else if (stmt->as.stmt.type == ST_RET)
     { node_dump_ret(stmt->as.stmt.stmt, offset+1); }
-    else if (stmt->as.stmt.type == ST_IF)
-    { node_dump_if(stmt->as.stmt.stmt, offset+1); }
+    else if (stmt->as.stmt.type == ST_COND)
+    { node_dump_cond(stmt->as.stmt.stmt, offset+1); }
 }
 
 Node *
@@ -546,28 +542,67 @@ node_dump_argument(Node *args, size_t offset)
     }
 }
 
+
+
+Node *
+node_make_cond(Node *if_part, Node *else_part)
+{
+    NODE_ALLOC(a);
+
+    a->type = NT_COND_STMT;
+    a->as.cond_stmt.if_block = if_part;
+    a->as.cond_stmt.else_block = else_part;
+
+    return a;
+}
+
 Node *
 node_make_if(Node *expr, Node *block)
 {
     NODE_ALLOC(a);
 
-    a->type = NT_IF_STMT;
-    a->as.if_stmt.expr = expr;
-    a->as.if_stmt.block = block;
+    a->type = NT_COND_IF;
+    a->as.cond_if.expr = expr;
+    a->as.cond_if.block = block;
 
     return a;
+}
+
+Node *
+node_make_else(Node *block)
+{
+    NODE_ALLOC(a);
+
+    a->type = NT_COND_ELSE;
+    a->as.cond_else.block = block;
+
+    return a;
+}
+
+void
+node_dump_cond(Node *cond, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("CONDITION:\n");
+    node_dump_if(cond->as.cond_stmt.if_block, offset);
+    if (cond->as.cond_stmt.else_block)
+    { node_dump_else(cond->as.cond_stmt.else_block, offset); }
 }
 
 void
 node_dump_if(Node *if_stmt, size_t offset)
 {
     PRINT_OFFSET(offset);
-    printf("IF STMT\n");
+    printf(" - IF\n");
+    node_dump_expr(if_stmt->as.cond_if.expr, offset+1);
+    node_dump_block(if_stmt->as.cond_if.block, offset+1);
+}
+
+void
+node_dump_else(Node *else_stmt, size_t offset)
+{
     PRINT_OFFSET(offset);
-    printf(" expr: \n");
-    node_dump_expr(if_stmt->as.if_stmt.expr, offset+1);
-    PRINT_OFFSET(offset);
-    printf(" scope: \n");
-    node_dump_block(if_stmt->as.if_stmt.block, offset+1);
+    printf(" - ELSE\n");
+    node_dump_block(else_stmt->as.cond_else.block, offset+1);
 }
 

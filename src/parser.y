@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include "ast.h"
 
 void yyerror(const char *s);
@@ -25,7 +26,7 @@ extern Node *root;
 %token <str> TYPE IDENT
 %token <str> NUM_LITERAL CHR_LITERAL STR_LITERAL
 %token <vbars> VBAR
-%token BLOCK_END
+%token BLOCK_END BLOCK_CONTINUE
 %token COLON LBRACKET RBRACKET PTR EQUAL
 %token LPAREN RPAREN RET PLUS MINUS STAR SLASH
 %token IF ELIF ELSE LOOP BREAK
@@ -40,9 +41,9 @@ extern Node *root;
 
 %type <node> program prg_stmt
 %type <node> fn_decl fn_def param_list_opt param_list parametre
-%type <node> block block_line_list block_line stmt
+%type <node> block_with_end block_with_continue block_line_list block_line stmt
 %type <node> var_decl ret_stmt expression type function_call arg_list_opt arg_list
-%type <node> if_stmt
+%type <node> cond_stmt cond_if cond_if_else cond_else
 %type <vbars> indent_seq
 
 %debug
@@ -72,7 +73,7 @@ prg_stmt:
     { $$ = node_make_prg_stmt(PST_FN_DECL, $1); }
 
 fn_def:
-    fn_decl block
+    fn_decl block_with_end
     { $$ = node_make_fndef($1, $2); }
 ;
 
@@ -112,8 +113,13 @@ parametre:
     }
 ;
 
-block:
-    block_line_list BLOCK_END
+block_with_continue:
+    block_line_list BLOCK_CONTINUE
+    { $$ = $1; }
+;
+
+block_with_end:
+    block_line_list BLOCK_END 
     { $$ = $1; }
 ;
 
@@ -151,14 +157,34 @@ stmt:
     { $$ = node_make_stmt(ST_VAR_DECL, $1); }
     | ret_stmt
     { $$ = node_make_stmt(ST_RET, $1); }
-    | if_stmt
-    { $$ = node_make_stmt(ST_IF, $1); }
+    | cond_stmt
+    { $$ = node_make_stmt(ST_COND, $1); }
 ;
 
-if_stmt:
-    IF LBRACKET expression RBRACKET block
+cond_stmt:
+    cond_if
+    { $$ = node_make_cond($1, NULL); }
+    | cond_if_else cond_else
+    { $$ = node_make_cond($1, $2); }
+;
+
+cond_if:
+    IF LBRACKET expression RBRACKET block_with_end
     { $$ = node_make_if($3, $5); }
 ;
+
+cond_if_else:
+    IF LBRACKET expression RBRACKET block_with_continue
+    { $$ = node_make_if($3, $5); }
+;
+
+cond_else:
+    indent_seq ELSE block_with_end
+    { $$ = node_make_else($3); }
+;
+
+cond_if_else:
+
 
 var_decl:
     type IDENT
@@ -273,12 +299,6 @@ void yyerror(const char *s) {
 
     fprintf(stderr, "Error: %s\n", s);
     fprintf(stderr, " at line %d: '%s'\n", yylineno, yytext);
-
-    /* Optionally print surrounding context */
-    fseek(yyin, -50, SEEK_CUR);
-    char buffer[100];
-    fgets(buffer, 100, yyin);
-    fprintf(stderr, "Context: %s\n", buffer);
 }
 
 
