@@ -37,6 +37,12 @@ C(1|2|4)                    { yylval.str = strdup(yytext); return TYPE; }
 "]"                         { return RBRACKET; }
 ":"                         { return COLON; }
 "="                         { return EQUAL; }
+"=="                        { return DOUBLE_EQUAL; }
+"!="                        { return NOT_EQUAL; }
+"<"                         { return LESS; }
+">"                         { return GREAT; }
+"<="                        { return LEQ; }
+">="                        { return GEQ; }
 "+"                         { return PLUS; }
 "-"                         { return MINUS; }
 "*"                         { return STAR; }

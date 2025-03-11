@@ -8,4 +8,8 @@ popd
 
 if [[ $2 == "-c" ]]; then
     ./$1/$1
+    RES=$?
+    if [[ $3 == "-r" ]]; then
+        echo $RES
+    fi
 fi

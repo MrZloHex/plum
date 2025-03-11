@@ -346,7 +346,11 @@ node_make_bin_op(BinOpType op, Node *left, Node *right)
 void
 node_dump_bin_op(Node *op, size_t offset)
 {
-    static char *bo_type[BOT_QUANT] = { "ASSIGN", "PLUS" };
+    static char *bo_type[BOT_QUANT] =
+    {
+        "ASSIGN", "PLUS", "MINUS", "MULT", "DIV",
+        "EQUAL", "NEQ", "LESS", "LEQ", "GREAT", "GEQ"
+    };
     PRINT_OFFSET(offset);
     printf("BIN OP %s\n", bo_type[op->as.bin_op.type]);
     PRINT_OFFSET(offset);

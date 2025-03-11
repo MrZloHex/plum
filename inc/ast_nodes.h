@@ -115,6 +115,15 @@ typedef enum
 {
     BOT_ASSIGN,
     BOT_PLUS,
+    BOT_MINUS,
+    BOT_MULT,
+    BOT_DIV,
+    BOT_EQUAL,
+    BOT_NEQ,
+    BOT_LESS,
+    BOT_LEQ,
+    BOT_GREAT,
+    BOT_GEQ,
     BOT_QUANT
 } BinOpType;
 

@@ -174,14 +174,16 @@ main(int argc, char *argv[])
     IR ir;
     ast_reinit(&ast);
     ir_init(&ir, &meta, &ast);
-    ir_generate(&ir);
 
     if (opts.emit_type)
     {
         if (strcmp(opts.emit_type, "AST") == 0)
         { node_dump_programme(root, 0); }
         else if (strcmp(opts.emit_type, "IR") == 0)
-        { fprintf(fout, "%s\n", ir.ir.data); }
+        {
+            ir_generate(&ir);
+            fprintf(fout, "%s\n", ir.ir.data);
+        }
     }
 
     dynstr_deinit(&src);

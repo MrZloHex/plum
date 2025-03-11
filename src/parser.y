@@ -29,6 +29,8 @@ extern Node *root;
 %token BLOCK_END BLOCK_CONTINUE
 %token COLON LBRACKET RBRACKET PTR EQUAL
 %token LPAREN RPAREN RET PLUS MINUS STAR SLASH
+%token DOUBLE_EQUAL NOT_EQUAL
+%token LESS LEQ GREAT GEQ
 %token IF ELIF ELSE LOOP BREAK
 %token B1_FALSE B1_TRUE
 
@@ -37,6 +39,8 @@ extern Node *root;
 %left EQUAL
 %left PLUS MINUS
 %left STAR SLASH
+%left DOUBLE_EQUAL NOT_EQUAL
+%left LESS LEQ GREAT GEQ
 
 
 %type <node> program prg_stmt
@@ -223,11 +227,50 @@ expression:
         $$ = node_make_expr(ET_BIN_OP, e);
     }
     | expression MINUS expression
-    {  }
+    {
+        Node *e = node_make_bin_op(BOT_MINUS, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
     | expression STAR expression
-    {  }
+    {
+        Node *e = node_make_bin_op(BOT_MULT, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
     | expression SLASH expression
-    {  }
+    {
+        Node *e = node_make_bin_op(BOT_DIV, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
+    | expression DOUBLE_EQUAL expression
+    {
+        Node *e = node_make_bin_op(BOT_EQUAL, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
+    | expression NOT_EQUAL expression
+    {
+        Node *e = node_make_bin_op(BOT_NEQ, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
+    | expression LESS expression
+    {
+        Node *e = node_make_bin_op(BOT_LESS, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
+    | expression LEQ expression
+    {
+        Node *e = node_make_bin_op(BOT_LEQ, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
+    | expression GREAT expression
+    {
+        Node *e = node_make_bin_op(BOT_GREAT, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
+    | expression GEQ expression
+    {
+        Node *e = node_make_bin_op(BOT_GEQ, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
     | function_call
     { $$ = node_make_expr(ET_FN_CALL, $1); }
     | STR_LITERAL
