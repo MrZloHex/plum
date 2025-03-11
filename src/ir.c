@@ -12,6 +12,11 @@ static int reg_counter = 0;
 static int
 new_reg(void)
 { return reg_counter++; }
+static int label_counter = 1;
+static int
+new_label(void)
+{ return label_counter++; }
+
 
 void
 ir_init(IR *ir, Meta *meta, AST *ast)
@@ -32,6 +37,7 @@ gen_type(Node *type)
 
     switch(type->as.type.type)
     {
+        case T_B1:    return "i8";
         case T_C1:    return "i8";
         case T_C2:    return "i16";
         case T_C4:    return "i32";
@@ -200,6 +206,19 @@ gen_num_lit(IR *ir, int r, Node *etype)
     );
 }
 
+static void
+gen_bool_lit(IR *ir, int r)
+{
+    Node *lit = ast_next(ir->ast);
+    assert(lit->type == NT_BOOL_LIT && "NOT BOOL LIT");
+
+    dynstr_append_fstr
+    ( 
+        &ir->text, "  %%r%d = add %s 0, %d\n" ,
+        r, "i8", lit->as.bool_lit
+    );
+}
+
 static Node *
 gen_expr(IR *ir, int r, Node *exp_type);
 
@@ -329,6 +348,8 @@ gen_expr(IR *ir, int r, Node *exp_type)
     { gen_chr_lit(ir, r, exp_type); }
     else if (expr->as.expr.type == ET_STR_LIT)
     { gen_str_lit(ir, r); }
+    else if (expr->as.expr.type == ET_BOOL_LIT)
+    { gen_bool_lit(ir, r); }
     else if (expr->as.expr.type == ET_FN_CALL)
     { gen_fn_call(ir, r); }
     else
@@ -378,6 +399,60 @@ gen_return(IR *ir)
 }
 
 static void
+gen_block(IR *ir);
+
+static void
+gen_cond(IR *ir)
+{
+    Node *cond = ast_next(ir->ast);
+    assert(cond->type == NT_COND_STMT && "NOT CONDITION STATEMENT");
+
+    Node *fi = ast_next(ir->ast);
+    assert(fi->type == NT_COND_IF && "NOT IF");
+
+    Node *id = ast_next(ir->ast);
+    assert(id->type == NT_IDENT && "NOT IDENT");
+    Node *type = meta_find_type_in_scope(ir->curr, id->as.ident);
+
+    int cnd = new_reg();
+    dynstr_append_fstr
+    (
+        &ir->text, "\n  %%r%d = load %s, %s* %%%s\n",
+        cnd, gen_type(type), gen_type(type), id->as.ident
+    );
+
+    int cnd_trunc = new_reg();
+    dynstr_append_fstr
+    (
+        &ir->text, "  %%r%d = trunc %s %%r%d to i1\n",
+        cnd_trunc, gen_type(type), cnd
+    );
+
+    int cnd_res = new_reg();
+    dynstr_append_fstr
+    (
+        &ir->text, "  %%r%d = icmp eq i1 %%r%d, 1\n",
+        cnd_res, cnd_trunc
+    );
+
+    int l_if = new_label();
+    int l_out = new_label();
+    dynstr_append_fstr
+    (
+        &ir->text, "  br i1 %%r%d, label %%l%d, label %%l%d\nl%d:\n",
+        cnd_res, l_if, l_out, l_if
+    );
+    
+    gen_block(ir);
+    
+    dynstr_append_fstr
+    (
+        &ir->text, "  br label %%l%d\nl%d:\n",
+        l_out, l_out
+    );
+}
+
+static void
 gen_stmt(IR *ir)
 {
     Node *stmt = ast_next(ir->ast);
@@ -389,9 +464,33 @@ gen_stmt(IR *ir)
     { gen_var_decl(ir); }
     else if (stmt->as.stmt.type == ST_EXPR)
     { gen_expr(ir, -1, NULL); }
+    else if (stmt->as.stmt.type == ST_COND)
+    { gen_cond(ir); }
     else
     {
         assert(0 && "NOT IMPL");
+    }
+}
+
+static void
+gen_block(IR *ir)
+{
+    Node *b = ast_next(ir->ast);
+    Node *block = b;
+    for (;;)
+    {
+        assert(b->type == NT_BLOCK && "NOT A BLOCK");
+        gen_stmt(ir);
+
+        // printf("==============BLOCK=============\n");
+        // printf("%s\n", ir->text.data);
+        // printf("================================\n");
+    
+        block = block->as.block.next;
+        if (block)
+        { ast_next(ir->ast); }
+        else
+        { break; }
     }
 }
 
@@ -429,23 +528,7 @@ gen_fn_def(IR *ir)
         dynstr_append_str(&ir->text, "() {\n");
     }
 
-    Node *b = ast_next(ir->ast);
-    Node *block = b;
-    for (;;)
-    {
-        assert(b->type == NT_BLOCK && "NOT A BLOCK");
-        gen_stmt(ir);
-
-        // printf("==============BLOCK=============\n");
-        // printf("%s\n", ir->text.data);
-        // printf("================================\n");
-    
-        block = block->as.block.next;
-        if (block)
-        { ast_next(ir->ast); }
-        else
-        { break; }
-    }
+    gen_block(ir);
 
     dynstr_append_str(&ir->text, "}\n\n");
 }

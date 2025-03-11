@@ -161,7 +161,6 @@ main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    { node_dump_programme(root, 0); }
     AST ast;
     ast_init(&ast, root);
 
@@ -173,9 +172,9 @@ main(int argc, char *argv[])
     printf("===========META==============\n");
 
     IR ir;
-    // ast_reinit(&ast);
-    // ir_init(&ir, &meta, &ast);
-    // ir_generate(&ir);
+    ast_reinit(&ast);
+    ir_init(&ir, &meta, &ast);
+    ir_generate(&ir);
 
     if (opts.emit_type)
     {

@@ -557,12 +557,12 @@ node_make_cond(Node *if_part, Node *else_part)
 }
 
 Node *
-node_make_if(Node *expr, Node *block)
+node_make_if(Node *ident, Node *block)
 {
     NODE_ALLOC(a);
 
     a->type = NT_COND_IF;
-    a->as.cond_if.expr = expr;
+    a->as.cond_if.ident = ident;
     a->as.cond_if.block = block;
 
     return a;
@@ -594,7 +594,7 @@ node_dump_if(Node *if_stmt, size_t offset)
 {
     PRINT_OFFSET(offset);
     printf(" - IF\n");
-    node_dump_expr(if_stmt->as.cond_if.expr, offset+1);
+    node_dump_ident(if_stmt->as.cond_if.ident, offset+1);
     node_dump_block(if_stmt->as.cond_if.block, offset+1);
 }
 

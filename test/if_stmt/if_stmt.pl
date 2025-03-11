@@ -1,33 +1,43 @@
 ; TEST OF CALLING EXTERNAL FUNCTION FROM C
 
-ABYSS println: [ @C1 str ]
- | I32 newline
- | newline = '\n'
- | (puts)[str]
- | (putchar)[newline]
- | RET []
- \_
-
 I32 main: []
  | @C1 str
  | str = "Hello from PLUM!"
+ |
  | @C1 hello
  | B1 why
- | why = FALSE
+ | B1 why_not
+ | why = TRUE
+ | why_not = TRUE
+ | 
  | IF [ why ]
  |  | hello = "if working"
- |  | (println)[ hello ]
- |  \
- | ELSE
- |  | hello = "else working"
- |  | (println)[ hello ]
+ |  | (puts)[ hello ]
+;|  | IF [ why_not ]
+;|  |  | hello = "inner if"
+;|  |  | (println)[ hello ]
+;|  |  \
+;|  | ELSE
+;|  |  | hello = "inner else"
+;|  |  | (println)[ hello ]
+;|  |  \_
+;|  \
+;| ELSE
+;|  | hello = "else working"
+;|  | (puts)[ hello ]
+;|  | IF [ why_not ]
+;|  |  | hello = "inner if"
+;|  |  | (println)[ hello ]
+;|  |  \
+;|  | ELSE
+;|  |  | hello = "inner else"
+;|  |  | (println)[ hello ]
+;|  |  \_
  |  \_
- | (println)[ str ]
+ | (puts)[ str ]
  | RET [ 0 ]
  \_
 
 
 I32 puts:    [ @C1 str ]
-
-I32 putchar: [ I32 char ]
 

@@ -169,13 +169,19 @@ cond_stmt:
 ;
 
 cond_if:
-    IF LBRACKET expression RBRACKET block_with_end
-    { $$ = node_make_if($3, $5); }
+    IF LBRACKET IDENT RBRACKET block_with_end
+    {
+        Node *id = node_make_ident($3);
+        $$ = node_make_if(id, $5);
+    }
 ;
 
 cond_if_else:
-    IF LBRACKET expression RBRACKET block_with_continue
-    { $$ = node_make_if($3, $5); }
+    IF LBRACKET IDENT RBRACKET block_with_continue
+    {
+        Node *id = node_make_ident($3);
+        $$ = node_make_if(id, $5);
+    }
 ;
 
 cond_else:
@@ -295,7 +301,6 @@ type:
 void yyerror(const char *s) {
     extern char *yytext;
     extern int yylineno;
-    extern FILE *yyin;  // Input file pointer
 
     fprintf(stderr, "Error: %s\n", s);
     fprintf(stderr, " at line %d: '%s'\n", yylineno, yytext);

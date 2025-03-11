@@ -109,10 +109,28 @@ ast_next(AST *ast)
             PUSH_NODE(curr->as.bin_op.right);
         } break;
 
+        case NT_COND_STMT:
+        {
+            PUSH_NODE(curr->as.cond_stmt.if_block);
+            PUSH_NODE(curr->as.cond_stmt.else_block);
+        } break;
+
+        case NT_COND_IF:
+        {
+            PUSH_NODE(curr->as.cond_if.block);
+            PUSH_NODE(curr->as.cond_if.ident);
+        } break;
+
+        case NT_COND_ELSE:
+        {
+            PUSH_NODE(curr->as.cond_else.block);
+        } break;
+
         case NT_IDENT:
         case NT_NUM_LIT:
         case NT_CHR_LIT:
         case NT_STR_LIT:
+        case NT_BOOL_LIT:
         case NT_TYPE:
             break;
 
