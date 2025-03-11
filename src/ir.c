@@ -407,6 +407,8 @@ gen_cond(IR *ir)
     Node *cond = ast_next(ir->ast);
     assert(cond->type == NT_COND_STMT && "NOT CONDITION STATEMENT");
 
+    bool is_else = (bool)cond->as.cond_stmt.else_block;
+
     Node *fi = ast_next(ir->ast);
     assert(fi->type == NT_COND_IF && "NOT IF");
 
@@ -417,7 +419,7 @@ gen_cond(IR *ir)
     int cnd = new_reg();
     dynstr_append_fstr
     (
-        &ir->text, "\n  %%r%d = load %s, %s* %%%s\n",
+        &ir->text, "  %%r%d = load %s, %s* %%%s\n",
         cnd, gen_type(type), gen_type(type), id->as.ident
     );
 
@@ -436,14 +438,29 @@ gen_cond(IR *ir)
     );
 
     int l_if = new_label();
+    int l_else = new_label();
     int l_out = new_label();
     dynstr_append_fstr
     (
         &ir->text, "  br i1 %%r%d, label %%l%d, label %%l%d\nl%d:\n",
-        cnd_res, l_if, l_out, l_if
+        cnd_res, l_if, is_else ? l_else : l_out, l_if
     );
     
     gen_block(ir);
+
+    if (is_else)
+    {
+        Node *esle = ast_next(ir->ast);
+        assert(esle->type == NT_COND_ELSE && "NOT ELSE");
+
+        dynstr_append_fstr
+        (
+            &ir->text, "  br label %%l%d\nl%d:\n",
+            l_out, l_else
+        );
+        
+        gen_block(ir);
+    }
     
     dynstr_append_fstr
     (

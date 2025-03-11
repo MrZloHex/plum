@@ -13,26 +13,26 @@ I32 main: []
  | IF [ why ]
  |  | hello = "if working"
  |  | (puts)[ hello ]
-;|  | IF [ why_not ]
-;|  |  | hello = "inner if"
-;|  |  | (println)[ hello ]
-;|  |  \
-;|  | ELSE
-;|  |  | hello = "inner else"
-;|  |  | (println)[ hello ]
-;|  |  \_
-;|  \
-;| ELSE
-;|  | hello = "else working"
-;|  | (puts)[ hello ]
-;|  | IF [ why_not ]
-;|  |  | hello = "inner if"
-;|  |  | (println)[ hello ]
-;|  |  \
-;|  | ELSE
-;|  |  | hello = "inner else"
-;|  |  | (println)[ hello ]
-;|  |  \_
+ |  | IF [ why_not ]
+ |  |  | hello = "qqq inner if"
+ |  |  | (puts)[ hello ]
+ |  |  \
+ |  | ELSE
+ |  |  | hello = "qqq inner else"
+ |  |  | (puts)[ hello ]
+ |  |  \_
+ |  \
+ | ELSE
+ |  | hello = "else working"
+ |  | (puts)[ hello ]
+ |  | IF [ why_not ]
+ |  |  | hello = "inner if"
+ |  |  | (puts)[ hello ]
+ |  |  \
+ |  | ELSE
+ |  |  | hello = "inner else"
+ |  |  | (puts)[ hello ]
+ |  |  \_
  |  \_
  | (puts)[ str ]
  | RET [ 0 ]
