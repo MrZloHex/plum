@@ -1,35 +1,22 @@
 ; TEST OF ARYPHMETIC AND LOGIC OPERATIONS 
 
 I32 main: []
- | @C1 str
- | str = "Hello from PLUM!"
+ | @C1 str = "Hello from PLUM!"
  | (puts)[ str ]
  |
- | I32 a
- | I32 b
- | a = 2
- | b = 5
- | I32 plus
- | I32 minus
- | I32 division
- | I32 multiply
- | plus = a + b
- | minus = a - b
- | multiply = a * b
- | division = a / b
+ | I32 a = 2
+ | I32 b = 5
+ | I32 plus = a + b
+ | I32 minus = a - b
+ | I32 multiply = a * b
+ | I32 division = a / b
  |
- | B1 eq
- | B1 neq
- | B1 les
- | B1 leq
- | B1 grt
- | B1 geq
- | eq  = a == b
- | neq = a != b
- | les = a <  b
- | leq = a <= b
- | grt = a >  b
- | geq = a >= b
+ | B1 eq  = a == b
+ | B1 neq = a != b
+ | B1 les = a <  b
+ | B1 leq = a <= b
+ | B1 grt = a >  b
+ | B1 geq = a >= b
  |
  | IF [ eq ]
  |  | str = "a & b are equal"

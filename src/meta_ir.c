@@ -39,7 +39,7 @@ meta_collect(Meta *meta, AST *ast)
                 // printf("GOT PARAM\n");
                 Node *type = ast_next(ast);
                 Node *ident = ast_next(ast);
-                Node *var = node_make_var_decl(type, ident);
+                Node *var = node_make_var_decl(type, ident, NULL);
                 // node_dump_var_decl(var, 1);
                 mnv_append(&curr_scope.params, var);
             }
@@ -76,7 +76,7 @@ meta_collect(Meta *meta, AST *ast)
 
                 Node *type = ast_next(ast);
                 Node *ident = ast_next(ast);
-                Node *var = node_make_var_decl(type, ident);
+                Node *var = node_make_var_decl(type, ident, NULL);
                 curr_scope.scope = var;
             }
             else if (curr->type == NT_FN_DECL)

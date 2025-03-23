@@ -88,6 +88,7 @@ typedef struct
 {
     struct Node_S *ident;
     struct Node_S *type;
+    struct Node_S *value; // N_Expr
 } N_Var_Decl;
 
 
@@ -342,7 +343,7 @@ Node *
 node_make_bool_lit(N_BoolLit lit);
 
 Node *
-node_make_var_decl(Node *type, Node *id);
+node_make_var_decl(Node *type, Node *id, Node *value);
 
 Node *
 node_make_type(const char *type);

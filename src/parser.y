@@ -207,10 +207,15 @@ cond_else:
 
 
 var_decl:
-    type IDENT
+    type IDENT EQUAL expression
     {
         Node *id = node_make_ident($2);
-        $$ = node_make_var_decl($1, id);
+        $$ = node_make_var_decl($1, id, $4);
+    }
+    | type IDENT
+    {
+        Node *id = node_make_ident($2);
+        $$ = node_make_var_decl($1, id, NULL);
     }
 ;
 

@@ -243,13 +243,14 @@ node_dump_bool_lit(Node *lit, size_t offset)
 }
 
 Node *
-node_make_var_decl(Node *type, Node *id)
+node_make_var_decl(Node *type, Node *id, Node *value)
 {
     NODE_ALLOC(n);
     
     n->type = NT_VAR_DECL;
     n->as.var_decl.type = type;
     n->as.var_decl.ident = id;
+    n->as.var_decl.value = value;
 
     return n;
 }
@@ -261,6 +262,8 @@ node_dump_var_decl(Node *var, size_t offset)
     printf("VAR DECL\n");
     node_dump_type(var->as.var_decl.type, offset+1);
     node_dump_ident(var->as.var_decl.ident, offset+1);
+    if (var->as.var_decl.value)
+    { node_dump_expr(var->as.var_decl.value, offset+1); }
 }
 
 Node *

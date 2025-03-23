@@ -418,6 +418,23 @@ gen_var_decl(IR *ir)
         &ir->text, "  %%%s = alloca %s\n",
         id->as.ident, gen_type(type)
     );
+
+    if (!decl->as.var_decl.value)
+    { return; }
+
+    int rr = new_reg();
+    gen_expr(ir, rr, type);
+
+    dynstr_append_fstr
+    (
+        &ir->text, "  store %s %%r%d, %s%s %%%s\n",
+        gen_type(type), rr,
+        gen_type(type), 
+        (type->as.type.ptrs ? "" : "*"),
+        id->as.ident
+    );
+
+    return;
 }
 
 static void

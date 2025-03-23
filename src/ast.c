@@ -89,6 +89,7 @@ ast_next(AST *ast)
 
         case NT_VAR_DECL:
         {
+            PUSH_NODE(curr->as.var_decl.value);
             PUSH_NODE(curr->as.var_decl.ident);
             PUSH_NODE(curr->as.var_decl.type);
         } break;

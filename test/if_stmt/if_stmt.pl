@@ -1,14 +1,11 @@
 ; TEST OF BRANCHING
 
 I32 main: []
- | @C1 str
- | str = "Hello from PLUM!"
+ | @C1 str = "Hello from PLUM!"
  |
  | @C1 hello
- | B1 why
- | B1 why_not
- | why = TRUE
- | why_not = TRUE
+ | B1 why = TRUE
+ | B1 why_not = TRUE
  | 
  | IF [ why ]
  |  | hello = "if working"

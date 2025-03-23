@@ -31,9 +31,10 @@ clang $TEST.bc -o $TEST
 popd
 
 if $WITH_EXE; then
+    echo "EXE ./$TEST/$TEST $@"
     ./$TEST/$TEST $@
     RES=$?
     if $WITH_RES; then
-        echo $RES
+        echo "RES $RES"
     fi
 fi

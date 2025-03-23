@@ -11,12 +11,9 @@ U8 foo: [ U8 a | U8 b ]
  \_
 
 I32 main: [ ]
- | U8 a
- | U8 b
- | a = 34
- | b = 35
- | U8 res
- | res = (foo)[ a | b ]
+ | U8 a = 34
+ | U8 b = 35
+ | U8 res = (foo)[ a | b ]
  | RET [ res ]
  \_
 

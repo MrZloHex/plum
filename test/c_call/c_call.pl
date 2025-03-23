@@ -1,20 +1,10 @@
 ; TEST OF CALLING EXTERNAL FUNCTION FROM C
 
-ABYSS println: [ @C1 str ]
- | I32 newline
- | newline = '\n'
- | (puts)[str]
- | (putchar)[newline]
- | RET []
- \_
-
 I32 main: []
- | @C1 str
- | str = "Hello from PLUM!"
- | (println)[ str ]
+ | @C1 str = "Hello from PLUM!"
+ | (puts)[ str ]
  | RET [ 0 ]
  \_
 
 I32 puts:    [ @C1 str ]
 
-I32 putchar: [ I32 char ]
