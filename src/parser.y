@@ -193,8 +193,6 @@ cond_else:
     { $$ = node_make_else($3); }
 ;
 
-cond_if_else:
-
 
 var_decl:
     type IDENT
