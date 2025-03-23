@@ -6,7 +6,7 @@ I32 puts: [ @C1 str ]
 
 ABYSS println: [ @C1 str ]
  | (puts)[str]
- | (putchar)[ 10 ]
+ | (putchar)[ '\n' ]
  | RET []
  \_
 

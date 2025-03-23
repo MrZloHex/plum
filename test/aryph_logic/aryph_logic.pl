@@ -4,43 +4,30 @@ I32 main: []
  | @C1 str = "Hello from PLUM!"
  | (puts)[ str ]
  |
- | I32 a = 2
- | I32 b = 5
+ | I32 a = 5
+ | I32 b = 2
  | I32 plus = a + b
  | I32 minus = a - b
  | I32 multiply = a * b
  | I32 division = a / b
  |
- | B1 eq  = a == b
- | B1 neq = a != b
- | B1 les = a <  b
- | B1 leq = a <= b
- | B1 grt = a >  b
- | B1 geq = a >= b
- |
- | IF [ eq ]
- |  | str = "a & b are equal"
- |  | (puts)[str]
+ | IF [ a == b ]
+ |  | (puts)[ "a & b are equal" ]
  |  \_
- | IF [ neq ]
- |  | str = "a & b are NOT equal"
- |  | (puts)[str]
+ | IF [ a != b ]
+ |  | (puts)["a & b are NOT equal"]
  |  \_
- | IF [ les]
- |  | str = "a is less then b"
- |  | (puts)[str]
+ | IF [ a < b ]
+ |  | (puts)["a is less then b"]
  |  \_
- | IF [ leq ]
- |  | str = "a <= b"
- |  | (puts)[str]
+ | IF [ a <= b ]
+ |  | (puts)["a <= b"]
  |  \_
- | IF [ grt ]
- |  | str = "a > b"
- |  | (puts)[str]
+ | IF [ a > b ]
+ |  | (puts)["a > b"]
  |  \_
- | IF [ geq ]
- |  | str = "a >= b"
- |  | (puts)[str]
+ | IF [ a >= b ]
+ |  | (puts)["a >= b"]
  |  \_
  | RET [ multiply ]
  \_

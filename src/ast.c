@@ -119,7 +119,7 @@ ast_next(AST *ast)
         case NT_COND_IF:
         {
             PUSH_NODE(curr->as.cond_if.block);
-            PUSH_NODE(curr->as.cond_if.ident);
+            PUSH_NODE(curr->as.cond_if.expr);
         } break;
 
         case NT_COND_ELSE:

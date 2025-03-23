@@ -185,19 +185,13 @@ cond_stmt:
 ;
 
 cond_if:
-    IF LBRACKET IDENT RBRACKET block_with_end
-    {
-        Node *id = node_make_ident($3);
-        $$ = node_make_if(id, $5);
-    }
+    IF LBRACKET expression RBRACKET block_with_end
+    { $$ = node_make_if($3, $5); }
 ;
 
 cond_if_else:
-    IF LBRACKET IDENT RBRACKET block_with_continue
-    {
-        Node *id = node_make_ident($3);
-        $$ = node_make_if(id, $5);
-    }
+    IF LBRACKET expression RBRACKET block_with_continue
+    { $$ = node_make_if($3, $5); }
 ;
 
 cond_else:

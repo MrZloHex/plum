@@ -67,7 +67,7 @@ typedef struct
 
 typedef struct
 {
-    struct Node_S *ident;
+    struct Node_S *expr;
     struct Node_S *block;
 } N_If;
 

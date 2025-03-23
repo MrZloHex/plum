@@ -19,6 +19,15 @@ new_label(void)
 static int loop_label = 0;
 
 
+#define MAKE_TYPE(N, T, P)                      \
+    Node *N = (Node *)calloc(1, sizeof(Node));  \
+    assert(N && "FAILED TO ALLOC");             \
+    N->type = NT_TYPE;                          \
+    N->as.type.ptrs = P;                        \
+    N->as.type.type = T;                        \
+
+
+
 void
 ir_init(IR *ir, Meta *meta, AST *ast)
 {
@@ -178,12 +187,7 @@ gen_str_lit(IR *ir, int r)
     );
     dynstr_append_fstr(&ir->text, "  %%r%d = load ptr, ptr %%r%d\n", r, temp);
 
-    Node *n = (Node *)calloc(1, sizeof(Node));
-    assert(n && "FAILED TO ALLOC");
-    n->type = NT_TYPE;
-    n->as.type.ptrs = 1;
-    n->as.type.type = T_C1;
-
+    MAKE_TYPE(n, T_C1, 1);
     return n;
 }
 
@@ -195,11 +199,7 @@ gen_chr_lit(IR *ir, int r, Node *etype)
 
     if (!etype)
     {
-        Node *n = (Node *)calloc(1, sizeof(Node));
-        assert(n && "FAILED TO ALLOC");
-        n->type = NT_TYPE;
-        n->as.type.ptrs = 0;
-        n->as.type.type = T_I8;
+        MAKE_TYPE(n, T_I8, 0);
         etype = n;
     }
 
@@ -220,11 +220,7 @@ gen_num_lit(IR *ir, int r, Node *etype)
 
     if (!etype)
     {
-        Node *n = (Node *)calloc(1, sizeof(Node));
-        assert(n && "FAILED TO ALLOC");
-        n->type = NT_TYPE;
-        n->as.type.ptrs = 0;
-        n->as.type.type = T_I32;
+        MAKE_TYPE(n, T_I32, 0);
         etype = n;
     }
 
@@ -249,12 +245,7 @@ gen_bool_lit(IR *ir, int r)
         r, "i8", lit->as.bool_lit
     );
 
-    Node *n = (Node *)calloc(1, sizeof(Node));
-    assert(n && "FAILED TO ALLOC");
-    n->type = NT_TYPE;
-    n->as.type.ptrs = 0;
-    n->as.type.type = T_B1;
-
+    MAKE_TYPE(n, T_B1, 0);
     return n;
 }
 
@@ -375,16 +366,16 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
     else if (binop->as.bin_op.type == BOT_MULT)
     { _gen_bin_op_str(&ir->text, "mul", res, exp_type, lr, rr); }
     else if (binop->as.bin_op.type == BOT_DIV)
-#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN DIVISION
+#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN DIVISION"
     { _gen_bin_op_str(&ir->text, "sdiv", res, exp_type, lr, rr); }
     else if (binop->as.bin_op.type == BOT_MOD)
-#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN MODULA
+#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN MODULA"
     { _gen_bin_op_str(&ir->text, "srem", res, exp_type, lr, rr); }
     else if (binop->as.bin_op.type == BOT_EQUAL)
     { _gen_bin_op_str(&ir->text, "icmp eq", temp, exp_type, lr, rr); }
     else if (binop->as.bin_op.type == BOT_NEQ)
     { _gen_bin_op_str(&ir->text, "icmp ne", temp, exp_type, lr, rr); }
-#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN  COMPARISON
+#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN  COMPARISON"
     else if (binop->as.bin_op.type == BOT_LESS)
     { _gen_bin_op_str(&ir->text, "icmp slt", temp, exp_type, lr, rr); }
     else if (binop->as.bin_op.type == BOT_LEQ)
@@ -510,22 +501,15 @@ gen_cond(IR *ir)
     Node *fi = ast_next(ir->ast);
     assert(fi->type == NT_COND_IF && "NOT IF");
 
-    Node *id = ast_next(ir->ast);
-    assert(id->type == NT_IDENT && "NOT IDENT");
-    Node *type = meta_find_type_in_scope(ir->curr, id->as.ident);
-
     int cnd = new_reg();
-    dynstr_append_fstr
-    (
-        &ir->text, "  %%r%d = load %s, %s* %%%s\n",
-        cnd, gen_type(type), gen_type(type), id->as.ident
-    );
+    MAKE_TYPE(bool_type, T_B1, 0);
+    gen_expr(ir, cnd, bool_type);
 
     int cnd_trunc = new_reg();
     dynstr_append_fstr
     (
         &ir->text, "  %%r%d = trunc %s %%r%d to i1\n",
-        cnd_trunc, gen_type(type), cnd
+        cnd_trunc, gen_type(bool_type), cnd
     );
 
     int cnd_res = new_reg();
