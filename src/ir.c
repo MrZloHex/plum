@@ -33,6 +33,8 @@ ir_init(IR *ir, Meta *meta, AST *ast)
 static char *
 gen_type(Node *type)
 {
+    assert(type->type == NT_TYPE && "NOT TYPE");
+
     if (type->as.type.ptrs > 0)
     { return "ptr"; }
 
@@ -161,7 +163,7 @@ gen_ident(IR *ir, int r, Node *etype)
     return etype;
 }
 
-static void
+static Node *
 gen_str_lit(IR *ir, int r)
 {
     Node *lit = ast_next(ir->ast);
@@ -175,39 +177,67 @@ gen_str_lit(IR *ir, int r)
         meta_find_str(ir->meta, lit->as.str_lit), temp
     );
     dynstr_append_fstr(&ir->text, "  %%r%d = load ptr, ptr %%r%d\n", r, temp);
+
+    Node *n = (Node *)calloc(1, sizeof(Node));
+    assert(n && "FAILED TO ALLOC");
+    n->type = NT_TYPE;
+    n->as.type.ptrs = 1;
+    n->as.type.type = T_C1;
+
+    return n;
 }
 
-static void
+static Node *
 gen_chr_lit(IR *ir, int r, Node *etype)
 {
     Node *lit = ast_next(ir->ast);
     assert(lit->type == NT_CHR_LIT && "NOT CHR LIT");
-    assert(etype && "HUY");
-    assert(etype->type == NT_TYPE && "NOT TYPE");
+
+    if (!etype)
+    {
+        Node *n = (Node *)calloc(1, sizeof(Node));
+        assert(n && "FAILED TO ALLOC");
+        n->type = NT_TYPE;
+        n->as.type.ptrs = 0;
+        n->as.type.type = T_I8;
+        etype = n;
+    }
 
     dynstr_append_fstr
     ( 
         &ir->text, "  %%r%d = add %s 0, %d\n" ,
         r, gen_type(etype), lit->as.chr_lit
     );
+
+    return etype;
 }
 
-static void
+static Node *
 gen_num_lit(IR *ir, int r, Node *etype)
 {
     Node *lit = ast_next(ir->ast);
     assert(lit->type == NT_NUM_LIT && "NOT NUM LIT");
-    assert(etype && "HUY");
-    assert(etype->type == NT_TYPE && "NOT TYPE");
+
+    if (!etype)
+    {
+        Node *n = (Node *)calloc(1, sizeof(Node));
+        assert(n && "FAILED TO ALLOC");
+        n->type = NT_TYPE;
+        n->as.type.ptrs = 0;
+        n->as.type.type = T_I32;
+        etype = n;
+    }
 
     dynstr_append_fstr
     ( 
         &ir->text, "  %%r%d = add %s 0, %d\n" ,
         r, gen_type(etype), lit->as.num_lit
     );
+
+    return etype;
 }
 
-static void
+static Node *
 gen_bool_lit(IR *ir, int r)
 {
     Node *lit = ast_next(ir->ast);
@@ -218,6 +248,14 @@ gen_bool_lit(IR *ir, int r)
         &ir->text, "  %%r%d = add %s 0, %d\n" ,
         r, "i8", lit->as.bool_lit
     );
+
+    Node *n = (Node *)calloc(1, sizeof(Node));
+    assert(n && "FAILED TO ALLOC");
+    n->type = NT_TYPE;
+    n->as.type.ptrs = 0;
+    n->as.type.type = T_B1;
+
+    return n;
 }
 
 static Node *
@@ -242,6 +280,7 @@ gen_fn_call(IR *ir, int r)
     {
         int reg = new_reg();
         Node *type = gen_expr(ir, reg, NULL);
+        assert(type && "NULL TYPE");
         argreg_append(&ir->args, (ArgumentREG){ .reg = reg, .type = type });
 
         arg = arg->as.arguments.next;
@@ -385,13 +424,13 @@ gen_expr(IR *ir, int r, Node *exp_type)
     else if (expr->as.expr.type == ET_IDENT)
     { return gen_ident(ir, r, exp_type); }
     else if (expr->as.expr.type == ET_NUM_LIT)
-    { gen_num_lit(ir, r, exp_type); }
+    { return gen_num_lit(ir, r, exp_type); }
     else if (expr->as.expr.type == ET_CHR_LIT)
-    { gen_chr_lit(ir, r, exp_type); }
+    { return gen_chr_lit(ir, r, exp_type); }
     else if (expr->as.expr.type == ET_STR_LIT)
-    { gen_str_lit(ir, r); }
+    { return gen_str_lit(ir, r); }
     else if (expr->as.expr.type == ET_BOOL_LIT)
-    { gen_bool_lit(ir, r); }
+    { return gen_bool_lit(ir, r); }
     else if (expr->as.expr.type == ET_FN_CALL)
     { gen_fn_call(ir, r); }
     else

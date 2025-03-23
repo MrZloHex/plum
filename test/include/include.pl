@@ -1,7 +1,6 @@
 !USES <io.pl>
 
 I32 main: []
- | @C1 str = "Hello from PLUM!"
- | (println)[str]
+ | (println)[ "Hello from PLUM!" ]
  | RET [0]
  \_
