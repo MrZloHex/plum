@@ -32,17 +32,22 @@ I32 main: [ I32 argc | @@C1 argv ]
  | str = " CLI ARGS TEST"
  | (puts)[ str ]
  |
- | I32 arg
- | arg = argc
+ | @@C1 args
+ | args = argv
  | B1 no_arg
+ | I32 arg_counter
+ | arg_counter = 1
  | LOOP
- |  | no_arg = arg <= 1
+ |  | no_arg = arg_counter == argc
  |  | IF [ no_arg ]
  |  |  | BREAK
  |  |  \_
- |  | str = "IS ARG"
+ |  | (print_num)[ arg_counter ]
+ |  | arg_counter = arg_counter + 1
+ |  | str = " IS ARG"
  |  | (puts) [ str ]
- |  | arg = arg - 1
+ |  | (print_num) [ args ]
+ |  | (puts) [ str ]
  |  \_
  | RET [ 0 ]
  \_

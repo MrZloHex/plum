@@ -16,6 +16,7 @@ static int label_counter = 1;
 static int
 new_label(void)
 { return label_counter++; }
+static int loop_label = 0;
 
 
 void
@@ -511,9 +512,35 @@ gen_cond(IR *ir)
 }
 
 static void
+gen_loop(IR *ir)
+{
+    Node *loop = ast_next(ir->ast);
+    assert(loop->type == NT_LOOP && "NOT LOOP STATEMENT");
+
+    int l_in = new_label();
+    int l_out = new_label();
+    dynstr_append_fstr
+    (
+        &ir->text, "  br label %%l%d\nl%d:\n",
+        l_in, l_in
+    );
+
+    loop_label = l_out;
+    gen_block(ir);
+
+    dynstr_append_fstr
+    (
+        &ir->text, "  br label %%l%d\nl%d:\n",
+        l_in, l_out
+    );
+}
+
+static void
 gen_stmt(IR *ir)
 {
     Node *stmt = ast_next(ir->ast);
+    if (stmt->type != NT_STATEMENT)
+    { printf("TYPE: %d\n", stmt->type); }
     assert(stmt->type == NT_STATEMENT && "NOT A STATEMENT");
 
     if (stmt->as.stmt.type == ST_RET)
@@ -524,6 +551,10 @@ gen_stmt(IR *ir)
     { gen_expr(ir, -1, NULL); }
     else if (stmt->as.stmt.type == ST_COND)
     { gen_cond(ir); }
+    else if (stmt->as.stmt.type == ST_LOOP)
+    { gen_loop(ir); }
+    else if (stmt->as.stmt.type == ST_BREAK)
+    { dynstr_append_fstr(&ir->text, "  br label %%l%d\n", loop_label); }
     else
     {
         assert(0 && "NOT IMPL");

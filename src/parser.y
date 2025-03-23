@@ -48,6 +48,7 @@ extern Node *root;
 %type <node> block_with_end block_with_continue block_line_list block_line stmt
 %type <node> var_decl ret_stmt expression type function_call arg_list_opt arg_list
 %type <node> cond_stmt cond_if cond_if_else cond_else
+%type <node> loop_stmt
 %type <vbars> indent_seq
 
 %debug
@@ -163,6 +164,15 @@ stmt:
     { $$ = node_make_stmt(ST_RET, $1); }
     | cond_stmt
     { $$ = node_make_stmt(ST_COND, $1); }
+    | loop_stmt
+    { $$ = node_make_stmt(ST_LOOP, $1); }
+    | BREAK
+    { $$ = node_make_stmt(ST_BREAK, NULL); }
+;
+
+loop_stmt:
+    LOOP block_with_end
+    { $$ = node_make_loop($2); }
 ;
 
 cond_stmt:

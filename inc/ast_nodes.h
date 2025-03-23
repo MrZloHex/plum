@@ -45,6 +45,8 @@ typedef enum
     ST_VAR_DECL,
     ST_RET,
     ST_COND,
+    ST_LOOP,
+    ST_BREAK,
     ST_QUANT
 } StmtType;
 
@@ -53,6 +55,14 @@ typedef struct
     StmtType type;
     struct Node_S *stmt;
 } N_Statement;
+
+// LOOP
+
+typedef struct
+{
+    struct Node_S *block;
+} N_Loop;
+
 
 // IF
 
@@ -219,6 +229,8 @@ typedef enum
     NT_TYPE,
     NT_VAR_DECL,
 
+    NT_LOOP,
+
     NT_COND_STMT,
     NT_COND_IF,
     NT_COND_ELSE,
@@ -259,6 +271,8 @@ typedef struct Node_S
         N_Bin_Op     bin_op;
         N_Type       type;
         N_Var_Decl   var_decl;
+
+        N_Loop       loop;
         
         N_CondStmt   cond_stmt;
         N_If         cond_if;
@@ -353,6 +367,9 @@ node_make_if(Node *expr, Node *block);
 Node *
 node_make_else(Node *block);
 
+Node *
+node_make_loop(Node *block);
+
 
 void
 node_dump_programme(Node *prog, size_t offset);
@@ -419,5 +436,8 @@ node_dump_if(Node *if_stmt, size_t offset);
 
 void
 node_dump_else(Node *else_stmt, size_t offset);
+
+void
+node_dump_loop(Node *loop, size_t offset);
 
 #endif /* __AST_NODES_H__ */

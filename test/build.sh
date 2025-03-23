@@ -4,6 +4,8 @@ WITH_EXE=false
 WITH_RES=false
 TEST="simplest"
 
+set -e
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -t)

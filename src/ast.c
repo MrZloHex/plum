@@ -126,6 +126,11 @@ ast_next(AST *ast)
             PUSH_NODE(curr->as.cond_else.block);
         } break;
 
+        case NT_LOOP:
+        {
+            PUSH_NODE(curr->as.loop.block);
+        } break;
+
         case NT_IDENT:
         case NT_NUM_LIT:
         case NT_CHR_LIT:

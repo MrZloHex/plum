@@ -451,7 +451,7 @@ node_make_stmt(StmtType type, Node *stmt)
 void
 node_dump_stmt(Node *stmt, size_t offset)
 {
-    static char *st_types[ST_QUANT] = { "EXPR", "VAR DECL", "RET", "COND" };
+    static char *st_types[ST_QUANT] = { "EXPR", "VAR DECL", "RET", "COND", "LOOP", "BREAK" };
     PRINT_OFFSET(offset);
     printf("STMT %s\n", st_types[stmt->as.stmt.type]);
     if (stmt->as.stmt.type == ST_EXPR)
@@ -462,6 +462,10 @@ node_dump_stmt(Node *stmt, size_t offset)
     { node_dump_ret(stmt->as.stmt.stmt, offset+1); }
     else if (stmt->as.stmt.type == ST_COND)
     { node_dump_cond(stmt->as.stmt.stmt, offset+1); }
+    else if (stmt->as.stmt.type == ST_LOOP)
+    { node_dump_loop(stmt->as.stmt.stmt, offset+1); }
+    else if (stmt->as.stmt.type == ST_BREAK)
+    { PRINT_OFFSET(offset+1); printf("BREAK\n"); }
 }
 
 Node *
@@ -609,4 +613,24 @@ node_dump_else(Node *else_stmt, size_t offset)
     printf(" - ELSE\n");
     node_dump_block(else_stmt->as.cond_else.block, offset+1);
 }
+
+Node *
+node_make_loop(Node *block)
+{
+    NODE_ALLOC(n);
+
+    n->type = NT_LOOP;
+    n->as.loop.block = block;
+    
+    return n;
+}
+
+void
+node_dump_loop(Node *loop, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("LOOP\n");
+    node_dump_block(loop->as.loop.block, offset+1);
+}
+
 
