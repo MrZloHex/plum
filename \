@@ -248,6 +248,7 @@ typedef enum
     NT_COND_IF,
     NT_COND_ELSE,
 
+
     NT_FN_DEF,
     NT_FN_DECL,
     NT_PARAMETRE,
@@ -281,7 +282,6 @@ typedef struct Node_S
         N_BoolLit    bool_lit;
         
         N_Bin_Op     bin_op;
-        N_Uny_Op     uny_op;
         N_Type       type;
         N_Var_Decl   var_decl;
 
@@ -383,9 +383,6 @@ node_make_else(Node *block);
 Node *
 node_make_loop(Node *block);
 
-Node *
-node_make_uny_op(UnyOpType op, Node *operand);
-
 
 void
 node_dump_programme(Node *prog, size_t offset);
@@ -455,8 +452,5 @@ node_dump_else(Node *else_stmt, size_t offset);
 
 void
 node_dump_loop(Node *loop, size_t offset);
-
-void
-node_dump_uny_op(Node *uny, size_t offset);
 
 #endif /* __AST_NODES_H__ */

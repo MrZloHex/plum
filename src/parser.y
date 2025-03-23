@@ -42,6 +42,8 @@ extern Node *root;
 %left DOUBLE_EQUAL NOT_EQUAL
 %left LESS LEQ GREAT GEQ
 
+%precedence PTR
+
 
 %type <node> program prg_stmt
 %type <node> fn_decl fn_def param_list_opt param_list parametre
@@ -283,6 +285,11 @@ expression:
     {
         Node *e = node_make_bin_op(BOT_GEQ, $1, $3);
         $$ = node_make_expr(ET_BIN_OP, e);
+    }
+    | PTR expression
+    {
+        Node *e = node_make_uny_op(UOT_DEREF, $2);
+        $$ = node_make_expr(ET_UNY_OP, e);
     }
     | function_call
     { $$ = node_make_expr(ET_FN_CALL, $1); }

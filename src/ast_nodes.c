@@ -362,6 +362,27 @@ node_dump_bin_op(Node *op, size_t offset)
 }
 
 Node *
+node_make_uny_op(UnyOpType op, Node *operand)
+{
+    NODE_ALLOC(n);
+
+    n->type = NT_UNY_OP;
+    n->as.uny_op.type = op;
+    n->as.uny_op.operand = operand;
+
+    return n;
+}
+
+void
+node_dump_uny_op(Node *uny, size_t offset)
+{
+    static char *uo_type[UOT_QUANT] = { "DEREF" };
+    PRINT_OFFSET(offset);
+    printf("UNY OP %s\n", uo_type[uny->as.uny_op.type]);
+    node_dump_expr(uny->as.uny_op.operand, offset+1);
+}
+
+Node *
 node_make_parametre(Node *type, Node *id)
 {
     NODE_ALLOC(list);   
@@ -484,7 +505,7 @@ void
 node_dump_expr(Node *expr, size_t offset)
 {
     static char *et_types[ET_QUANT] =
-    { "IDENT", "NUM LIT", "CHR LIT", "STR LIT", "BOOL LIT", "BIN OP", "FN CALL" };
+    { "IDENT", "NUM LIT", "CHR LIT", "STR LIT", "BOOL LIT", "BIN OP", "UNY OP", "FN CALL" };
     PRINT_OFFSET(offset);
     printf("EXPR %s\n", et_types[expr->as.expr.type]);
     if (expr->as.expr.type == ET_IDENT)
@@ -499,6 +520,8 @@ node_dump_expr(Node *expr, size_t offset)
     { node_dump_bool_lit(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_BIN_OP)
     { node_dump_bin_op(expr->as.expr.expr, offset+1); }
+    else if (expr->as.expr.type == ET_UNY_OP)
+    { node_dump_uny_op(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_FN_CALL)
     { node_dump_fncall(expr->as.expr.expr, offset+1); }
 }
