@@ -348,7 +348,7 @@ node_dump_bin_op(Node *op, size_t offset)
 {
     static char *bo_type[BOT_QUANT] =
     {
-        "ASSIGN", "PLUS", "MINUS", "MULT", "DIV",
+        "ASSIGN", "PLUS", "MINUS", "MULT", "DIV", "MOD",
         "EQUAL", "NEQ", "LESS", "LEQ", "GREAT", "GEQ"
     };
     PRINT_OFFSET(offset);

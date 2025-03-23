@@ -337,6 +337,9 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
     else if (binop->as.bin_op.type == BOT_DIV)
 #warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN DIVISION
     { _gen_bin_op_str(&ir->text, "sdiv", res, exp_type, lr, rr); }
+    else if (binop->as.bin_op.type == BOT_MOD)
+#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN MODULA
+    { _gen_bin_op_str(&ir->text, "srem", res, exp_type, lr, rr); }
     else if (binop->as.bin_op.type == BOT_EQUAL)
     { _gen_bin_op_str(&ir->text, "icmp eq", temp, exp_type, lr, rr); }
     else if (binop->as.bin_op.type == BOT_NEQ)

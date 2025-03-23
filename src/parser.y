@@ -28,7 +28,7 @@ extern Node *root;
 %token <vbars> VBAR
 %token BLOCK_END BLOCK_CONTINUE
 %token COLON LBRACKET RBRACKET PTR EQUAL
-%token LPAREN RPAREN RET PLUS MINUS STAR SLASH
+%token LPAREN RPAREN RET PLUS MINUS STAR SLASH MODULA
 %token DOUBLE_EQUAL NOT_EQUAL
 %token LESS LEQ GREAT GEQ
 %token IF ELIF ELSE LOOP BREAK
@@ -38,7 +38,7 @@ extern Node *root;
 
 %left EQUAL
 %left PLUS MINUS
-%left STAR SLASH
+%left STAR SLASH MODULA
 %left DOUBLE_EQUAL NOT_EQUAL
 %left LESS LEQ GREAT GEQ
 
@@ -237,6 +237,11 @@ expression:
     | expression SLASH expression
     {
         Node *e = node_make_bin_op(BOT_DIV, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
+    | expression MODULA expression
+    {
+        Node *e = node_make_bin_op(BOT_MOD, $1, $3);
         $$ = node_make_expr(ET_BIN_OP, e);
     }
     | expression DOUBLE_EQUAL expression

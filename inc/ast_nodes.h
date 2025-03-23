@@ -118,6 +118,7 @@ typedef enum
     BOT_MINUS,
     BOT_MULT,
     BOT_DIV,
+    BOT_MOD,
     BOT_EQUAL,
     BOT_NEQ,
     BOT_LESS,
