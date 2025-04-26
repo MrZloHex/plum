@@ -262,13 +262,22 @@ gen_fn_call(IR *ir, int r)
     Node *id = ast_next(ir->ast);
     assert(id->type == NT_IDENT && "NOT ID");
 
-    Node *a = ast_next(ir->ast);
-    assert(a->type == NT_ARGUMENTS && "NOT ARGUMENT");
+    Node *fn = meta_find_func(ir->meta, id->as.ident);
+    assert(fn && "FN DECL NOT FOUND");
+
+    bool has_args = fn->as.fn_decl.params;
+
+    Node *arg;
+    if (has_args)
+    {
+        Node *a = ast_next(ir->ast);
+        assert(a->type == NT_ARGUMENTS && "NOT ARGUMENT");
+        arg = a;
+    }
 
     argreg_init(&ir->args, 8);
 
-    Node *arg = a;
-    for (;;)
+    for (;has_args;)
     {
         int reg = new_reg();
         Node *type = gen_expr(ir, reg, NULL);
@@ -282,8 +291,6 @@ gen_fn_call(IR *ir, int r)
         { break; }
     }
 
-    Node *fn = meta_find_func(ir->meta, id->as.ident);
-    assert(fn && "FN DECL NOT FOUND");
 
     dynstr_append_str(&ir->text, "  ");
 
@@ -702,9 +709,9 @@ gen_block(IR *ir)
         assert(b->type == NT_BLOCK && "NOT A BLOCK");
         gen_stmt(ir);
 
-        //printf("==============BLOCK=============\n");
-        //printf("%s\n", ir->text.data);
-        //printf("================================\n");
+        printf("==============BLOCK=============\n");
+        printf("%s\n", ir->text.data);
+        printf("================================\n");
     
         block = block->as.block.next;
         if (block)
