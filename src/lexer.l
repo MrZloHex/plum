@@ -47,6 +47,7 @@ C(1|2|4)                    { yylval.str = strdup(yytext); return TYPE; }
 "-"                         { return MINUS; }
 "*"                         { return STAR; }
 "/"                         { return SLASH; }
+"%"                         { return MODULA; }
 
 \'([^\\\']|\\.)\'           { yylval.str = strdup(yytext); return CHR_LITERAL; }
 \"([^\"\\]|\\.)*\"          { yylval.str = strdup(yytext); return STR_LITERAL; }

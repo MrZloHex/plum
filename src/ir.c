@@ -16,6 +16,16 @@ static int label_counter = 1;
 static int
 new_label(void)
 { return label_counter++; }
+static int loop_label = 0;
+
+
+#define MAKE_TYPE(N, T, P)                      \
+    Node *N = (Node *)calloc(1, sizeof(Node));  \
+    assert(N && "FAILED TO ALLOC");             \
+    N->type = NT_TYPE;                          \
+    N->as.type.ptrs = P;                        \
+    N->as.type.type = T;                        \
+
 
 
 void
@@ -32,6 +42,8 @@ ir_init(IR *ir, Meta *meta, AST *ast)
 static char *
 gen_type(Node *type)
 {
+    assert(type->type == NT_TYPE && "NOT TYPE");
+
     if (type->as.type.ptrs > 0)
     { return "ptr"; }
 
@@ -145,6 +157,7 @@ gen_ident(IR *ir, int r, Node *etype)
     
     if (!etype)
     {
+        //printf("%s\n", ir->text.data);
         etype = meta_find_type_in_scope(ir->curr, id->as.ident);
         assert(etype && "NO SUCH VAR");
     }
@@ -160,7 +173,7 @@ gen_ident(IR *ir, int r, Node *etype)
     return etype;
 }
 
-static void
+static Node *
 gen_str_lit(IR *ir, int r)
 {
     Node *lit = ast_next(ir->ast);
@@ -174,39 +187,54 @@ gen_str_lit(IR *ir, int r)
         meta_find_str(ir->meta, lit->as.str_lit), temp
     );
     dynstr_append_fstr(&ir->text, "  %%r%d = load ptr, ptr %%r%d\n", r, temp);
+
+    MAKE_TYPE(n, T_C1, 1);
+    return n;
 }
 
-static void
+static Node *
 gen_chr_lit(IR *ir, int r, Node *etype)
 {
     Node *lit = ast_next(ir->ast);
     assert(lit->type == NT_CHR_LIT && "NOT CHR LIT");
-    assert(etype && "HUY");
-    assert(etype->type == NT_TYPE && "NOT TYPE");
+
+    if (!etype)
+    {
+        MAKE_TYPE(n, T_I8, 0);
+        etype = n;
+    }
 
     dynstr_append_fstr
     ( 
         &ir->text, "  %%r%d = add %s 0, %d\n" ,
         r, gen_type(etype), lit->as.chr_lit
     );
+
+    return etype;
 }
 
-static void
+static Node *
 gen_num_lit(IR *ir, int r, Node *etype)
 {
     Node *lit = ast_next(ir->ast);
     assert(lit->type == NT_NUM_LIT && "NOT NUM LIT");
-    assert(etype && "HUY");
-    assert(etype->type == NT_TYPE && "NOT TYPE");
+
+    if (!etype)
+    {
+        MAKE_TYPE(n, T_I32, 0);
+        etype = n;
+    }
 
     dynstr_append_fstr
     ( 
         &ir->text, "  %%r%d = add %s 0, %d\n" ,
         r, gen_type(etype), lit->as.num_lit
     );
+
+    return etype;
 }
 
-static void
+static Node *
 gen_bool_lit(IR *ir, int r)
 {
     Node *lit = ast_next(ir->ast);
@@ -217,6 +245,9 @@ gen_bool_lit(IR *ir, int r)
         &ir->text, "  %%r%d = add %s 0, %d\n" ,
         r, "i8", lit->as.bool_lit
     );
+
+    MAKE_TYPE(n, T_B1, 0);
+    return n;
 }
 
 static Node *
@@ -241,6 +272,7 @@ gen_fn_call(IR *ir, int r)
     {
         int reg = new_reg();
         Node *type = gen_expr(ir, reg, NULL);
+        assert(type && "NULL TYPE");
         argreg_append(&ir->args, (ArgumentREG){ .reg = reg, .type = type });
 
         arg = arg->as.arguments.next;
@@ -298,76 +330,167 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
 
     if (binop->as.bin_op.type == BOT_ASSIGN)
     {
-        assert(binop->as.bin_op.left->as.expr.type == ET_IDENT && "LVAL NOT IDENT");
+        assert((binop->as.bin_op.left->as.expr.type == ET_IDENT || binop->as.bin_op.left->as.expr.expr->as.uny_op.type == UOT_DEREF ) && "LVAL NOT IDENT");
+        bool its_ident = binop->as.bin_op.left->as.expr.type == ET_IDENT;
 
         int rr = new_reg();
-        Node *id = binop->as.bin_op.left->as.expr.expr;
-        Node *type = meta_find_type_in_scope(ir->curr, id->as.ident);
+        Node *id, *type;
+
+        if (its_ident)
+        {
+            id = binop->as.bin_op.left->as.expr.expr;
+            type = meta_find_type_in_scope(ir->curr, id->as.ident);
+        }
+        else
+        {
+            id = binop->as.bin_op.left->as.expr.expr->as.uny_op.operand->as.expr.expr;
+            assert(id->type == NT_IDENT && "OP FOR DEREF IS NOT IDENT");
+            Node *raw_type = meta_find_type_in_scope(ir->curr, id->as.ident);
+            assert(raw_type->as.type.ptrs && "NOT A PTR");
+            MAKE_TYPE(t, raw_type->as.type.type, raw_type->as.type.ptrs -1);
+            type = t;
+        }
         assert(type && "NO SUCH IDENT");
 
+        //printf("GEN EXPR\n");
         gen_expr(ir, rr, type);
 
-        // I KNOW THAT LVALUE IS IDENT
-        dynstr_append_fstr
-        (
-            &ir->text, "  store %s %%r%d, %s%s %%%s\n",
-            gen_type(type), rr,
-            gen_type(type), 
-            (type->as.type.ptrs ? "" : "*"),
-            id->as.ident
-        );
-        // AND NOW SKIP IT
-        ast_next(ir->ast);
-        ast_next(ir->ast);
+        if (its_ident)
+        {
+            // I KNOW THAT LVALUE IS IDENT
+            dynstr_append_fstr
+            (
+                &ir->text, "  store %s %%r%d, %s%s %%%s\n",
+                gen_type(type), rr,
+                gen_type(type), 
+                (type->as.type.ptrs ? "" : "*"),
+                id->as.ident
+            );
+            // AND NOW SKIP IT
+            ast_next(ir->ast);
+            ast_next(ir->ast);
+        }
+        else
+        {
+            // I KNOW THAT LVALUE IS DEREF OF IDENT
+            int ptr = new_reg();
+            dynstr_append_fstr
+            (
+                &ir->text, "  %%r%d = load ptr, ptr %%%s\n",
+                ptr, id->as.ident
+            );
+            dynstr_append_fstr
+            (
+                &ir->text, "  store %s %%r%d, ptr %%r%d\n",
+                gen_type(type), rr, ptr
+            );
+            // AND NOW SKIP IT
+            ast_next(ir->ast);
+            ast_next(ir->ast);
+            ast_next(ir->ast);
+            ast_next(ir->ast);
+        }
 
         return;
     }
 
-    int rr = new_reg();
-    int lr = new_reg();
-    int temp = new_reg();
-    gen_expr(ir, rr, exp_type);
-    gen_expr(ir, lr, exp_type);
-    if (binop->as.bin_op.type == BOT_PLUS)
-    { _gen_bin_op_str(&ir->text, "add", res, exp_type, lr, rr); }
-    else if (binop->as.bin_op.type == BOT_MINUS)
-    { _gen_bin_op_str(&ir->text, "sub", res, exp_type, lr, rr); }
-    else if (binop->as.bin_op.type == BOT_MULT)
-    { _gen_bin_op_str(&ir->text, "mul", res, exp_type, lr, rr); }
-    else if (binop->as.bin_op.type == BOT_DIV)
-#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN DIVISION
-    { _gen_bin_op_str(&ir->text, "sdiv", res, exp_type, lr, rr); }
-    else if (binop->as.bin_op.type == BOT_EQUAL)
-    { _gen_bin_op_str(&ir->text, "icmp eq", temp, exp_type, lr, rr); }
-    else if (binop->as.bin_op.type == BOT_NEQ)
-    { _gen_bin_op_str(&ir->text, "icmp ne", temp, exp_type, lr, rr); }
-#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN  COMPARISON
-    else if (binop->as.bin_op.type == BOT_LESS)
-    { _gen_bin_op_str(&ir->text, "icmp slt", temp, exp_type, lr, rr); }
-    else if (binop->as.bin_op.type == BOT_LEQ)
-    { _gen_bin_op_str(&ir->text, "icmp sle", temp, exp_type, lr, rr); }
-    else if (binop->as.bin_op.type == BOT_GREAT)
-    { _gen_bin_op_str(&ir->text, "icmp sgt", temp, exp_type, lr, rr); }
-    else if (binop->as.bin_op.type == BOT_GEQ)
-    { _gen_bin_op_str(&ir->text, "icmp sge", temp, exp_type, lr, rr); }
-    else
+    if (exp_type->as.type.ptrs)
     {
-        assert(0 && "NOT IMPL");
-    }
+        assert(binop->as.bin_op.type == BOT_PLUS && "PTR ARYPH ONLY WITH PLUS");
+        int lit = new_reg();
+        int ext = new_reg();
+        int lr = new_reg();
 
-    BinOpType type = binop->as.bin_op.type;
-    if
-    (
-        type == BOT_EQUAL || type == BOT_NEQ   || type == BOT_LEQ ||
-        type == BOT_LESS  || type == BOT_GREAT || type == BOT_GEQ
-    )
-    {
+        Node *t = gen_expr(ir, lit, NULL);
+        gen_expr(ir, lr, exp_type);
+
         dynstr_append_fstr
         (
-            &ir->text, "  %%r%d = zext i1 %%r%d to %s\n",
-            res, temp, gen_type(exp_type)
+            &ir->text, "  %%r%d = sext %s %%r%d to i64\n",
+            ext, gen_type(t), lit
+        );
+
+        dynstr_append_fstr
+        (
+            &ir->text, "  %%r%d = getelementptr inbounds %s, ptr %%r%d, i64 %%r%d\n",
+            res, gen_type(exp_type), lr, ext
         );
     }
+    else
+    {
+        int rr = new_reg();
+        int lr = new_reg();
+        int temp = new_reg();
+        gen_expr(ir, rr, exp_type);
+        gen_expr(ir, lr, exp_type);
+        if (binop->as.bin_op.type == BOT_PLUS)
+        { _gen_bin_op_str(&ir->text, "add", res, exp_type, lr, rr); }
+        else if (binop->as.bin_op.type == BOT_MINUS)
+        { _gen_bin_op_str(&ir->text, "sub", res, exp_type, lr, rr); }
+        else if (binop->as.bin_op.type == BOT_MULT)
+        { _gen_bin_op_str(&ir->text, "mul", res, exp_type, lr, rr); }
+        else if (binop->as.bin_op.type == BOT_DIV)
+#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN DIVISION"
+        { _gen_bin_op_str(&ir->text, "sdiv", res, exp_type, lr, rr); }
+        else if (binop->as.bin_op.type == BOT_MOD)
+#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN MODULA"
+        { _gen_bin_op_str(&ir->text, "srem", res, exp_type, lr, rr); }
+        else if (binop->as.bin_op.type == BOT_EQUAL)
+        { _gen_bin_op_str(&ir->text, "icmp eq", temp, exp_type, lr, rr); }
+        else if (binop->as.bin_op.type == BOT_NEQ)
+        { _gen_bin_op_str(&ir->text, "icmp ne", temp, exp_type, lr, rr); }
+#warning "PLEASE ADD HANDLE OF SIGN AND UNSIGN  COMPARISON"
+        else if (binop->as.bin_op.type == BOT_LESS)
+        { _gen_bin_op_str(&ir->text, "icmp slt", temp, exp_type, lr, rr); }
+        else if (binop->as.bin_op.type == BOT_LEQ)
+        { _gen_bin_op_str(&ir->text, "icmp sle", temp, exp_type, lr, rr); }
+        else if (binop->as.bin_op.type == BOT_GREAT)
+        { _gen_bin_op_str(&ir->text, "icmp sgt", temp, exp_type, lr, rr); }
+        else if (binop->as.bin_op.type == BOT_GEQ)
+        { _gen_bin_op_str(&ir->text, "icmp sge", temp, exp_type, lr, rr); }
+        else
+        {
+            assert(0 && "NOT IMPL");
+        }
+
+        BinOpType type = binop->as.bin_op.type;
+        if
+        (
+            type == BOT_EQUAL || type == BOT_NEQ   || type == BOT_LEQ ||
+            type == BOT_LESS  || type == BOT_GREAT || type == BOT_GEQ
+        )
+        {
+            dynstr_append_fstr
+            (
+                &ir->text, "  %%r%d = zext i1 %%r%d to %s\n",
+                res, temp, gen_type(exp_type)
+            );
+        }
+    }
+}
+
+static void
+gen_uny_op(IR *ir, int res, Node *exp_type)
+{
+    node_dump_type(exp_type, 1);
+
+    Node *uny = ast_next(ir->ast);
+    assert(uny->as.uny_op.type == UOT_DEREF && "NOT IMPL OTHERS");
+    Node *expr = ast_next(ir->ast); (void)expr;
+    Node *ident = ast_next(ir->ast);
+    assert(ident->type == NT_IDENT && "NOT IDENT");
+    
+    int ptr = new_reg();
+    dynstr_append_fstr
+    (
+        &ir->text, "  %%r%d = load ptr, ptr %%%s\n",
+        ptr, ident->as.ident
+    );
+    dynstr_append_fstr
+    (
+        &ir->text, "  %%r%d = load %s, ptr %%r%d\n",
+        res, gen_type(exp_type), ptr
+    );
 }
 
 static Node *
@@ -378,16 +501,18 @@ gen_expr(IR *ir, int r, Node *exp_type)
     
     if (expr->as.expr.type == ET_BIN_OP)
     { gen_bin_op(ir, r, exp_type); }
+    else if (expr->as.expr.type == ET_UNY_OP)
+    { gen_uny_op(ir, r, exp_type); }
     else if (expr->as.expr.type == ET_IDENT)
     { return gen_ident(ir, r, exp_type); }
     else if (expr->as.expr.type == ET_NUM_LIT)
-    { gen_num_lit(ir, r, exp_type); }
+    { return gen_num_lit(ir, r, exp_type); }
     else if (expr->as.expr.type == ET_CHR_LIT)
-    { gen_chr_lit(ir, r, exp_type); }
+    { return gen_chr_lit(ir, r, exp_type); }
     else if (expr->as.expr.type == ET_STR_LIT)
-    { gen_str_lit(ir, r); }
+    { return gen_str_lit(ir, r); }
     else if (expr->as.expr.type == ET_BOOL_LIT)
-    { gen_bool_lit(ir, r); }
+    { return gen_bool_lit(ir, r); }
     else if (expr->as.expr.type == ET_FN_CALL)
     { gen_fn_call(ir, r); }
     else
@@ -414,6 +539,23 @@ gen_var_decl(IR *ir)
         &ir->text, "  %%%s = alloca %s\n",
         id->as.ident, gen_type(type)
     );
+
+    if (!decl->as.var_decl.value)
+    { return; }
+
+    int rr = new_reg();
+    gen_expr(ir, rr, type);
+
+    dynstr_append_fstr
+    (
+        &ir->text, "  store %s %%r%d, %s%s %%%s\n",
+        gen_type(type), rr,
+        gen_type(type), 
+        (type->as.type.ptrs ? "" : "*"),
+        id->as.ident
+    );
+
+    return;
 }
 
 static void
@@ -450,22 +592,15 @@ gen_cond(IR *ir)
     Node *fi = ast_next(ir->ast);
     assert(fi->type == NT_COND_IF && "NOT IF");
 
-    Node *id = ast_next(ir->ast);
-    assert(id->type == NT_IDENT && "NOT IDENT");
-    Node *type = meta_find_type_in_scope(ir->curr, id->as.ident);
-
     int cnd = new_reg();
-    dynstr_append_fstr
-    (
-        &ir->text, "  %%r%d = load %s, %s* %%%s\n",
-        cnd, gen_type(type), gen_type(type), id->as.ident
-    );
+    MAKE_TYPE(bool_type, T_B1, 0);
+    gen_expr(ir, cnd, bool_type);
 
     int cnd_trunc = new_reg();
     dynstr_append_fstr
     (
         &ir->text, "  %%r%d = trunc %s %%r%d to i1\n",
-        cnd_trunc, gen_type(type), cnd
+        cnd_trunc, gen_type(bool_type), cnd
     );
 
     int cnd_res = new_reg();
@@ -508,9 +643,35 @@ gen_cond(IR *ir)
 }
 
 static void
+gen_loop(IR *ir)
+{
+    Node *loop = ast_next(ir->ast);
+    assert(loop->type == NT_LOOP && "NOT LOOP STATEMENT");
+
+    int l_in = new_label();
+    int l_out = new_label();
+    dynstr_append_fstr
+    (
+        &ir->text, "  br label %%l%d\nl%d:\n",
+        l_in, l_in
+    );
+
+    loop_label = l_out;
+    gen_block(ir);
+
+    dynstr_append_fstr
+    (
+        &ir->text, "  br label %%l%d\nl%d:\n",
+        l_in, l_out
+    );
+}
+
+static void
 gen_stmt(IR *ir)
 {
     Node *stmt = ast_next(ir->ast);
+    if (stmt->type != NT_STATEMENT)
+    { printf("TYPE: %d\n", stmt->type); }
     assert(stmt->type == NT_STATEMENT && "NOT A STATEMENT");
 
     if (stmt->as.stmt.type == ST_RET)
@@ -521,6 +682,10 @@ gen_stmt(IR *ir)
     { gen_expr(ir, -1, NULL); }
     else if (stmt->as.stmt.type == ST_COND)
     { gen_cond(ir); }
+    else if (stmt->as.stmt.type == ST_LOOP)
+    { gen_loop(ir); }
+    else if (stmt->as.stmt.type == ST_BREAK)
+    { dynstr_append_fstr(&ir->text, "  br label %%l%d\n", loop_label); }
     else
     {
         assert(0 && "NOT IMPL");
@@ -537,9 +702,9 @@ gen_block(IR *ir)
         assert(b->type == NT_BLOCK && "NOT A BLOCK");
         gen_stmt(ir);
 
-        // printf("==============BLOCK=============\n");
-        // printf("%s\n", ir->text.data);
-        // printf("================================\n");
+        //printf("==============BLOCK=============\n");
+        //printf("%s\n", ir->text.data);
+        //printf("================================\n");
     
         block = block->as.block.next;
         if (block)

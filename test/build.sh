@@ -1,15 +1,40 @@
 #!/bin/bash
 
-pushd $1
-../../bin/plc $1.pl -o $1.ll --emit=IR
-llvm-as $1.ll -o $1.bc 
-clang $1.bc -o $1
+WITH_EXE=false
+WITH_RES=false
+TEST="simplest"
+
+set -e
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -t)
+            TEST=$2
+            shift 2
+            ;;
+        -c)
+            WITH_EXE=true
+            shift 1
+            ;;
+        -r)
+            WITH_RES=true
+            shift 1
+            ;;
+        *) break
+    esac
+done
+
+pushd $TEST
+../../bin/plc $TEST.pl -o $TEST.ll --emit=IR
+llvm-as $TEST.ll -o $TEST.bc 
+clang $TEST.bc -o $TEST
 popd
 
-if [[ $2 == "-c" ]]; then
-    ./$1/$1
+if $WITH_EXE; then
+    echo "EXE ./$TEST/$TEST $@"
+    ./$TEST/$TEST $@
     RES=$?
-    if [[ $3 == "-r" ]]; then
-        echo $RES
+    if $WITH_RES; then
+        echo "RES $RES"
     fi
 fi

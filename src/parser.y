@@ -28,7 +28,7 @@ extern Node *root;
 %token <vbars> VBAR
 %token BLOCK_END BLOCK_CONTINUE
 %token COLON LBRACKET RBRACKET PTR EQUAL
-%token LPAREN RPAREN RET PLUS MINUS STAR SLASH
+%token LPAREN RPAREN RET PLUS MINUS STAR SLASH MODULA
 %token DOUBLE_EQUAL NOT_EQUAL
 %token LESS LEQ GREAT GEQ
 %token IF ELIF ELSE LOOP BREAK
@@ -38,9 +38,11 @@ extern Node *root;
 
 %left EQUAL
 %left PLUS MINUS
-%left STAR SLASH
+%left STAR SLASH MODULA
 %left DOUBLE_EQUAL NOT_EQUAL
 %left LESS LEQ GREAT GEQ
+
+%precedence PTR
 
 
 %type <node> program prg_stmt
@@ -48,6 +50,7 @@ extern Node *root;
 %type <node> block_with_end block_with_continue block_line_list block_line stmt
 %type <node> var_decl ret_stmt expression type function_call arg_list_opt arg_list
 %type <node> cond_stmt cond_if cond_if_else cond_else
+%type <node> loop_stmt
 %type <vbars> indent_seq
 
 %debug
@@ -163,6 +166,15 @@ stmt:
     { $$ = node_make_stmt(ST_RET, $1); }
     | cond_stmt
     { $$ = node_make_stmt(ST_COND, $1); }
+    | loop_stmt
+    { $$ = node_make_stmt(ST_LOOP, $1); }
+    | BREAK
+    { $$ = node_make_stmt(ST_BREAK, NULL); }
+;
+
+loop_stmt:
+    LOOP block_with_end
+    { $$ = node_make_loop($2); }
 ;
 
 cond_stmt:
@@ -173,19 +185,13 @@ cond_stmt:
 ;
 
 cond_if:
-    IF LBRACKET IDENT RBRACKET block_with_end
-    {
-        Node *id = node_make_ident($3);
-        $$ = node_make_if(id, $5);
-    }
+    IF LBRACKET expression RBRACKET block_with_end
+    { $$ = node_make_if($3, $5); }
 ;
 
 cond_if_else:
-    IF LBRACKET IDENT RBRACKET block_with_continue
-    {
-        Node *id = node_make_ident($3);
-        $$ = node_make_if(id, $5);
-    }
+    IF LBRACKET expression RBRACKET block_with_continue
+    { $$ = node_make_if($3, $5); }
 ;
 
 cond_else:
@@ -195,10 +201,15 @@ cond_else:
 
 
 var_decl:
-    type IDENT
+    type IDENT EQUAL expression
     {
         Node *id = node_make_ident($2);
-        $$ = node_make_var_decl($1, id);
+        $$ = node_make_var_decl($1, id, $4);
+    }
+    | type IDENT
+    {
+        Node *id = node_make_ident($2);
+        $$ = node_make_var_decl($1, id, NULL);
     }
 ;
 
@@ -239,6 +250,11 @@ expression:
         Node *e = node_make_bin_op(BOT_DIV, $1, $3);
         $$ = node_make_expr(ET_BIN_OP, e);
     }
+    | expression MODULA expression
+    {
+        Node *e = node_make_bin_op(BOT_MOD, $1, $3);
+        $$ = node_make_expr(ET_BIN_OP, e);
+    }
     | expression DOUBLE_EQUAL expression
     {
         Node *e = node_make_bin_op(BOT_EQUAL, $1, $3);
@@ -268,6 +284,11 @@ expression:
     {
         Node *e = node_make_bin_op(BOT_GEQ, $1, $3);
         $$ = node_make_expr(ET_BIN_OP, e);
+    }
+    | PTR expression
+    {
+        Node *e = node_make_uny_op(UOT_DEREF, $2);
+        $$ = node_make_expr(ET_UNY_OP, e);
     }
     | function_call
     { $$ = node_make_expr(ET_FN_CALL, $1); }

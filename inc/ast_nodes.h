@@ -45,6 +45,8 @@ typedef enum
     ST_VAR_DECL,
     ST_RET,
     ST_COND,
+    ST_LOOP,
+    ST_BREAK,
     ST_QUANT
 } StmtType;
 
@@ -54,11 +56,18 @@ typedef struct
     struct Node_S *stmt;
 } N_Statement;
 
+// LOOP
+
+typedef struct
+{
+    struct Node_S *block;
+} N_Loop;
+
 // IF
 
 typedef struct
 {
-    struct Node_S *ident;
+    struct Node_S *expr;
     struct Node_S *block;
 } N_If;
 
@@ -79,6 +88,7 @@ typedef struct
 {
     struct Node_S *ident;
     struct Node_S *type;
+    struct Node_S *value; // N_Expr
 } N_Var_Decl;
 
 
@@ -92,6 +102,7 @@ typedef enum
     ET_STR_LIT,
     ET_BOOL_LIT,
     ET_BIN_OP,
+    ET_UNY_OP,
     ET_FN_CALL,
     ET_QUANT
 } ExprType;
@@ -118,6 +129,7 @@ typedef enum
     BOT_MINUS,
     BOT_MULT,
     BOT_DIV,
+    BOT_MOD,
     BOT_EQUAL,
     BOT_NEQ,
     BOT_LESS,
@@ -133,6 +145,18 @@ typedef struct
     struct Node_S *left;
     struct Node_S *right;
 } N_Bin_Op;
+
+typedef enum
+{
+    UOT_DEREF,
+    UOT_QUANT
+} UnyOpType;
+
+typedef struct
+{
+    UnyOpType type;
+    struct Node_S *operand;
+} N_Uny_Op;
 
 // TERMINALS
 
@@ -215,13 +239,15 @@ typedef enum
     NT_BOOL_LIT,
 
     NT_BIN_OP,
+    NT_UNY_OP,
     NT_TYPE,
     NT_VAR_DECL,
+
+    NT_LOOP,
 
     NT_COND_STMT,
     NT_COND_IF,
     NT_COND_ELSE,
-
 
     NT_FN_DEF,
     NT_FN_DECL,
@@ -256,8 +282,11 @@ typedef struct Node_S
         N_BoolLit    bool_lit;
         
         N_Bin_Op     bin_op;
+        N_Uny_Op     uny_op;
         N_Type       type;
         N_Var_Decl   var_decl;
+
+        N_Loop       loop;
         
         N_CondStmt   cond_stmt;
         N_If         cond_if;
@@ -314,7 +343,7 @@ Node *
 node_make_bool_lit(N_BoolLit lit);
 
 Node *
-node_make_var_decl(Node *type, Node *id);
+node_make_var_decl(Node *type, Node *id, Node *value);
 
 Node *
 node_make_type(const char *type);
@@ -351,6 +380,12 @@ node_make_if(Node *expr, Node *block);
 
 Node *
 node_make_else(Node *block);
+
+Node *
+node_make_loop(Node *block);
+
+Node *
+node_make_uny_op(UnyOpType op, Node *operand);
 
 
 void
@@ -418,5 +453,11 @@ node_dump_if(Node *if_stmt, size_t offset);
 
 void
 node_dump_else(Node *else_stmt, size_t offset);
+
+void
+node_dump_loop(Node *loop, size_t offset);
+
+void
+node_dump_uny_op(Node *uny, size_t offset);
 
 #endif /* __AST_NODES_H__ */

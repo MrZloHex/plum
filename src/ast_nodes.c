@@ -8,20 +8,33 @@ const char *node_types_str[NT_QUANT] =
 {
     "NT_EXPR",
     "NT_IDENT",
+
     "NT_NUM_LIT",
     "NT_CHR_LIT",
     "NT_STR_LIT",
+    "NT_BOOL_LIT",
+
     "NT_BIN_OP",
+    "NT_UNY_OP",
     "NT_TYPE",
     "NT_VAR_DECL",
-    "NT_RET",
+
+    "NT_LOOP",
+    "NT_COND_STMT",
+    "NT_COND_IF",
+    "NT_COND_ELSE",
+
     "NT_FN_DEF",
     "NT_FN_DECL",
     "NT_PARAMETRE",
+
     "NT_FN_CALL",
     "NT_ARGUMENTS",
+    
     "NT_BLOCK",
+    "NT_RET",
     "NT_STATEMENT",
+    
     "NT_PRG_STMT",
     "NT_PROGRAMME"
 };
@@ -243,13 +256,14 @@ node_dump_bool_lit(Node *lit, size_t offset)
 }
 
 Node *
-node_make_var_decl(Node *type, Node *id)
+node_make_var_decl(Node *type, Node *id, Node *value)
 {
     NODE_ALLOC(n);
     
     n->type = NT_VAR_DECL;
     n->as.var_decl.type = type;
     n->as.var_decl.ident = id;
+    n->as.var_decl.value = value;
 
     return n;
 }
@@ -261,6 +275,8 @@ node_dump_var_decl(Node *var, size_t offset)
     printf("VAR DECL\n");
     node_dump_type(var->as.var_decl.type, offset+1);
     node_dump_ident(var->as.var_decl.ident, offset+1);
+    if (var->as.var_decl.value)
+    { node_dump_expr(var->as.var_decl.value, offset+1); }
 }
 
 Node *
@@ -348,7 +364,7 @@ node_dump_bin_op(Node *op, size_t offset)
 {
     static char *bo_type[BOT_QUANT] =
     {
-        "ASSIGN", "PLUS", "MINUS", "MULT", "DIV",
+        "ASSIGN", "PLUS", "MINUS", "MULT", "DIV", "MOD",
         "EQUAL", "NEQ", "LESS", "LEQ", "GREAT", "GEQ"
     };
     PRINT_OFFSET(offset);
@@ -359,6 +375,27 @@ node_dump_bin_op(Node *op, size_t offset)
     PRINT_OFFSET(offset);
     printf(" right:\n");
     node_dump_expr(op->as.bin_op.right, offset+1);
+}
+
+Node *
+node_make_uny_op(UnyOpType op, Node *operand)
+{
+    NODE_ALLOC(n);
+
+    n->type = NT_UNY_OP;
+    n->as.uny_op.type = op;
+    n->as.uny_op.operand = operand;
+
+    return n;
+}
+
+void
+node_dump_uny_op(Node *uny, size_t offset)
+{
+    static char *uo_type[UOT_QUANT] = { "DEREF" };
+    PRINT_OFFSET(offset);
+    printf("UNY OP %s\n", uo_type[uny->as.uny_op.type]);
+    node_dump_expr(uny->as.uny_op.operand, offset+1);
 }
 
 Node *
@@ -451,7 +488,7 @@ node_make_stmt(StmtType type, Node *stmt)
 void
 node_dump_stmt(Node *stmt, size_t offset)
 {
-    static char *st_types[ST_QUANT] = { "EXPR", "VAR DECL", "RET", "COND" };
+    static char *st_types[ST_QUANT] = { "EXPR", "VAR DECL", "RET", "COND", "LOOP", "BREAK" };
     PRINT_OFFSET(offset);
     printf("STMT %s\n", st_types[stmt->as.stmt.type]);
     if (stmt->as.stmt.type == ST_EXPR)
@@ -462,6 +499,10 @@ node_dump_stmt(Node *stmt, size_t offset)
     { node_dump_ret(stmt->as.stmt.stmt, offset+1); }
     else if (stmt->as.stmt.type == ST_COND)
     { node_dump_cond(stmt->as.stmt.stmt, offset+1); }
+    else if (stmt->as.stmt.type == ST_LOOP)
+    { node_dump_loop(stmt->as.stmt.stmt, offset+1); }
+    else if (stmt->as.stmt.type == ST_BREAK)
+    { PRINT_OFFSET(offset+1); printf("BREAK\n"); }
 }
 
 Node *
@@ -480,7 +521,7 @@ void
 node_dump_expr(Node *expr, size_t offset)
 {
     static char *et_types[ET_QUANT] =
-    { "IDENT", "NUM LIT", "CHR LIT", "STR LIT", "BOOL LIT", "BIN OP", "FN CALL" };
+    { "IDENT", "NUM LIT", "CHR LIT", "STR LIT", "BOOL LIT", "BIN OP", "UNY OP", "FN CALL" };
     PRINT_OFFSET(offset);
     printf("EXPR %s\n", et_types[expr->as.expr.type]);
     if (expr->as.expr.type == ET_IDENT)
@@ -495,6 +536,8 @@ node_dump_expr(Node *expr, size_t offset)
     { node_dump_bool_lit(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_BIN_OP)
     { node_dump_bin_op(expr->as.expr.expr, offset+1); }
+    else if (expr->as.expr.type == ET_UNY_OP)
+    { node_dump_uny_op(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_FN_CALL)
     { node_dump_fncall(expr->as.expr.expr, offset+1); }
 }
@@ -561,12 +604,12 @@ node_make_cond(Node *if_part, Node *else_part)
 }
 
 Node *
-node_make_if(Node *ident, Node *block)
+node_make_if(Node *expr, Node *block)
 {
     NODE_ALLOC(a);
 
     a->type = NT_COND_IF;
-    a->as.cond_if.ident = ident;
+    a->as.cond_if.expr = expr;
     a->as.cond_if.block = block;
 
     return a;
@@ -598,7 +641,7 @@ node_dump_if(Node *if_stmt, size_t offset)
 {
     PRINT_OFFSET(offset);
     printf(" - IF\n");
-    node_dump_ident(if_stmt->as.cond_if.ident, offset+1);
+    node_dump_expr(if_stmt->as.cond_if.expr, offset+1);
     node_dump_block(if_stmt->as.cond_if.block, offset+1);
 }
 
@@ -609,4 +652,24 @@ node_dump_else(Node *else_stmt, size_t offset)
     printf(" - ELSE\n");
     node_dump_block(else_stmt->as.cond_else.block, offset+1);
 }
+
+Node *
+node_make_loop(Node *block)
+{
+    NODE_ALLOC(n);
+
+    n->type = NT_LOOP;
+    n->as.loop.block = block;
+    
+    return n;
+}
+
+void
+node_dump_loop(Node *loop, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("LOOP\n");
+    node_dump_block(loop->as.loop.block, offset+1);
+}
+
 

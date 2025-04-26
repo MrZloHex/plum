@@ -89,6 +89,7 @@ ast_next(AST *ast)
 
         case NT_VAR_DECL:
         {
+            PUSH_NODE(curr->as.var_decl.value);
             PUSH_NODE(curr->as.var_decl.ident);
             PUSH_NODE(curr->as.var_decl.type);
         } break;
@@ -109,6 +110,11 @@ ast_next(AST *ast)
             PUSH_NODE(curr->as.bin_op.right);
         } break;
 
+        case NT_UNY_OP:
+        {
+            PUSH_NODE(curr->as.uny_op.operand);
+        } break;
+
         case NT_COND_STMT:
         {
             PUSH_NODE(curr->as.cond_stmt.else_block);
@@ -118,12 +124,17 @@ ast_next(AST *ast)
         case NT_COND_IF:
         {
             PUSH_NODE(curr->as.cond_if.block);
-            PUSH_NODE(curr->as.cond_if.ident);
+            PUSH_NODE(curr->as.cond_if.expr);
         } break;
 
         case NT_COND_ELSE:
         {
             PUSH_NODE(curr->as.cond_else.block);
+        } break;
+
+        case NT_LOOP:
+        {
+            PUSH_NODE(curr->as.loop.block);
         } break;
 
         case NT_IDENT:

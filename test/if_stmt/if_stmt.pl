@@ -1,37 +1,26 @@
 ; TEST OF BRANCHING
 
 I32 main: []
- | @C1 str
- | str = "Hello from PLUM!"
+ | @C1 str = "Hello from PLUM!"
  |
- | @C1 hello
- | B1 why
- | B1 why_not
- | why = TRUE
- | why_not = TRUE
+ | B1 why_not = TRUE
  | 
- | IF [ why ]
- |  | hello = "if working"
- |  | (puts)[ hello ]
+ | IF [ TRUE ]
+ |  | (puts)[ "outer if" ]
  |  | IF [ why_not ]
- |  |  | hello = "qqq inner if"
- |  |  | (puts)[ hello ]
+ |  |  | (puts)[ "if inner if" ]
  |  |  \
  |  | ELSE
- |  |  | hello = "qqq inner else"
- |  |  | (puts)[ hello ]
+ |  |  | (puts)[ "if inner else" ]
  |  |  \_
  |  \
  | ELSE
- |  | hello = "else working"
- |  | (puts)[ hello ]
+ |  | (puts)[ "outer else" ]
  |  | IF [ why_not ]
- |  |  | hello = "inner if"
- |  |  | (puts)[ hello ]
+ |  |  | (puts)[ "else inner if" ]
  |  |  \
  |  | ELSE
- |  |  | hello = "inner else"
- |  |  | (puts)[ hello ]
+ |  |  | (puts)[ "else inner else" ]
  |  |  \_
  |  \_
  | (puts)[ str ]
