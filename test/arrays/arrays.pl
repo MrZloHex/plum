@@ -6,21 +6,31 @@ I32 main: []
  | (puts)["ARRAY TEST"]
  | 
  | @U8 arr = (malloc)[ 8 ]
- | U8 el
- | el = 42
- | @arr = 9
  |
  | U32 c = 0
+ | @U8 a = arr
  | LOOP
  |  | IF [ c >= 8 ]
  |  |  | BREAK
  |  |  \_
  |  | 
- |  | U8 huy
- |  | huy = @arr
+ |  | @a = c
+ |  | a = a + 1
+ |  | c = c + 1
+ |  \_
+ |
+ | a = arr
+ | c = 0
+ | LOOP
+ |  | IF [ c >= 8 ]
+ |  |  | BREAK
+ |  |  \_
+ |  | 
+ |  | U8 huy = @a
  |  | (print_num)[ huy ]
  |  | (puts)[" qwe"]
  |  | 
+ |  | a = a + 1
  |  | c = c + 1
  |  \_
  | 

@@ -110,6 +110,11 @@ ast_next(AST *ast)
             PUSH_NODE(curr->as.bin_op.right);
         } break;
 
+        case NT_UNY_OP:
+        {
+            PUSH_NODE(curr->as.uny_op.operand);
+        } break;
+
         case NT_COND_STMT:
         {
             PUSH_NODE(curr->as.cond_stmt.else_block);

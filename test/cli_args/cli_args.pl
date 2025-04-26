@@ -31,9 +31,6 @@ I32 main: [ I32 argc | @@C1 argv ]
  | @C1 str
  | str = " CLI ARGS TEST"
  | (puts)[ str ]
- |
- | @@C1 args
- | args = argv
  | B1 no_arg
  | I32 arg_counter
  | arg_counter = 1

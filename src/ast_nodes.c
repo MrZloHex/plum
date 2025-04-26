@@ -8,20 +8,33 @@ const char *node_types_str[NT_QUANT] =
 {
     "NT_EXPR",
     "NT_IDENT",
+
     "NT_NUM_LIT",
     "NT_CHR_LIT",
     "NT_STR_LIT",
+    "NT_BOOL_LIT",
+
     "NT_BIN_OP",
+    "NT_UNY_OP",
     "NT_TYPE",
     "NT_VAR_DECL",
-    "NT_RET",
+
+    "NT_LOOP",
+    "NT_COND_STMT",
+    "NT_COND_IF",
+    "NT_COND_ELSE",
+
     "NT_FN_DEF",
     "NT_FN_DECL",
     "NT_PARAMETRE",
+
     "NT_FN_CALL",
     "NT_ARGUMENTS",
+    
     "NT_BLOCK",
+    "NT_RET",
     "NT_STATEMENT",
+    
     "NT_PRG_STMT",
     "NT_PROGRAMME"
 };
