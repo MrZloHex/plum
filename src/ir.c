@@ -401,8 +401,7 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
         int ext = new_reg();
         int lr = new_reg();
 
-        MAKE_TYPE(t, exp_type->as.type.type, exp_type->as.type.ptrs -1);
-        gen_expr(ir, lit, t);
+        Node *t = gen_expr(ir, lit, NULL);
         gen_expr(ir, lr, exp_type);
 
         dynstr_append_fstr
