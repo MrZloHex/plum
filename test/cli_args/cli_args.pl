@@ -27,24 +27,26 @@ ABYSS print_num: [ I32 n ]
 
 
 I32 main: [ I32 argc | @@C1 argv ]
+ | 
  | (print_num) [ argc ]
  | @C1 str
  | str = " CLI ARGS TEST"
  | (puts)[ str ]
- | B1 no_arg
- | I32 arg_counter
- | arg_counter = 1
+ |
+ | @@C1 a = argv
+ | I32 arg_counter = 0
  | LOOP
- |  | no_arg = arg_counter == argc
- |  | IF [ no_arg ]
+ |  | IF [ arg_counter == argc ]
  |  |  | BREAK
  |  |  \_
+ |  |
  |  | (print_num)[ arg_counter ]
+ |  | (puts) [ " IS ARG " ]
+ |  | @C1 s = @a
+ |  | (puts) [ s ]
+ |  | 
+ |  | a = a + 1
  |  | arg_counter = arg_counter + 1
- |  | str = " IS ARG"
- |  | (puts) [ str ]
- |  | (print_num) [ args ]
- |  | (puts) [ str ]
  |  \_
  | RET [ 0 ]
  \_
