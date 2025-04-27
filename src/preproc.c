@@ -16,7 +16,7 @@ preproc_uses(DynString *str, size_t start)
 
     for (size_t i = start + 5; ; ++i)
     {
-        if (i > 100)
+        if (i > start+100)
         { assert(!"SMTH WENT WRONG WITH USES EXPANSION");}
 
         if (str->data[i] == '>')

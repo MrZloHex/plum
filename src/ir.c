@@ -128,7 +128,8 @@ gen_params(IR *ir, DynString *str, bool name)
 static void
 gen_fn_decl(IR *ir)
 {
-    ast_next(ir->ast); // DECL
+    Node *decl = ast_next(ir->ast);
+    assert(decl->type == NT_FN_DECL && "NOT DECL");
     Node *type = ast_next(ir->ast);
     Node *id   = ast_next(ir->ast);
     assert(type->type == NT_TYPE  && "NOT TYPE");
@@ -141,8 +142,10 @@ gen_fn_decl(IR *ir)
         id->as.ident
     );
 
-#warning "ADD HANDLING EMPTY PARAM LIST IN FN DECL"
-    gen_params(ir, &ir->decl, false);
+    if (decl->as.fn_decl.params)
+    { gen_params(ir, &ir->decl, false); }
+    else
+    { dynstr_append_str(&ir->decl, "()\n"); }
 }
 
 static Node *
