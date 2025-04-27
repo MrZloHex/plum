@@ -3,6 +3,7 @@
 
 #include "ast.h"
 #include "meta_ir.h"
+#include "ir_emitter.h"
 #include "dynstr.h"
 #include "dynarray.h"
 
@@ -23,6 +24,12 @@ typedef struct
     
     MetaScope *curr;
     ArgRegs    args;
+
+    int        reg_ctr;
+    int        lbl_ctr;
+    ASTStack   loop_lbls;
+
+    IREmitter  em;
 
     DynString ir;
 } IR;

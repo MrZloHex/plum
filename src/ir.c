@@ -6,16 +6,28 @@
 #define DYNSTR_IMPL
 #include "dynstr.h"
 
+static void
+emitter_dynstr_instr(struct IREmitter *e, const char *fmt, va_list ap)
+{
+    char buf[512];
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    dynstr_append_str((DynString*)e->userdata, buf);
+}
 
-#warning "REFACTOR IT"
-static int reg_counter = 0;
+static void
+emitter_dynstr_label(struct IREmitter *e, int id)
+{
+    dynstr_append_fstr((DynString*)e->userdata, "l%d:\n", id);
+}
+
+
 static int
-new_reg(void)
-{ return reg_counter++; }
-static int label_counter = 1;
+new_reg(IR *ir)
+{ return ir->reg_ctr++; }
+
 static int
-new_label(void)
-{ return label_counter++; }
+new_label(IR *ir)
+{ return ir->lbl_ctr++; }
 static int loop_label = 0;
 
 
@@ -37,6 +49,15 @@ ir_init(IR *ir, Meta *meta, AST *ast)
     dynstr_init(&ir->text, 4096);
     dynstr_init(&ir->decl, 1024);
     dynstr_init(&ir->ir,   8192);
+
+    ir->reg_ctr = 0;
+    ir->lbl_ctr = 1;
+    ast_stack_init(&ir->loop_lbls, 8);
+
+    /* настройка printf-эмиттера */
+    ir->em.userdata = &ir->text;
+    ir->em.emit_instr = emitter_dynstr_instr;
+    ir->em.emit_label = emitter_dynstr_label;
 }
 
 static char *
@@ -182,7 +203,7 @@ gen_str_lit(IR *ir, int r)
     Node *lit = ast_next(ir->ast);
     assert(lit->type == NT_STR_LIT && "NOT STR LIT");
 
-    int temp = new_reg();
+    int temp = new_reg(ir);
     dynstr_append_fstr(&ir->text, "  %%r%d = alloca ptr\n", temp);
     dynstr_append_fstr
     (
@@ -282,7 +303,7 @@ gen_fn_call(IR *ir, int r)
 
     for (;has_args;)
     {
-        int reg = new_reg();
+        int reg = new_reg(ir);
         Node *type = gen_expr(ir, reg, NULL);
         assert(type && "NULL TYPE");
         argreg_append(&ir->args, (ArgumentREG){ .reg = reg, .type = type });
@@ -343,7 +364,7 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
         assert((binop->as.bin_op.left->as.expr.type == ET_IDENT || binop->as.bin_op.left->as.expr.expr->as.uny_op.type == UOT_DEREF ) && "LVAL NOT IDENT");
         bool its_ident = binop->as.bin_op.left->as.expr.type == ET_IDENT;
 
-        int rr = new_reg();
+        int rr = new_reg(ir);
         Node *id, *type;
 
         if (its_ident)
@@ -383,7 +404,7 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
         else
         {
             // I KNOW THAT LVALUE IS DEREF OF IDENT
-            int ptr = new_reg();
+            int ptr = new_reg(ir);
             dynstr_append_fstr
             (
                 &ir->text, "  %%r%d = load ptr, ptr %%%s\n",
@@ -407,9 +428,9 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
     if (exp_type->as.type.ptrs)
     {
         assert(binop->as.bin_op.type == BOT_PLUS && "PTR ARYPH ONLY WITH PLUS");
-        int lit = new_reg();
-        int ext = new_reg();
-        int lr = new_reg();
+        int lit = new_reg(ir);
+        int ext = new_reg(ir);
+        int lr = new_reg(ir);
 
         Node *t = gen_expr(ir, lit, NULL);
         gen_expr(ir, lr, exp_type);
@@ -428,9 +449,9 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
     }
     else
     {
-        int rr = new_reg();
-        int lr = new_reg();
-        int temp = new_reg();
+        int rr = new_reg(ir);
+        int lr = new_reg(ir);
+        int temp = new_reg(ir);
         gen_expr(ir, rr, exp_type);
         gen_expr(ir, lr, exp_type);
         if (binop->as.bin_op.type == BOT_PLUS)
@@ -490,7 +511,7 @@ gen_uny_op(IR *ir, int res, Node *exp_type)
     Node *ident = ast_next(ir->ast);
     assert(ident->type == NT_IDENT && "NOT IDENT");
     
-    int ptr = new_reg();
+    int ptr = new_reg(ir);
     dynstr_append_fstr
     (
         &ir->text, "  %%r%d = load ptr, ptr %%%s\n",
@@ -553,7 +574,7 @@ gen_var_decl(IR *ir)
     if (!decl->as.var_decl.value)
     { return; }
 
-    int rr = new_reg();
+    int rr = new_reg(ir);
     gen_expr(ir, rr, type);
 
     dynstr_append_fstr
@@ -582,7 +603,7 @@ gen_return(IR *ir)
     }
     else
     {
-        int ret = new_reg();
+        int ret = new_reg(ir);
         gen_expr(ir, ret, fn_type);
         dynstr_append_fstr(&ir->text, "  ret %s %%r%d\n", gen_type(fn_type), ret);
     }
@@ -602,27 +623,27 @@ gen_cond(IR *ir)
     Node *fi = ast_next(ir->ast);
     assert(fi->type == NT_COND_IF && "NOT IF");
 
-    int cnd = new_reg();
+    int cnd = new_reg(ir);
     MAKE_TYPE(bool_type, T_B1, 0);
     gen_expr(ir, cnd, bool_type);
 
-    int cnd_trunc = new_reg();
+    int cnd_trunc = new_reg(ir);
     dynstr_append_fstr
     (
         &ir->text, "  %%r%d = trunc %s %%r%d to i1\n",
         cnd_trunc, gen_type(bool_type), cnd
     );
 
-    int cnd_res = new_reg();
+    int cnd_res = new_reg(ir);
     dynstr_append_fstr
     (
         &ir->text, "  %%r%d = icmp eq i1 %%r%d, 1\n",
         cnd_res, cnd_trunc
     );
 
-    int l_if = new_label();
-    int l_else = new_label();
-    int l_out = new_label();
+    int l_if = new_label(ir);
+    int l_else = new_label(ir);
+    int l_out = new_label(ir);
     dynstr_append_fstr
     (
         &ir->text, "  br i1 %%r%d, label %%l%d, label %%l%d\nl%d:\n",
@@ -658,8 +679,8 @@ gen_loop(IR *ir)
     Node *loop = ast_next(ir->ast);
     assert(loop->type == NT_LOOP && "NOT LOOP STATEMENT");
 
-    int l_in = new_label();
-    int l_out = new_label();
+    int l_in = new_label(ir);
+    int l_out = new_label(ir);
     dynstr_append_fstr
     (
         &ir->text, "  br label %%l%d\nl%d:\n",
