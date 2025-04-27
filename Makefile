@@ -38,8 +38,18 @@ CC      	 = gcc
 YACC		 = bison
 LEX 	 	 = flex
 
-LEXFLAGS     = 
-YACCFLAGS	 = -Wall -Wcounterexamples
+TARGET   = plc
+
+SRC 	 = src
+GEN      = $(SRC)/gen
+INC      = inc
+OBJ 	 = obj
+BIN 	 = bin
+LIB 	 =
+
+
+LEXFLAGS     = --noyywrap -o $(GEN)/$*.c
+YACCFLAGS	 = -Wall -Wcounterexamples -d -o $(GEN)/$*.c --header=$(INC)/$*.h
 
 CFLAGS_BASE  = -Wall -Wextra -std=c2x -Wstrict-aliasing
 CFLAGS_BASE += -Wno-old-style-declaration -Wno-unused-function
@@ -58,20 +68,14 @@ else
 	$(error Unknown build mode: $(BUILD). Use BUILD=debug or BUILD=release)
 endif
 
-LDFLAGS  = $(shell llvm-config --ldflags) -lLLVM-19 -lfl
+LDFLAGS  = $(shell llvm-config --ldflags --libs --system-libs) -lfl
 
-TARGET   = plc
-
-SRC 	 = src
-INC      = inc
-OBJ 	 = obj
-BIN 	 = bin
-LIB 	 =
 
 LEXES    = $(shell find $(SRC) -type f -name '*.l')
 PARSERS  = $(shell find $(SRC) -type f -name '*.y')
-SOURCES  = $(patsubst $(SRC)/%.y, $(SRC)/%.c, $(PARSERS))
-SOURCES += $(patsubst $(SRC)/%.l, $(SRC)/%.c, $(LEXES))
+GEN_SRC  = $(patsubst $(SRC)/%.y, $(GEN)/%.c, $(PARSERS))
+GEN_SRC += $(patsubst $(SRC)/%.l, $(GEN)/%.c, $(LEXES))
+SOURCES  = $(GEN_SRC)
 SOURCES += $(shell find $(SRC) -type f -name '*.c')
 OBJECTS  = $(patsubst $(SRC)/%.c, $(OBJ)/%.o, $(SOURCES))
 
@@ -82,28 +86,34 @@ endif
 
 all: $(BIN)/$(TARGET)
 
-$(BIN)/$(TARGET): $(OBJECTS)
-	@mkdir -p $(BIN)
+$(BIN)/$(TARGET): $(OBJECTS) | $(BIN)
 	@echo "  CCLD     $(patsubst $(BIN)/%,%,$@)"
 	$(Q) $(CC) -o $(BIN)/$(TARGET) $^ $(LDFLAGS)
 
-$(SRC)/%.c: $(SRC)/%.y
+$(BIN):
+	@mkdir -p $@
+
+$(GEN)/%.c $(INC)/%.h: $(SRC)/%.y | $(GEN)
 	@echo "  YC       $(patsubst $(SRC)/%,%,$@)"
-	$(Q) $(YACC) $< -o $@ --header=$(patsubst $(SRC)/%.c,$(INC)/%.h, $@) $(YACCFLAGS)
+	$(Q) $(YACC) $< $(YACCFLAGS)
 
-$(SRC)/%.c: $(SRC)/%.l
+$(GEN)/%.c: $(SRC)/%.l | $(GEN)
 	@echo "  LX       $(patsubst $(SRC)/%,%,$@)"
-	$(Q) $(LEX) -o $@ $< $(LEXFLAGS)
+	$(Q) $(LEX) $(LEXFLAGS) $<
 
-$(OBJ)/%.o: $(SRC)/%.c
-	@mkdir -p $(@D)
+$(GEN):
+	@mkdir -p $@
+
+$(OBJ)/%.o: $(SRC)/%.c | $(OBJ)
 	@echo "  CC       $(patsubst $(OBJ)/%,%,$@)"
 	$(Q) $(CC) -o $@ -c $< $(CFLAGS)
 
-$(OBJ)/%.o: $(GEN)/%.c
-	@mkdir -p $(@D)
+$(OBJ)/%.o: $(GEN)/%.c | $(OBJ)
 	@echo "  CC       $(patsubst $(OBJ)/%,%,$@)"
 	$(Q) $(CC) -o $@ -c $< $(CFLAGS)
+
+$(OBJ):
+	@mkdir -p $@/gen
 
 ifneq ($(strip $(LIB)),)
 $(OBJ)/%.o: $(LIB)/%.c
@@ -113,14 +123,13 @@ $(OBJ)/%.o: $(LIB)/%.c
 endif
 
 clean:
-	$(Q) rm -rf $(OBJ) $(BIN)
+	$(Q) rm -rf $(OBJ) $(BIN) $(GEN)
 
-debug:
-	$(MAKE) BUILD=debug all
-
-release:
-	$(MAKE) BUILD=release all
+debug release:
+	$(MAKE) BUILD=$@ V=$(V)
 
 .PHONY: all clean debug release
+.SECONDARY: $(GEN_SRC)
+.DELETE_ON_ERROR:
 
 -include $(OBJECTS:.o=.d)

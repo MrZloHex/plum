@@ -1,5 +1,15 @@
 %code requires {
     #include "ast.h"
+
+    typedef struct
+    {
+        int first_line;
+        int first_column;
+        int last_line;
+        int last_column;
+    } Location;
+
+    #define YYLTYPE Location
 }
 
 %{
@@ -15,6 +25,8 @@ int yylex(void);
 extern Node *root;
 
 %}
+
+%locations
 
 %union {
     size_t indent;
@@ -360,12 +372,15 @@ type:
 ;
 %%
 
-void yyerror(const char *s) {
-    extern char *yytext;
-    extern int yylineno;
 
-    fprintf(stderr, "Error: %s\n", s);
-    fprintf(stderr, " at line %d: '%s'\n", yylineno, yytext);
+void yyerror(const char *msg)          /* ← прежняя сигнатура */
+{
+    extern char *yytext;               /* объявление из flex */
+    /* yylloc ‒ глобальный, объявлен Bison-ом */
+    fprintf(stderr,
+            "syntax error: %s at %d:%d near '%s'\n",
+            msg,
+            yylloc.first_line, yylloc.first_column,
+            yytext);
 }
-
 

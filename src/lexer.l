@@ -1,17 +1,41 @@
+%option noyywrap nounput noinput yylineno
+
 %{
 #include "parser.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
+
+static int yycolumn = 1;
+#define TAB_WIDTH 8
+
+
+static inline
+char *xstrdup(const char *s)
+{
+    char *p = strdup(s);
+    if (!p) { perror("strdup"); exit(EXIT_FAILURE); }
+    return p;
+}
+
+#define YY_USER_ACTION                                   \
+    yylloc.first_line   = yylineno;                      \
+    yylloc.first_column = yycolumn;                      \
+    yylloc.last_line    = yylineno;                      \
+    yylloc.last_column  = yycolumn + yyleng - 1;         \
+    yycolumn           += yyleng;
+
 %}
 
-%option noyywrap
-
 %%
-"ABYSS"                     { yylval.str = strdup(yytext); return TYPE; }
-F(32|64)                    { yylval.str = strdup(yytext); return TYPE; }
-"B1"                        { yylval.str = strdup(yytext); return TYPE; }
-C(1|2|4)                    { yylval.str = strdup(yytext); return TYPE; }
-[IU](8|16|32|64|SIZE)       { yylval.str = strdup(yytext); return TYPE; }
+\n                          { yycolumn = 1; }
+\t+                         { yycolumn += (TAB_WIDTH-1) * yyleng; }
+
+"ABYSS"                     { yylval.str = xstrdup(yytext); return TYPE; }
+F(32|64)                    { yylval.str = xstrdup(yytext); return TYPE; }
+"B1"                        { yylval.str = xstrdup(yytext); return TYPE; }
+C(1|2|4)                    { yylval.str = xstrdup(yytext); return TYPE; }
+[IU](8|16|32|64|SIZE)       { yylval.str = xstrdup(yytext); return TYPE; }
 
 "TRUE"                      { return B1_TRUE; }
 "FALSE"                     { return B1_FALSE; }
@@ -49,12 +73,17 @@ C(1|2|4)                    { yylval.str = strdup(yytext); return TYPE; }
 "/"                         { return SLASH; }
 "%"                         { return MODULA; }
 
-\'([^\\\']|\\.)\'           { yylval.str = strdup(yytext); return CHR_LITERAL; }
-\"([^\"\\]|\\.)*\"          { yylval.str = strdup(yytext); return STR_LITERAL; }
-[0-9]+                      { yylval.str = strdup(yytext); return NUM_LITERAL; }
-[a-zA-Z_][a-zA-Z0-9_]*      { yylval.str = strdup(yytext); return IDENT; }
+\'([^\\\']|\\.)\'           { yylval.str = xstrdup(yytext); return CHR_LITERAL; }
+\"([^\"\\]|\\.)*\"          { yylval.str = xstrdup(yytext); return STR_LITERAL; }
+[0-9]+                      { yylval.str = xstrdup(yytext); return NUM_LITERAL; }
+[a-zA-Z_][a-zA-Z0-9_]*      { yylval.str = xstrdup(yytext); return IDENT; }
 
-";".*                       { /* skip comment lines */ }
-[ \t\n]+                      { /* skip whitespace */ }
-.                           { /* ignore any other character */ }
+";"[^\n\r]*                 { /* skip comment lines */ }
+[ ]+                        { /* skip whitespace */ }
+.                           {
+                                fprintf(stderr,
+                                        "lexical error: unexpected '%c' at %d:%d\n",
+                                        yytext[0], yylineno, yycolumn - yyleng);
+                                YY_FATAL_ERROR("HUY");
+                            }
 %%
