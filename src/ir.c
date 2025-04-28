@@ -103,6 +103,12 @@ gen_params(IR *ir, DynString *str, bool name)
     Node *param = p;
     for (;;)
     {
+        if (param->as.parametre.is_vaarg)
+        {
+            dynstr_append_fstr(str, "..., ");
+            break;
+        }
+
         Node *type = ast_next(ir->ast);
         Node *id   = ast_next(ir->ast);
         assert(type->type == NT_TYPE  && "NOT TYPE");

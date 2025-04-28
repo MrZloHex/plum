@@ -45,6 +45,7 @@ extern Node *root;
 %token LESS LEQ GREAT GEQ
 %token IF ELIF ELSE LOOP BREAK
 %token B1_FALSE B1_TRUE
+%token ELLIPSIS
 
 %token INDENT
 
@@ -129,6 +130,10 @@ parametre:
     {
         Node *id = node_make_ident($2);
         $$ = node_make_parametre($1, id);
+    }
+    | ELLIPSIS
+    {
+        $$ = node_make_parametre_vaarg();
     }
 ;
 

@@ -178,6 +178,7 @@ typedef struct
     struct Node_S *type;
     struct Node_S *ident;
     struct Node_S *next;
+    bool           is_vaarg;
 } N_Parametre;
 
 typedef struct
@@ -326,6 +327,9 @@ node_make_fndecl(Node *type, Node *id, Node *params);
 
 Node *
 node_make_parametre(Node *type, Node *id);
+
+Node *
+node_make_parametre_vaarg();
 
 Node *
 node_make_ident(const N_Ident value);

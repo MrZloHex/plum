@@ -406,6 +406,18 @@ node_make_parametre(Node *type, Node *id)
     list->type = NT_PARAMETRE;
     list->as.parametre.ident = id;
     list->as.parametre.type  = type;
+    list->as.parametre.is_vaarg = false;
+
+    return list;
+}
+
+Node *
+node_make_parametre_vaarg()
+{
+    NODE_ALLOC(list);   
+    
+    list->type = NT_PARAMETRE;
+    list->as.parametre.is_vaarg = true;
 
     return list;
 }
@@ -420,8 +432,16 @@ node_dump_parametre(Node *list, size_t offset)
     {
         PRINT_OFFSET(offset);
         printf(" - %zu:\n", c++);
-        node_dump_type(list->as.parametre.type, offset+1);
-        node_dump_ident(list->as.parametre.ident, offset+1);
+        if (list->as.parametre.is_vaarg)
+        {
+            PRINT_OFFSET(offset+1);
+            printf("VA ARG\n");
+        }
+        else
+        {
+            node_dump_type(list->as.parametre.type, offset+1);
+            node_dump_ident(list->as.parametre.ident, offset+1);
+        }
         list = list->as.parametre.next;
     }
 }
