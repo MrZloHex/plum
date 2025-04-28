@@ -290,6 +290,7 @@ node_make_type(const char *type)
     
     n->type = NT_TYPE;
     n->as.type.ptrs = 0;
+    n->as.type.user_type = NULL;
     if (strcmp(type, "ABYSS") == 0)
     { n->as.type.type = T_ABYSS; }
     else if (strcmp(type, "B1") == 0)
@@ -332,6 +333,19 @@ node_make_type_ptr(Node *type)
     return type;
 }
 
+Node *
+node_make_user_type(Node *ident)
+{
+    NODE_ALLOC(n);
+    
+    n->type = NT_TYPE;
+    n->as.type.ptrs = 0;
+    n->as.type.type = T_QUANT;
+    n->as.type.user_type = ident;
+
+    return n;
+}
+
 void
 node_dump_type(Node *type, size_t offset)
 {
@@ -347,7 +361,10 @@ node_dump_type(Node *type, size_t offset)
     printf("TYPE ");
     for (unsigned int i = 0; i < type->as.type.ptrs; ++i)
     { printf("POINTER TO "); }
-    printf("%s\n", types[type->as.type.type]);
+    if (type->as.type.user_type)
+    { printf("\n"); node_dump_ident(type->as.type.user_type, offset+1); }
+    else
+    { printf("%s\n", types[type->as.type.type]); }
 }
 
 Node *

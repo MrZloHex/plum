@@ -384,6 +384,8 @@ arg_list:
 type:
     TYPE
     { $$ = node_make_type($1); }
+    | IDENT
+    { $$ = node_make_user_type(node_make_ident($1)); }
     | PTR type
     { $$ = node_make_type_ptr($2); }
 ;

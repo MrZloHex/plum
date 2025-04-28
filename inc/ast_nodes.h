@@ -35,6 +35,7 @@ typedef struct
 {
     unsigned int ptrs;
     BaseTypes type;
+    struct Node_S *user_type;
 } N_Type;
 
 // STATEMENTS
@@ -367,6 +368,9 @@ node_make_type(const char *type);
 
 Node *
 node_make_type_ptr(Node *type);
+
+Node *
+node_make_user_type(Node *ident);
 
 Node *
 node_make_bin_op(BinOpType op, Node *left, Node *right);
