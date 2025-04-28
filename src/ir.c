@@ -184,7 +184,7 @@ gen_ident(IR *ir, int r, Node *etype)
     int is_param = meta_is_param(ir->curr, id->as.ident);
     if (is_param < 0)
     { assert(0 && "NO SUCH IDENT"); }
-    
+
     if (!etype)
     {
         //printf("%s\n", ir->text.data);
@@ -378,7 +378,7 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
             id = binop->as.bin_op.left->as.expr.expr;
             type = meta_find_type_in_scope(ir->curr, id->as.ident);
         }
-        else
+     %progname_addr   else
         {
             id = binop->as.bin_op.left->as.expr.expr->as.uny_op.operand->as.expr.expr;
             assert(id->type == NT_IDENT && "OP FOR DEREF IS NOT IDENT");
@@ -516,12 +516,16 @@ gen_uny_op(IR *ir, int res, Node *exp_type)
     Node *expr = ast_next(ir->ast); (void)expr;
     Node *ident = ast_next(ir->ast);
     assert(ident->type == NT_IDENT && "NOT IDENT");
-    
+
+    int is_param = meta_is_param(ir->curr, ident->as.ident);
+    if (is_param < 0)
+    { assert(0 && "NO SUCH IDENT"); }
+
     int ptr = new_reg(ir);
     dynstr_append_fstr
     (
-        &ir->text, "  %%r%d = load ptr, ptr %%%s\n",
-        ptr, ident->as.ident
+        &ir->text, "  %%r%d = load ptr, ptr %%%s%s\n",
+        ptr, ident->as.ident, (is_param ? "_addr" : "")
     );
     dynstr_append_fstr
     (
@@ -739,9 +743,9 @@ gen_block(IR *ir)
         assert(b->type == NT_BLOCK && "NOT A BLOCK");
         gen_stmt(ir);
 
-        printf("==============BLOCK=============\n");
-        printf("%s\n", ir->text.data);
-        printf("================================\n");
+        // printf("==============BLOCK=============\n");
+        // printf("%s\n", ir->text.data);
+        // printf("================================\n");
     
         block = block->as.block.next;
         if (block)

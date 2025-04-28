@@ -2,5 +2,5 @@
 I32 puts:    [ @C1 str ]
 I32 putchar: [ I32 char ]
 
-I32 fputs:   [ @C1 str | @ABYSS stream ]
+I32 printf:  [ @C1 fmt | ... ]
 ; io.pl
