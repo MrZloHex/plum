@@ -48,6 +48,7 @@ ir_init(IR *ir, Meta *meta, AST *ast)
     dynstr_init(&ir->glbl, 1024);
     dynstr_init(&ir->text, 4096);
     dynstr_init(&ir->decl, 1024);
+    dynstr_init(&ir->structs, 256);
     dynstr_init(&ir->ir,   8192);
 
     ir->reg_ctr = 0;
@@ -378,7 +379,7 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
             id = binop->as.bin_op.left->as.expr.expr;
             type = meta_find_type_in_scope(ir->curr, id->as.ident);
         }
-     %progname_addr   else
+        else
         {
             id = binop->as.bin_op.left->as.expr.expr->as.uny_op.operand->as.expr.expr;
             assert(id->type == NT_IDENT && "OP FOR DEREF IS NOT IDENT");
@@ -782,6 +783,7 @@ gen_fn_def(IR *ir)
         dynstr_append_str(&ir->text, "{\n");
 
         dynstr_append_str(&ir->text, p.data);
+
         dynstr_deinit(&p);
     }
     else
@@ -792,6 +794,34 @@ gen_fn_def(IR *ir)
     gen_block(ir);
 
     dynstr_append_str(&ir->text, "}\n\n");
+}
+
+static void
+gen_type_def(IR *ir)
+{
+    Node *type = ast_next(ir->ast);
+    assert(type->type == NT_TYPE_DEF && "NOT TYPE DEF");
+    Node *id   = ast_next(ir->ast);
+    assert(id->type == NT_IDENT && "NOT IDENT");
+    dynstr_append_fstr(&ir->structs, "%%struct.%s = type {", id->as.ident);
+
+    MetaType *found  = meta_find_typedef(ir->meta, id->as.ident);
+    assert(found && "STRUCT NOT FOUND");
+
+    for (size_t i = 0; i < found->fields.size; ++i)
+    {
+        ast_next(ir->ast); // BLOCK
+        ast_next(ir->ast); // STMT
+        ast_next(ir->ast); // VAR_DECL
+        ast_next(ir->ast); 
+        ast_next(ir->ast);
+
+        Node *field = found->fields.data[i];
+        dynstr_append_fstr(&ir->structs, "%s, ", gen_type(field->as.var_decl.type));
+    }
+    dynstr_remove(&ir->structs, ir->structs.size-2);
+
+    dynstr_append_str(&ir->structs, "}\n");
 }
 
 static void
@@ -806,6 +836,8 @@ gen_programme(IR *ir)
         { gen_fn_decl(ir); }
         if (s->as.prg_stmt.type == PST_FN_DEF)
         { gen_fn_def(ir); }
+        if (s->as.prg_stmt.type == PST_TYPE_DEF)
+        { gen_type_def(ir); }
 
         s = ast_next(ir->ast);
         if (!s)
@@ -845,6 +877,7 @@ ir_generate(IR *ir)
     { gen_programme(ir); }
     gen_string_literals(ir);
 
+    dynstr_append_str(&ir->ir, ir->structs.data);
     dynstr_append_str(&ir->ir, ir->glbl.data);
     dynstr_append_str(&ir->ir, ir->text.data);
     dynstr_append_str(&ir->ir, ir->decl.data);

@@ -7,26 +7,35 @@ void
 meta_init(Meta *meta)
 {
     scopes_init(&meta->scopes, 16);
+    types_init(&meta->typedefs, 16);
     mnv_init(&meta->strs, 16);
     mnv_init(&meta->funcs, 16);
 }
 
 
+#define DEBUG
+
 void
 meta_collect(Meta *meta, AST *ast)
 {
-    // size_t c = 0;
+#ifdef DEBUG
+    size_t c = 0;
+#endif
     Node *curr = ast_next(ast);
     MetaScope curr_scope;
+    MetaType  curr_type;
     bool in_scope = false;
+    bool in_type  = false;
     bool skip_decl = false;
     while (curr)
     {
-        // printf("NODE T %s\n", node_types_str[curr->type]);
+#ifdef DEBUG
+        printf("NODE T %s\n", node_types_str[curr->type]);
+#endif
         if (in_scope)
         {
-            if (curr->type == NT_FN_DEF || curr->type == NT_FN_DECL)
-            { assert(0 && "FN DEF OR DECL IN SCOPE"); }
+            if (curr->type == NT_FN_DEF || curr->type == NT_FN_DECL || curr->type == NT_TYPE_DEF)
+            { assert(0 && "FN DEF OR DECL OR TYPE DEFIN SCOPE"); }
             else if (curr->type == NT_PROGRAMME)
             {
                 // printf("OUT SCOPE\n");
@@ -53,6 +62,29 @@ meta_collect(Meta *meta, AST *ast)
             {
                 mnv_append(&meta->strs, curr);
             }
+        }
+        else if (in_type)
+        {
+            if (curr->type == NT_FN_DEF || curr->type == NT_FN_DECL || curr->type == NT_TYPE_DEF)
+            { assert(0 && "FN DEF OR DECL OR TYPE DEFIN IN TYPE"); }
+            else if (curr->type == NT_PROGRAMME)
+            {
+                in_type = false;
+                types_append(&meta->typedefs, curr_type);
+            }
+            else if (curr->type == NT_BLOCK || curr->type == NT_STATEMENT) 
+            {}
+            else if (curr->type == NT_VAR_DECL)
+            {
+                Node *type = ast_next(ast);
+                Node *ident = ast_next(ast);
+                assert(ident->type == NT_IDENT && "NOT IDENT");
+                assert(type->type == NT_TYPE   && "NOT TYPE");
+
+                mnv_append(&curr_type.fields, curr);
+            }
+            else
+            { assert(!"IN TYPEDEF ONLY FIELD DECL"); }
         }
         else if (skip_decl)
         {
@@ -85,13 +117,23 @@ meta_collect(Meta *meta, AST *ast)
                 mnv_append(&meta->funcs, curr);
                 skip_decl = true;
             }
+            else if (curr->type == NT_TYPE_DEF)
+            {
+                in_type = true;
+                mnv_init(&curr_type.fields, 8);
+                curr_type.type = curr;
+                Node *_id = ast_next(ast);
+                assert(_id->type == NT_IDENT && "NOT IDENT");
+                //printf("TYPE BEGIN\n");
+            }
             else if (curr->type == NT_PRG_STMT || curr->type == NT_PROGRAMME)
             { /* printf("SKIP OUTSIDE\n"); SKIP IT */ }
             else
             { assert(0 && "SMTH OUTSIDE SCOPE "); } 
         }
-        
-        // c++;
+#ifdef DEBUG
+        c++;
+#endif
         curr = ast_next(ast);
     }
 
@@ -184,6 +226,20 @@ meta_find_scope(Meta *meta, const char *name)
     return NULL;
 }
 
+MetaType *
+meta_find_typedef(Meta *meta, const char *name)
+{
+    for (size_t i = 0; i < meta->typedefs.size; ++i)
+    {
+        MetaType type = meta->typedefs.data[i];
+        if (strcmp(type.type->as.type_def.ident->as.ident, name) == 0)
+        {
+            return &meta->typedefs.data[i];
+        }
+    }
+    return NULL;
+}
+
 int
 meta_find_str(Meta *meta, const char *lit)
 {
@@ -232,7 +288,19 @@ meta_dump(Meta *meta)
         printf("\t%zu\n", i);
         node_dump_fndecl(meta->funcs.data[i], 1);
     }
+
+    printf("TYPEDEF:\n");
+    for (size_t i = 0; i < meta->typedefs.size; ++i)
+    {
+        MetaType type = meta->typedefs.data[i];
+        printf("\t%zu\t%s\n", i, type.type->as.type_def.ident->as.ident);
+        for (size_t j = 0; j < type.fields.size; ++j)
+        {
+            node_dump_var_decl(type.fields.data[j], 2);
+        }
+    }
 }
 
 DEFINE_DYNARRAY(mnv, MNVec, Node *);
 DEFINE_DYNARRAY(scopes, Scopes, MetaScope);
+DEFINE_DYNARRAY(types, TypeDefs, MetaType);

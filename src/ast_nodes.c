@@ -34,6 +34,8 @@ const char *node_types_str[NT_QUANT] =
     "NT_BLOCK",
     "NT_RET",
     "NT_STATEMENT",
+
+    "NT_TYPE_DEF",
     
     "NT_PRG_STMT",
     "NT_PROGRAMME"
@@ -92,13 +94,15 @@ node_make_prg_stmt(PrgStmtType type, Node *stmt)
 void
 node_dump_prg_stmt(Node *stmt, size_t offset)
 {
-    static char *ps_types[PST_QUANT] = { "FN DECL", "FN DEF" };
+    static char *ps_types[PST_QUANT] = { "FN DECL", "FN DEF", "TYPE DEF" };
     PRINT_OFFSET(offset);
     printf("PRG STMT %s\n", ps_types[stmt->as.prg_stmt.type]);
     if (stmt->as.prg_stmt.type == PST_FN_DEF)
     { node_dump_fndef(stmt->as.prg_stmt.prg_stmt, offset+1); }
     else if (stmt->as.prg_stmt.type == PST_FN_DECL)
     { node_dump_fndecl(stmt->as.prg_stmt.prg_stmt, offset+1); }
+    else if (stmt->as.prg_stmt.type == PST_TYPE_DEF)
+    { node_dump_type_def(stmt->as.prg_stmt.prg_stmt, offset+1); }
 }
 
 Node *
@@ -692,4 +696,23 @@ node_dump_loop(Node *loop, size_t offset)
     node_dump_block(loop->as.loop.block, offset+1);
 }
 
+Node *
+node_make_type_def(Node *ident, Node *block)
+{
+    NODE_ALLOC(n);
+
+    n->type = NT_TYPE_DEF;
+    n->as.type_def.ident = ident;
+    n->as.type_def.block = block;
+
+    return n;
+}
+
+void
+node_dump_type_def(Node *type, size_t offset)
+{
+    PRINT_OFFSET(offset);
+    printf("TYPEDEF %s\n", type->as.type_def.ident->as.ident);
+    node_dump_block(type->as.type_def.block, offset+1);
+}
 

@@ -206,12 +206,21 @@ typedef struct
     struct Node_S *args;
 } N_FnCall;
 
+// TYPEDEF
+
+typedef struct
+{
+    struct Node_S *ident;
+    struct Node_S *block;
+} N_TypeDef;
+
 // PROGRAMME
 
 typedef enum
 {
     PST_FN_DECL,
     PST_FN_DEF,
+    PST_TYPE_DEF,
     PST_QUANT
 } PrgStmtType;
 
@@ -261,6 +270,8 @@ typedef enum
     NT_RET,
     NT_STATEMENT,
 
+    NT_TYPE_DEF,
+
     NT_PRG_STMT,
     NT_PROGRAMME,
     
@@ -303,6 +314,8 @@ typedef struct Node_S
         N_Block      block;
         N_Ret        ret;
         N_Statement  stmt;
+
+        N_TypeDef    type_def;
 
         N_PrgStmt    prg_stmt;
         N_Programme  programme;
@@ -391,6 +404,8 @@ node_make_loop(Node *block);
 Node *
 node_make_uny_op(UnyOpType op, Node *operand);
 
+Node *
+node_make_type_def(Node *ident, Node *block);
 
 void
 node_dump_programme(Node *prog, size_t offset);
@@ -463,5 +478,8 @@ node_dump_loop(Node *loop, size_t offset);
 
 void
 node_dump_uny_op(Node *uny, size_t offset);
+
+void
+node_dump_type_def(Node *type, size_t offset);
 
 #endif /* __AST_NODES_H__ */

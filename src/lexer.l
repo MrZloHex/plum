@@ -46,6 +46,7 @@ C(1|2|4)                    { yylval.str = xstrdup(yytext); return TYPE; }
 "LOOP"                      { return LOOP; }
 "BREAK"                     { return BREAK; }
 "RET"                       { return RET; }
+"TYPE"                      { return TYPEDEF; }
 
 "|"                         { yylval.vbars = 1; return VBAR; }
 

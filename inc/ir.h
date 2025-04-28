@@ -21,6 +21,7 @@ typedef struct
     DynString glbl;
     DynString text;
     DynString decl;
+    DynString structs;
     
     MetaScope *curr;
     ArgRegs    args;

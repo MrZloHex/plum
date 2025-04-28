@@ -46,6 +46,7 @@ extern Node *root;
 %token IF ELIF ELSE LOOP BREAK
 %token B1_FALSE B1_TRUE
 %token ELLIPSIS
+%token TYPEDEF
 
 %token INDENT
 
@@ -64,6 +65,7 @@ extern Node *root;
 %type <node> var_decl ret_stmt expression type function_call arg_list_opt arg_list
 %type <node> cond_stmt cond_if cond_if_else cond_else
 %type <node> loop_stmt
+%type <node> type_def
 %type <vbars> indent_seq
 
 %debug
@@ -91,6 +93,8 @@ prg_stmt:
     { $$ = node_make_prg_stmt(PST_FN_DEF, $1); }
     | fn_decl
     { $$ = node_make_prg_stmt(PST_FN_DECL, $1); }
+    | type_def
+    { $$ = node_make_prg_stmt(PST_TYPE_DEF, $1); }
 
 fn_def:
     fn_decl block_with_end
@@ -102,6 +106,14 @@ fn_decl:
     {
         Node *id = node_make_ident($2);
         $$ = node_make_fndecl($1, id, $5);
+    }
+;
+
+type_def:
+    TYPEDEF IDENT COLON block_with_end
+    {
+        Node *id = node_make_ident($2);
+        $$ = node_make_type_def(id, $4);
     }
 ;
 

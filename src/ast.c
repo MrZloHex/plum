@@ -57,6 +57,12 @@ ast_next(AST *ast)
             PUSH_NODE(curr->as.fn_def.decl);
         } break;
 
+        case NT_TYPE_DEF:
+        {
+            PUSH_NODE(curr->as.type_def.block);
+            PUSH_NODE(curr->as.type_def.ident);
+        } break;
+
         case NT_PARAMETRE:
         {
             PUSH_NODE(curr->as.parametre.next);
