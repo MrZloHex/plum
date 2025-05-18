@@ -36,6 +36,7 @@ const char *node_types_str[NT_QUANT] =
     "NT_STATEMENT",
 
     "NT_TYPE_DEF",
+    "NT_MEMBER",
     
     "NT_PRG_STMT",
     "NT_PROGRAMME"
@@ -562,7 +563,7 @@ void
 node_dump_expr(Node *expr, size_t offset)
 {
     static char *et_types[ET_QUANT] =
-    { "IDENT", "NUM LIT", "CHR LIT", "STR LIT", "BOOL LIT", "BIN OP", "UNY OP", "FN CALL" };
+    { "IDENT", "NUM LIT", "CHR LIT", "STR LIT", "BOOL LIT", "BIN OP", "UNY OP", "FN CALL", "MEMBER" };
     PRINT_OFFSET(offset);
     printf("EXPR %s\n", et_types[expr->as.expr.type]);
     if (expr->as.expr.type == ET_IDENT)
@@ -581,6 +582,8 @@ node_dump_expr(Node *expr, size_t offset)
     { node_dump_uny_op(expr->as.expr.expr, offset+1); }
     else if (expr->as.expr.type == ET_FN_CALL)
     { node_dump_fncall(expr->as.expr.expr, offset+1); }
+    else if (expr->as.expr.type == ET_MEMBER)
+    { node_dump_member(expr->as.expr.expr, offset+1); }
 }
 
 Node *
@@ -731,5 +734,26 @@ node_dump_type_def(Node *type, size_t offset)
     PRINT_OFFSET(offset);
     printf("TYPEDEF %s\n", type->as.type_def.ident->as.ident);
     node_dump_block(type->as.type_def.block, offset+1);
+}
+
+Node *
+node_make_member(Node *base, Node *field)
+{
+    NODE_ALLOC(n);
+
+    n->type = NT_MEMBER;
+    n->as.member.base = base;
+    n->as.member.field = field;
+
+    return n;
+}
+
+void
+node_dump_member(Node *member, size_t offset)
+{
+    node_dump_ident(member->as.member.field, offset+1);
+    PRINT_OFFSET(offset);
+    printf("OF\n");
+    node_dump_expr(member->as.member.base, offset+1);
 }
 

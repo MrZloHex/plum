@@ -20,9 +20,13 @@ I32 main: []
  | (printf)[ "TEST OF STRUCT%c" | '\n' ]
  |
  | Struct t
- | t.a.a = 32
- | t.a.fla = TRUE
+ | I32 a
+ | a = 32
+;| t.a.a = 69
+;| t.a.fla = TRUE
  | t.q = 69
+ |
+ | (printf)[ "A %d t.q %d%c" | a | t.q | '\n' ]
  |
  | RET [ 0 ]
  \_

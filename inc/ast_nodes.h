@@ -105,6 +105,7 @@ typedef enum
     ET_BIN_OP,
     ET_UNY_OP,
     ET_FN_CALL,
+    ET_MEMBER,
     ET_QUANT
 } ExprType;
 
@@ -215,6 +216,12 @@ typedef struct
     struct Node_S *block;
 } N_TypeDef;
 
+typedef struct
+{
+    struct Node_S *base;
+    struct Node_S *field;
+} N_Member;
+
 // PROGRAMME
 
 typedef enum
@@ -272,6 +279,7 @@ typedef enum
     NT_STATEMENT,
 
     NT_TYPE_DEF,
+    NT_MEMBER,
 
     NT_PRG_STMT,
     NT_PROGRAMME,
@@ -317,6 +325,7 @@ typedef struct Node_S
         N_Statement  stmt;
 
         N_TypeDef    type_def;
+        N_Member     member;
 
         N_PrgStmt    prg_stmt;
         N_Programme  programme;
@@ -411,6 +420,9 @@ node_make_uny_op(UnyOpType op, Node *operand);
 Node *
 node_make_type_def(Node *ident, Node *block);
 
+Node *
+node_make_member(Node *base, Node *field);
+
 void
 node_dump_programme(Node *prog, size_t offset);
 
@@ -485,5 +497,8 @@ node_dump_uny_op(Node *uny, size_t offset);
 
 void
 node_dump_type_def(Node *type, size_t offset);
+
+void
+node_dump_member(Node *member, size_t offset);
 
 #endif /* __AST_NODES_H__ */

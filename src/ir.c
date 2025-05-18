@@ -64,10 +64,17 @@ ir_init(IR *ir, Meta *meta, AST *ast)
 static char *
 gen_type(Node *type)
 {
+    static char buf[128] = { 0 };
     assert(type->type == NT_TYPE && "NOT TYPE");
 
     if (type->as.type.ptrs > 0)
     { return "ptr"; }
+    
+    if (type->as.type.user_type)
+    {
+        snprintf(buf, 128, "%%struct.%s", type->as.type.user_type->as.ident);
+        return buf;
+    }
 
     switch(type->as.type.type)
     {
@@ -368,7 +375,13 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
 
     if (binop->as.bin_op.type == BOT_ASSIGN)
     {
-        assert((binop->as.bin_op.left->as.expr.type == ET_IDENT || binop->as.bin_op.left->as.expr.expr->as.uny_op.type == UOT_DEREF ) && "LVAL NOT IDENT");
+        assert
+        (
+            (binop->as.bin_op.left->as.expr.type == ET_IDENT
+          || binop->as.bin_op.left->as.expr.expr->as.uny_op.type == UOT_DEREF
+          || binop->as.bin_op.left->as.expr.type == ET_MEMBER)
+          && "LVAL NOT IDENT"
+        );
         bool its_ident = binop->as.bin_op.left->as.expr.type == ET_IDENT;
 
         int rr = new_reg(ir);

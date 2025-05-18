@@ -13,7 +13,7 @@ meta_init(Meta *meta)
 }
 
 
-#define DEBUG
+#undef DEBUG
 
 void
 meta_collect(Meta *meta, AST *ast)

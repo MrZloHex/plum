@@ -51,6 +51,7 @@ C(1|2|4)                    { yylval.str = xstrdup(yytext); return TYPE; }
 "|"                         { yylval.vbars = 1; return VBAR; }
 
 "..."                       { return ELLIPSIS; }
+"\."                        { return DOT; }
 
 [ \t]*\|([ \t]*\|)*[ \t]*\\_ { return BLOCK_END; }
 "\\_"                       { return BLOCK_END; }

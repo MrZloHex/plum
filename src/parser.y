@@ -46,9 +46,11 @@ extern Node *root;
 %token IF ELIF ELSE LOOP BREAK
 %token B1_FALSE B1_TRUE
 %token ELLIPSIS
-%token TYPEDEF
+%token TYPEDEF DOT
 
 %token INDENT
+
+%left DOT
 
 %left EQUAL
 %left PLUS MINUS
@@ -318,6 +320,12 @@ expression:
     {
         Node *e = node_make_uny_op(UOT_DEREF, $2);
         $$ = node_make_expr(ET_UNY_OP, e);
+    }
+    | expression DOT IDENT
+    {
+        Node *e = node_make_ident($3);
+        Node *m = node_make_member($1, e);
+        $$ = node_make_expr(ET_MEMBER, m);
     }
     | function_call
     { $$ = node_make_expr(ET_FN_CALL, $1); }
