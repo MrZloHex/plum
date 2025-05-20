@@ -16,9 +16,10 @@ buildit
     char **error_msg_ptr
 )
 {
-    if (!ir_str || !obj_file) {
+    if (!ir_str || !obj_file)
+    {
         if (error_msg_ptr)
-            *error_msg_ptr = LLVMCreateMessage("Invalid NULL argument");
+        { *error_msg_ptr = LLVMCreateMessage("Invalid NULL argument"); }
         return 1;
     }
 
@@ -26,29 +27,31 @@ buildit
     LLVMMemoryBufferRef mb     = NULL;
     char               *err    = NULL;
 
-    /* 1) Создаём MemoryBuffer из строки */
-    mb = LLVMCreateMemoryBufferWithMemoryRangeCopy(
-             ir_str,
-             strlen(ir_str),
-             "in-memory");
-    if (!mb) {
+    mb = LLVMCreateMemoryBufferWithMemoryRangeCopy
+    (
+        ir_str,
+        strlen(ir_str),
+        "in-memory"
+    );
+
+    if (!mb)
+    {
         if (error_msg_ptr)
-            *error_msg_ptr = LLVMCreateMessage("Failed to create MemoryBuffer");
+        { *error_msg_ptr = LLVMCreateMessage("Failed to create MemoryBuffer"); }
         LLVMContextDispose(ctx);
-        return 2;
+        return 1;
     }
 
-    /* 2) Парсим IR */
     LLVMModuleRef module = NULL;
-    if (LLVMParseIRInContext(ctx, mb, &module, &err)) {
+    if (LLVMParseIRInContext(ctx, mb, &module, &err))
+    {
         if (error_msg_ptr)
-            *error_msg_ptr = err;  // LLVM выделяет сообщение
+        { *error_msg_ptr = err; }
         LLVMDisposeMemoryBuffer(mb);
         LLVMContextDispose(ctx);
-        return 3;
+        return 1;
     }
 
-    /* 3) Инициализируем таргет для генерации кода */
     LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();
 
@@ -56,29 +59,30 @@ buildit
     LLVMTargetRef target;
     triple = LLVMGetDefaultTargetTriple();
 
-    if (LLVMGetTargetFromTriple(triple, &target, &err)) {
+    if (LLVMGetTargetFromTriple(triple, &target, &err))
+    {
         if (error_msg_ptr)
-            *error_msg_ptr = err;
+        { *error_msg_ptr = err; }
         LLVMDisposeModule(module);
         LLVMContextDispose(ctx);
-        return 4;
+        return 1;
     }
 
-    LLVMTargetMachineRef tm =
-        LLVMCreateTargetMachine(target,
-                                triple,
-                                /*cpu*/     "",
-                                /*features*/"",
-                                LLVMCodeGenLevelDefault,
-                                LLVMRelocDefault,
-                                LLVMCodeModelDefault);
+    LLVMTargetMachineRef tm = LLVMCreateTargetMachine
+    (
+        target,
+        triple,
+        /*cpu*/     "",
+        /*features*/"",
+        LLVMCodeGenLevelDefault,
+        LLVMRelocDefault,
+        LLVMCodeModelDefault
+    );
 
-    /* 4) Устанавливаем DataLayout */
     LLVMTargetDataRef td = LLVMCreateTargetDataLayout(tm);
     LLVMSetModuleDataLayout(module, td);
     LLVMSetTarget(module, triple);
 
-    /* 5) Эмитим объектный файл */
     LLVMMemoryBufferRef obj_buf = NULL;
     if
     (
@@ -100,7 +104,6 @@ buildit
     const char *start = LLVMGetBufferStart(obj_buf);
     size_t      size  = LLVMGetBufferSize(obj_buf);
 
-    /* Записываем в FILE* */
     if (fwrite(start, 1, size, obj_file) != size)
     {
         if (error_msg_ptr)
@@ -113,7 +116,6 @@ buildit
 
     LLVMDisposeMemoryBuffer(obj_buf);
 
-    /* 6) Очистка */
     LLVMDisposeModule(module);
     LLVMContextDispose(ctx);
     return 0;
