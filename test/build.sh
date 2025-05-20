@@ -25,9 +25,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 pushd $TEST
-../../bin/plc $TEST.pl -o $TEST.ll --emit=IR
-llvm-as $TEST.ll -o $TEST.bc 
-clang $TEST.bc -o $TEST
+../../bin/plc $TEST.pl -o $TEST.o --emit=OBJ
+# llvm-as $TEST.ll -o $TEST.bc 
+# clang $TEST.bc -o $TEST
+gcc $TEST.o -o $TEST
 popd
 
 if $WITH_EXE; then

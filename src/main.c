@@ -14,7 +14,7 @@ typedef struct
 void
 usage(FILE *file, const char *progname)
 {
-    fprintf(file, "Usage: %s [--emit=<AST|IR>] [-o output] file1 [file2 ...]\n", progname);
+    fprintf(file, "Usage: %s [--emit=<AST|IR|OBJ>] [-o output] file1 [file2 ...]\n", progname);
     fprintf(file, "  --emit=<AST|IR>   Specify the output type to emit (AST or IR)\n");
     fprintf(file, "  -o output        Specify the output filename\n");
     fprintf(file, "  file1 ...        One or more source files to compile\n");
@@ -41,13 +41,13 @@ parse_cli_options(int argc, char *argv[])
         {
             if (strcmp(long_options[option_index].name, "emit") == 0)
             {
-                if (strcmp(optarg, "AST") == 0 || strcmp(optarg, "IR") == 0)
+                if (strcmp(optarg, "AST") == 0 || strcmp(optarg, "IR") == 0 || strcmp(optarg, "OBJ") == 0)
                 {
                     opts.emit_type = optarg;
                 }
                 else
                 {
-                    fprintf(stderr, "Error: Invalid value for --emit: %s. Allowed values are AST or IR.\n", optarg);
+                    fprintf(stderr, "Error: Invalid value for --emit: %s. Allowed values are AST, OBJ or IR.\n", optarg);
                     usage(stderr, argv[0]);
                     exit(EXIT_FAILURE);
                 }
@@ -80,6 +80,7 @@ parse_cli_options(int argc, char *argv[])
 #include "parser.h"
 #include "ir.h"
 #include "meta_ir.h"
+#include "buildit.h"
 #include "dynstr.h"
 
 #include <assert.h>
@@ -89,6 +90,7 @@ Node *root = NULL;
 
 #include "unistd.h"
 #include "linux/limits.h"
+#include <llvm-c/Core.h>
 
 int
 main(int argc, char *argv[])
@@ -183,6 +185,17 @@ main(int argc, char *argv[])
         {
             ir_generate(&ir);
             fprintf(fout, "%s\n", ir.ir.data);
+        }
+        else if (strcmp(opts.emit_type, "OBJ") == 0)
+        {
+            ir_generate(&ir);
+            char *err = NULL;
+            if (buildit(ir.ir.data, fout, &err))
+            {
+                fprintf(stderr, "Error: %s\n", err);
+                LLVMDisposeMessage(err);
+                return 1;
+            }
         }
     }
 

@@ -68,8 +68,7 @@ else
 	$(error Unknown build mode: $(BUILD). Use BUILD=debug or BUILD=release)
 endif
 
-LDFLAGS  = $(shell llvm-config --ldflags --libs --system-libs) -lfl
-
+LDFLAGS  = $(shell llvm-config --ldflags --libs core irreader native --system-libs) -lfl
 
 LEXES    = $(shell find $(SRC) -type f -name '*.l')
 PARSERS  = $(shell find $(SRC) -type f -name '*.y')
