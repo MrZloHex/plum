@@ -1,5 +1,6 @@
 #include "ir.h"
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -367,6 +368,19 @@ _gen_bin_op_str(DynString *text, const char *op, int res, Node *exp_type, int lr
     );
 }
 
+static inline Node *
+find_base_var_member(Node *member, uint8_t *depth)
+{
+    Node *b = member->as.member.base;
+    if (b->as.expr.type == ET_IDENT)
+    {
+        return b->as.expr.expr;
+    }
+    assert(b->as.expr.type == ET_MEMBER);
+    *depth += 1;
+    return find_base_var_member(b->as.expr.expr, depth);
+}
+
 static void
 gen_bin_op(IR *ir, int res, Node *exp_type)
 {
@@ -382,7 +396,9 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
           || binop->as.bin_op.left->as.expr.type == ET_MEMBER)
           && "LVAL NOT IDENT"
         );
+#warning "MAYBE DO SMTH WITH THIS??"
         bool its_ident = binop->as.bin_op.left->as.expr.type == ET_IDENT;
+        bool its_member = binop->as.bin_op.left->as.expr.type == ET_MEMBER;
 
         int rr = new_reg(ir);
         Node *id, *type;
@@ -391,6 +407,17 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
         {
             id = binop->as.bin_op.left->as.expr.expr;
             type = meta_find_type_in_scope(ir->curr, id->as.ident);
+        }
+        else if (its_member)
+        {
+            Node *mem = binop->as.bin_op.left->as.expr.expr;
+            assert(mem->type == NT_MEMBER && "NOT MEMBER");
+            uint8_t depth = 1;
+            Node *b = find_base_var_member(mem, &depth);
+            Node *bt = meta_find_type_in_scope(ir->curr, b->as.ident);
+            MetaType *base_type = meta_find_typedef(ir->meta, bt->as.type.user_type->as.ident);
+            printf("QWE %u %s\n", depth, node_types_str[base_type->type->type]);
+            assert(!"NOT IMPLEMENTED");
         }
         else
         {
@@ -420,6 +447,9 @@ gen_bin_op(IR *ir, int res, Node *exp_type)
             // AND NOW SKIP IT
             ast_next(ir->ast);
             ast_next(ir->ast);
+        }
+        else if (its_member)
+        {
         }
         else
         {
@@ -757,9 +787,11 @@ gen_block(IR *ir)
         assert(b->type == NT_BLOCK && "NOT A BLOCK");
         gen_stmt(ir);
 
-        // printf("==============BLOCK=============\n");
-        // printf("%s\n", ir->text.data);
-        // printf("================================\n");
+        printf("==============BLOCK=============\n");
+        printf("%s\n", ir->text.data);
+        //printf("=============STRUCTS============\n");
+        //printf("%s\n", ir->structs.data);
+        printf("================================\n");
     
         block = block->as.block.next;
         if (block)

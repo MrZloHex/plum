@@ -23,10 +23,10 @@ I32 main: []
  | I32 a
  | a = 32
 ;| t.a.a = 69
-;| t.a.fla = TRUE
- | t.q = 69
+ | t.a.fla = TRUE
+;| t.q = 69
  |
- | (printf)[ "A %d t.q %d%c" | a | t.q | '\n' ]
+;| (printf)[ "A %d t.q %d%c" | a | t.q | '\n' ]
  |
  | RET [ 0 ]
  \_

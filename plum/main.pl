@@ -10,6 +10,10 @@ ABYSS usage: [ @C1 progname ]
  | (printf)[ "%cfile1 ...        One or more source files to compile%c" | '\t' | '\n' ]
  | RET []
  \_
+ 
+ ABYSS parse_cli_opts: []
+  | RET []
+  \_
 
 I32 main: [ I32 argc | @@C1 argv ]
  | @C1 cwd = (get_current_dir_name)[]
@@ -20,7 +24,7 @@ I32 main: [ I32 argc | @@C1 argv ]
  | @C1 opt_output_file
  | @C1 opt_emit_type
  | I32 file_start_index
- | parse_cli_opts)[ argc | argv | <F6>
+;| (parse_cli_opts)[ argc | argv | <
  | 
  | 
  | @C1 progname = @argv

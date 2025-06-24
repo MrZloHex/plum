@@ -143,6 +143,12 @@ ast_next(AST *ast)
             PUSH_NODE(curr->as.loop.block);
         } break;
 
+        case NT_MEMBER:
+        {
+            PUSH_NODE(curr->as.member.field);
+            PUSH_NODE(curr->as.member.base);
+        } break;
+
         case NT_IDENT:
         case NT_NUM_LIT:
         case NT_CHR_LIT:

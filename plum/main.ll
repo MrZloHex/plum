@@ -34,6 +34,10 @@ define dso_local void @usage(ptr noundef %progname) {
   ret void
 }
 
+define dso_local void @parse_cli_opts() {
+  ret void
+}
+
 define dso_local i32 @main(i32 noundef %argc, ptr noundef %argv) {
   %argc_addr = alloca i32
   store i32 %argc, i32* %argc_addr
@@ -58,6 +62,9 @@ l1:
   call i32 @printf(ptr %r23, ptr %r25, i8 %r26)
   br label %l3
 l3:
+  %opt_output_file = alloca ptr
+  %opt_emit_type = alloca ptr
+  %file_start_index = alloca i32
   %progname = alloca ptr
   %r28 = load ptr, ptr %argv_addr
   %r27 = load ptr, ptr %r28
