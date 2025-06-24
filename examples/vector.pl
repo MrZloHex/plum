@@ -12,7 +12,7 @@ ENUM Option<T>:
 
 ;;;;; IN STDIO
 
-I32 printf[ @CHAR format | ... ]
+I32 printf[ CONST @CHAR format | ... ]
  | ;; IMPLEMENTATION
  \_
 

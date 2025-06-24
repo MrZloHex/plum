@@ -1,26 +1,29 @@
-program               ::= prg_stmt
-                        | program prg_stmt
+program               ::= { prg_stmt }
 prg_stmt              ::= fn_def
                         | fn_decl
+                        | type_def
 
 fn_def                ::= fn_decl block
-fn_decl               ::= type IDENT COLON LBRACKET param_list_opt RBRACKET
+fn_decl               ::= type IDENT COLON LBRACKET parametres RBRACKET
+type_def              ::= TYPEDEF IDENT COLON block
 
-param_list_opt        ::= ε
-                        | param_list
-param_list            ::= parametre
-                        | param_list VBAR parametre
-parametre             ::= type IDENT
+parametres            ::= ε
+                        | type IDENT { VBAR type IDENT } [ VBAR ELLIPSIS ]
+                        | ELLIPSIS
 
-block                 ::= block_line_list BLOCK_END
-block_line_list       ::= block_line
-                        | block_line_list block_line
-block_line            ::= VBAR stmt
+block                 ::= { VBAR stmt } BLOCK_END
 
 stmt                  ::= ε
                         | expression
                         | var_decl
                         | ret_stmt
+                        | cond_stmt
+                        | loop_stmt
+                        | BREAK
+
+
+loop_stmt             ::= LOOP block
+
 
 var_decl              ::= type IDENT
 ret_stmt              ::= RET LBRACKET expression RBRACKET
