@@ -3,7 +3,7 @@
 #include <assert.h>
 
 void
-ast_init(AST *ast, Node *root)
+ast_init(AST *ast, ASTNode *root)
 {
     ast->root = root;
     ast_stack_init(&ast->stack, 32);
@@ -21,6 +21,8 @@ ast_reinit(AST *ast)
 #define PUSH_NODE(EL)                           \
     if (EL)                                     \
     { ast_stack_push(&ast->stack, EL); }
+
+#if 0
 
 Node *
 ast_next(AST *ast)
@@ -164,5 +166,5 @@ ast_next(AST *ast)
     return curr;
 }
 
-
-DEFINE_DYNSTACK(ast_stack, ASTStack, Node *)
+#endif
+DEFINE_DYNSTACK(ast_stack, ASTStack, ASTNode *)

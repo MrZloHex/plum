@@ -1,6 +1,8 @@
 #ifndef __GEN_H__
 #define __GEN_H__
 
+#if 0
+
 #include "ast.h"
 #include "meta_ir.h"
 #include "ir_emitter.h"
@@ -40,6 +42,8 @@ ir_init(IR *ir, Meta *meta, AST *ast);
 
 void
 ir_generate(IR *ir);
+
+#endif
 
 #endif /* GEN_H */
 

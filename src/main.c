@@ -75,20 +75,17 @@ parse_cli_options(int argc, char *argv[])
 }
 
 
-#include "preproc.h"
-#include "ast.h"
-#include "parser.h"
-#include "ir.h"
-#include "meta_ir.h"
-#include "dynstr.h"
 
 #include <assert.h>
+#include <unistd.h>
+#include <linux/limits.h>
 
-extern FILE *yyin;
-Node *root = NULL;
 
-#include "unistd.h"
-#include "linux/limits.h"
+#define DYNSTR_IMPL
+#include "dynstr.h"
+
+#include "parser.h"
+
 
 int
 main(int argc, char *argv[])
@@ -126,68 +123,22 @@ main(int argc, char *argv[])
 
     char *source_file = realpath(argv[opts.file_start_index], NULL);
 
-    char *f = strrchr(source_file, '/');
-    *f = 0;
-    chdir(source_file);
-    if (getcwd(cwd, sizeof(cwd)) != NULL)
-    { printf("Current working dir: %s\n", cwd); }
-    *f = '/';
-
     FILE *src_f = fopen(source_file, "r");
     if (!src_f)
     {
         fprintf(stderr, "Failed to open source file: %s\n", source_file);
+        free(source_file);
         exit(EXIT_FAILURE);
     }
 
     DynString src;
     dynstr_init(&src, src_f);
 
-    preprocess(&src);
+    printf("SOURCE ```%s```\n", src.data);
 
-    printf("PREPROCESSED \n```\n%s\n```\n", src.data);
-
-    yyin = fmemopen(src.data, src.size, "r");
-    if (!yyin) {
-        fprintf(stderr, "Failed to open virtual preprocessed file\n");
-        free(yyin);
-        exit(EXIT_FAILURE);
-    }
-    
-    // yydebug = 1;
-    if (yyparse() != 0)
-    {
-        fprintf(stderr, "Failed to parse source code: %s\n", source_file);
-        exit(EXIT_FAILURE);
-    }
-
-    AST ast;
-    ast_init(&ast, root);
-
-    Meta meta;
-    meta_init(&meta);
-    meta_collect(&meta, &ast);
-    printf("\n\n===========META==============\n");
-    meta_dump(&meta);
-    printf("===========META==============\n");
-
-    IR ir;
-    ast_reinit(&ast);
-    ir_init(&ir, &meta, &ast);
-
-    if (opts.emit_type)
-    {
-        if (strcmp(opts.emit_type, "AST") == 0)
-        { node_dump_programme(root, 0); }
-        else if (strcmp(opts.emit_type, "IR") == 0)
-        {
-            ir_generate(&ir);
-            fprintf(fout, "%s\n", ir.ir.data);
-        }
-    }
+    AST
 
     dynstr_deinit(&src);
-    free(yyin);
     free(source_file);
 
     return 0;

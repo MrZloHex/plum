@@ -18,6 +18,9 @@ I32 printf[ CONST @CHAR format | ... ]
 
 ;;;;;;;;;;;
 
+TYPE Vector: USIZE
+TYPE Vector: STRUCTURE
+ | 
 
 TYPE VectorType<T>:
  | @T     data
@@ -27,7 +30,7 @@ TYPE VectorType<T>:
 
 
 IFACE VectorFace<T>: [ @VectorType<T> me ]
- - PUBLIC:
+ + PUBLIC:
  |
  | I8 init: [ USIZE base_cap ]
  |  | IF [ me = NULL ]
@@ -112,7 +115,7 @@ IFACE VectorFace<T>: [ @VectorType<T> me ]
  |  \_
  |
  |
- - PRIVATE:
+ + PRIVATE:
  | 
  | I8 reallocate: []
  |  | USIZE new_cap = @me.cap * 2

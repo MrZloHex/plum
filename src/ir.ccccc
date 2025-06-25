@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#define DYNSTR_IMPL
 #include "dynstr.h"
+#if 0
 
 static void
 emitter_dynstr_instr(struct IREmitter *e, const char *fmt, va_list ap)
@@ -929,3 +929,4 @@ ir_generate(IR *ir)
 }
 
 DEFINE_DYNARRAY(argreg, ArgRegs, ArgumentREG);
+#endif

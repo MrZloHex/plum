@@ -1,6 +1,8 @@
 #ifndef __META_IR_H__
 #define __META_IR_H__
 
+#if 0
+
 #include "ast.h"
 #include "dynarray.h"
 
@@ -61,5 +63,7 @@ meta_find_str(Meta *meta, const char *lit);
 
 void
 meta_dump(Meta *meta);
+
+#endif
 
 #endif /* __META_IR_H__  */
