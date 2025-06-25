@@ -10,8 +10,8 @@ typedef struct
 typedef struct
 {
     //const char *filename;
-    Position from;
-    Position to;
+    int         line;
+    int         col;
 } Location;
 
 #endif /* __LOCATION_H__ */

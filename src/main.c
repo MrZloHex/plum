@@ -80,16 +80,19 @@ parse_cli_options(int argc, char *argv[])
 #include <unistd.h>
 #include <linux/limits.h>
 
+#include "trace.h"
+
+#include "parser.h"
 
 #define DYNSTR_IMPL
 #include "dynstr.h"
-
-#include "parser.h"
 
 
 int
 main(int argc, char *argv[])
 {
+    tracer_init(TRC_DEBUG, TP_ALL);
+
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd)) != NULL)
     { printf("Current working dir: %s\n", cwd); }
@@ -133,13 +136,15 @@ main(int argc, char *argv[])
 
     DynString src;
     dynstr_init(&src, src_f);
-
-    printf("SOURCE ```%s```\n", src.data);
-
-    AST
-
-    dynstr_deinit(&src);
+    fclose(src_f);
     free(source_file);
+
+    AST ast;
+    ast_init(&ast);
+    parse_unit(&ast, &src);
+
+    ast_deinit(&ast);
+    dynstr_deinit(&src);
 
     return 0;
 }

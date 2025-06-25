@@ -1,13 +1,27 @@
+#define ARENA_IMPL
 #include "ast.h"
 #include <stdio.h>
 #include <assert.h>
 
-void
-ast_init(AST *ast, ASTNode *root)
+static ASTNode *
+ast_node_new(AST *ast)
 {
-    ast->root = root;
+    ASTNode *node = arena_alloc(&ast->arena, sizeof(ASTNode));
+    *node = (ASTNode){0};
+    return node;
+}
+
+
+void
+ast_init(AST *ast)
+{
+    arena_init(&ast->arena, sizeof(ASTNode)*512);
+    ast->root = ast_node_new(ast);
+    *ast->root = (ASTNode)
+    { .kind = NT_TRANSLATION_UNIT };
+
     ast_stack_init(&ast->stack, 32);
-    ast_stack_push(&ast->stack, root);
+    ast_stack_push(&ast->stack, ast->root);
 }
 
 void
@@ -16,6 +30,13 @@ ast_reinit(AST *ast)
     ast_stack_deinit(&ast->stack);
     ast_stack_init(&ast->stack, 32);
     ast_stack_push(&ast->stack, ast->root);
+}
+
+void
+ast_deinit(AST *ast)
+{
+    ast_stack_deinit(&ast->stack);
+    arena_destroy(&ast->arena);
 }
 
 #define PUSH_NODE(EL)                           \

@@ -22,12 +22,12 @@ typedef enum
     TOK_END_BLOCK,
 
     TOK_IDENTIFIER,
-    TOK_TYPE,
+    TOK_FLOAT,
     TOK_INTEGER,
     TOK_CHARACTER,
     TOK_STRING,
 
-    TOK_KW_TYPE,
+    TOK_TYPE,
     TOK_STRUCTURE,
     TOK_UNION,
     TOK_ENUMERATION,
@@ -50,4 +50,35 @@ typedef struct
     Location  loc;
 } Token;
 
+void
+token_dump(Token);
+
 #endif /* __TOKEN_H__ */
+#ifdef TOKEN_DUMP
+
+#include "trace.h"
+
+static char *type_str[TOK_SIZE+1] =
+{
+    "EOF", "NEWLINE", "COLON", "LBRACKET", "RBRACKET",
+    "LPAREN", "RPAREN", "VBAR", "DOT", "AT", "QMARK",
+    "ELLIPSIS", "OPERATOR", "END BLOCK", "IDENTIFIER",
+    "FLOAT", "INTEGER", "CHARACTER", "STRING", "TYPE",
+    "STRUCTURE", "UNION", "ENUMERATION", "IF", "ELIF",
+    "ELSE", "LOOP", "BREAK", "RET", "SIZE"
+};
+
+void
+token_dump(Token tok)
+{
+    if (tok.lexeme)
+    {
+        TRACE_DEBUG("TOKEN: %s on %d:%d with `%s`", type_str[tok.kind], tok.loc.line, tok.loc.col, tok.lexeme);
+    }
+    else
+    {
+        TRACE_DEBUG("TOKEN: %s on %d:%d at %d", type_str[tok.kind], tok.loc.line, tok.loc.col, tok.indent);
+    }
+}
+
+#endif /* TOKEN_DUMP */

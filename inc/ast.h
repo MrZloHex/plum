@@ -3,6 +3,7 @@
 
 // #include "ast_nodes.h"
 #include "dynstack.h"
+#include "arena.h"
 
 typedef struct ASTNode ASTNode;
 
@@ -10,15 +11,19 @@ DECLARE_DYNSTACK(ast_stack, ASTStack, ASTNode *)
 
 typedef struct
 {
+    Arena arena;
     ASTNode *root;
     ASTStack stack;
 } AST;
 
 void
-ast_init(AST *ast, ASTNode *root);
+ast_init(AST *ast);
 
 void
 ast_reinit(AST *ast);
+
+void
+ast_deinit(AST *ast);
 
 ASTNode *
 ast_next(AST *ast);

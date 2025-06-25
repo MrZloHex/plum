@@ -68,7 +68,8 @@ else
 	$(error Unknown build mode: $(BUILD). Use BUILD=debug or BUILD=release)
 endif
 
-LDFLAGS  = $(shell llvm-config --ldflags --libs --system-libs) -lfl
+# LDFLAGS  = $(shell llvm-config --ldflags --libs --system-libs) -lfl
+LDFLAGS  = 
 
 
 LEXES    = $(shell find $(SRC) -type f -name '*.l')

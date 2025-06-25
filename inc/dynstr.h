@@ -66,6 +66,9 @@ dynstr_insert_str(DynString *str, size_t index, const char *s);
 int
 dynstr_get(const DynString *str, size_t index, char *out);
 
+char *
+dynstr_substr(const DynString *str, size_t start, size_t len);
+
 int
 dynstr_set(DynString *str, size_t index, char c);
 
@@ -269,6 +272,25 @@ dynstr_get(const DynString *str, size_t index, char *out)
     { return -1; }
     *out = str->data[index];
     return 0;
+}
+
+char *
+dynstr_substr(const DynString *str, size_t start, size_t len)
+{
+    if (!str || !str->data || start >= str->size)
+    { return NULL; }
+
+    /* clamp len if it runs past the end */
+    if (start + len > str->size)
+    { len = str->size - start; }
+
+    char *out = (char *)malloc(len + 1);
+    if (!out)
+    { return NULL; }
+
+    memcpy(out, str->data + start, len);
+    out[len] = '\0';
+    return out;
 }
 
 int
