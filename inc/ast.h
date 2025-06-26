@@ -3,6 +3,7 @@
 
 // #include "ast_nodes.h"
 #include "dynstack.h"
+#include "dynstr.h"
 #include "arena.h"
 
 typedef struct ASTNode ASTNode;
@@ -19,6 +20,9 @@ typedef struct
 void
 ast_init(AST *ast);
 
+ASTNode *
+ast_node_new(AST *ast);
+
 void
 ast_reinit(AST *ast);
 
@@ -27,6 +31,9 @@ ast_deinit(AST *ast);
 
 ASTNode *
 ast_next(AST *ast);
+
+DynString
+ast_dump(AST *ast);
 
 
 #include <stddef.h>
@@ -45,7 +52,7 @@ typedef enum
     NT_TYPE_DEF,
     
     // TL STMT EXTRA
-    NT_PARAMTRE,
+    NT_PARAMETRE,
     NT_ENUM_FIELDS,
     NT_RECORD,
     NT_FIELD,

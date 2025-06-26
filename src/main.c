@@ -142,6 +142,7 @@ main(int argc, char *argv[])
     AST ast;
     ast_init(&ast);
     parse_unit(&ast, &src);
+    DynString ast_str = ast_dump(&ast);
 
     ast_deinit(&ast);
     dynstr_deinit(&src);

@@ -1,16 +1,7 @@
 #define ARENA_IMPL
 #include "ast.h"
-#include <stdio.h>
 #include <assert.h>
-
-static ASTNode *
-ast_node_new(AST *ast)
-{
-    ASTNode *node = arena_alloc(&ast->arena, sizeof(ASTNode));
-    *node = (ASTNode){0};
-    return node;
-}
-
+#include "trace.h"
 
 void
 ast_init(AST *ast)
@@ -22,6 +13,14 @@ ast_init(AST *ast)
 
     ast_stack_init(&ast->stack, 32);
     ast_stack_push(&ast->stack, ast->root);
+}
+
+ASTNode *
+ast_node_new(AST *ast)
+{
+    ASTNode *node = arena_alloc(&ast->arena, sizeof(ASTNode));
+    *node = (ASTNode){0};
+    return node;
 }
 
 void
@@ -39,32 +38,41 @@ ast_deinit(AST *ast)
     arena_destroy(&ast->arena);
 }
 
+void
+ast_dump_node(ASTNode *, size_t);
+
+DynString
+ast_dump(AST *ast)
+{
+    ast_dump_node(ast->root, 0);
+}
+
 #define PUSH_NODE(EL)                           \
     if (EL)                                     \
     { ast_stack_push(&ast->stack, EL); }
 
-#if 0
 
-Node *
+ASTNode *
 ast_next(AST *ast)
 {
     if (ast_stack_size(&ast->stack) == 0)
     { return NULL; }
 
-    Node *curr;
+    ASTNode *curr;
     ast_stack_pop(&ast->stack, &curr);
 
-    switch (curr->type)
+    switch (curr->kind)
     {
-        case NT_PROGRAMME:
+        case NT_TRANSLATION_UNIT:
         {
-            PUSH_NODE(curr->as.programme.next);
-            PUSH_NODE(curr->as.programme.stmt);
+            //PUSH_NODE(curr->as.tu.next_unit);
+            PUSH_NODE(curr->as.tu.tu_stmt);
         } break;
 
-        case NT_PRG_STMT:
+        case NT_TU_STMT:
         {
-            PUSH_NODE(curr->as.prg_stmt.prg_stmt);
+            PUSH_NODE(curr->as.tu_stmt.next_tu_stmt);
+            PUSH_NODE(curr->as.tu_stmt.tu_stmt);
         } break;
 
         case NT_FN_DECL:
@@ -72,6 +80,13 @@ ast_next(AST *ast)
             PUSH_NODE(curr->as.fn_decl.params);
             PUSH_NODE(curr->as.fn_decl.ident);
             PUSH_NODE(curr->as.fn_decl.type);
+        } break;
+
+        case NT_PARAMETRE:
+        {
+            PUSH_NODE(curr->as.parametre.next_param);
+            PUSH_NODE(curr->as.parametre.ident);
+            PUSH_NODE(curr->as.parametre.type);
         } break;
         
         case NT_FN_DEF:
@@ -82,50 +97,79 @@ ast_next(AST *ast)
 
         case NT_TYPE_DEF:
         {
-            PUSH_NODE(curr->as.type_def.block);
+            PUSH_NODE(curr->as.type_def.tdef);
             PUSH_NODE(curr->as.type_def.ident);
         } break;
 
-        case NT_PARAMETRE:
+        case NT_ENUM_FIELDS:
         {
-            PUSH_NODE(curr->as.parametre.next);
-            PUSH_NODE(curr->as.parametre.ident);
-            PUSH_NODE(curr->as.parametre.type);
+            PUSH_NODE(curr->as.enum_flds.next_field);
+            PUSH_NODE(curr->as.enum_flds.ident);
         } break;
 
-        case NT_FN_CALL:
+        case NT_RECORD:
         {
-            PUSH_NODE(curr->as.fn_call.args);
-            PUSH_NODE(curr->as.fn_call.ident);
-        } break; 
+            PUSH_NODE(curr->as.record.fields);
+        } break;
 
-        case NT_ARGUMENTS:
+        case NT_FIELD:
         {
-            PUSH_NODE(curr->as.arguments.next);
-            PUSH_NODE(curr->as.arguments.arg);
+            PUSH_NODE(curr->as.rcrd_flds.next_field);
+            PUSH_NODE(curr->as.rcrd_flds.ident);
+            PUSH_NODE(curr->as.rcrd_flds.type);
         } break;
 
         case NT_BLOCK:
         {
-            PUSH_NODE(curr->as.block.next);
-            PUSH_NODE(curr->as.block.stmt);
+            PUSH_NODE(curr->as.block.stmts);
         } break;
-
-        case NT_STATEMENT:
+        
+        case NT_STMT:
         {
+            PUSH_NODE(curr->as.stmt.next_stmt);
             PUSH_NODE(curr->as.stmt.stmt);
-        } break;
-
-        case NT_VAR_DECL:
-        {
-            PUSH_NODE(curr->as.var_decl.value);
-            PUSH_NODE(curr->as.var_decl.ident);
-            PUSH_NODE(curr->as.var_decl.type);
         } break;
 
         case NT_RET:
         {
             PUSH_NODE(curr->as.ret.expr);
+        } break;
+
+        case NT_COND:
+        {
+            PUSH_NODE(curr->as.cond.else_part);
+            PUSH_NODE(curr->as.cond.elif_part);
+            PUSH_NODE(curr->as.cond.if_part);
+        } break;
+
+        case NT_IF:
+        {
+            PUSH_NODE(curr->as.if_cond.block);
+            PUSH_NODE(curr->as.if_cond.expr);
+        } break;
+
+        case NT_ELIF:
+        {
+            PUSH_NODE(curr->as.elif_cond.next_elif);
+            PUSH_NODE(curr->as.elif_cond.block);
+            PUSH_NODE(curr->as.elif_cond.expr);
+        } break;
+
+        case NT_ELSE:
+        {
+            PUSH_NODE(curr->as.else_cond.block);
+        } break;
+
+        case NT_LOOP:
+        {
+            PUSH_NODE(curr->as.loop.block);
+        } break;
+
+        case NT_VAR_DECL:
+        {
+            PUSH_NODE(curr->as.var_decl.init);
+            PUSH_NODE(curr->as.var_decl.ident);
+            PUSH_NODE(curr->as.var_decl.type);
         } break;
 
         case NT_EXPR:
@@ -135,8 +179,8 @@ ast_next(AST *ast)
 
         case NT_BIN_OP:
         {
-            PUSH_NODE(curr->as.bin_op.left);
             PUSH_NODE(curr->as.bin_op.right);
+            PUSH_NODE(curr->as.bin_op.left);
         } break;
 
         case NT_UNY_OP:
@@ -144,48 +188,259 @@ ast_next(AST *ast)
             PUSH_NODE(curr->as.uny_op.operand);
         } break;
 
-        case NT_COND_STMT:
+        case NT_FN_CALL:
         {
-            PUSH_NODE(curr->as.cond_stmt.else_block);
-            PUSH_NODE(curr->as.cond_stmt.if_block);
-        } break;
+            PUSH_NODE(curr->as.fn_call.args);
+            PUSH_NODE(curr->as.fn_call.ident);
+        } break; 
 
-        case NT_COND_IF:
+        case NT_ARGUMENT:
         {
-            PUSH_NODE(curr->as.cond_if.block);
-            PUSH_NODE(curr->as.cond_if.expr);
-        } break;
-
-        case NT_COND_ELSE:
-        {
-            PUSH_NODE(curr->as.cond_else.block);
-        } break;
-
-        case NT_LOOP:
-        {
-            PUSH_NODE(curr->as.loop.block);
-        } break;
-
-        case NT_MEMBER:
-        {
-            PUSH_NODE(curr->as.member.field);
-            PUSH_NODE(curr->as.member.base);
+            PUSH_NODE(curr->as.argument.next_arg);
+            PUSH_NODE(curr->as.argument.argument);
         } break;
 
         case NT_IDENT:
-        case NT_NUM_LIT:
-        case NT_CHR_LIT:
-        case NT_STR_LIT:
-        case NT_BOOL_LIT:
+        case NT_LITERAL:
         case NT_TYPE:
+        case NT_BASE_TYPE:
             break;
 
-        case NT_QUANT:
-            assert(0 && "UNREACHABLE");
+        // defualt:
+        //     assert(0 && "UNREACHABLE");
     }
 
     return curr;
 }
 
-#endif
+static inline void
+print_offset(size_t depth)
+{
+        for (size_t i = 0; i < depth; ++i)
+        {
+            printf("  ");
+        }
+        return;
+    if (depth == 1)
+    {
+        printf("|-");
+    }
+    else if (depth > 1)
+    {
+        printf("`-");
+    }
+}
+
+
+const static char *ast_type_str[] =
+{
+    "TranslationUnit", "TU Statement",
+    "FuncDecl", "FuncDef", "TypeDef",
+    "Parametre", "EnumField", "Record", "RecordField",
+    "Type", "BaseType", "Identifier",
+    "Block", "Statement", "Return", "Condition", "Loop", "VarDecl", "Expression",
+    "IfStmt", "ElifStmt", "ElseStmt",
+    "BinOp", "UnyOp", "FuncCall", "Argument", "Literal"
+};
+
+#define PRINTIT(node) \
+    print_offset(depth); \
+    printf("%s %d:%d", ast_type_str[node->kind], node->loc.line, node->loc.col);
+
+
+void
+ast_dump_node(ASTNode *curr, size_t depth)
+{
+    static bool type_print_full = true;
+    if (!curr)
+    { return; }
+
+    switch (curr->kind)
+    {
+        case NT_TRANSLATION_UNIT:
+        {
+            PRINTIT(curr); printf("\n");
+            ast_dump_node(curr->as.tu.tu_stmt, depth+1);
+        } break;
+
+        case NT_TU_STMT:
+        {
+            ast_dump_node(curr->as.tu_stmt.tu_stmt, depth);
+            ast_dump_node(curr->as.tu_stmt.next_tu_stmt, depth);
+        } break;
+
+    //     case NT_FN_DECL:
+    //     {
+    //         PUSH_NODE(curr->as.fn_decl.params);
+    //         PUSH_NODE(curr->as.fn_decl.ident);
+    //         PUSH_NODE(curr->as.fn_decl.type);
+    //     } break;
+
+    //     case NT_PARAMETRE:
+    //     {
+    //         PUSH_NODE(curr->as.parametre.next_param);
+    //         PUSH_NODE(curr->as.parametre.ident);
+    //         PUSH_NODE(curr->as.parametre.type);
+    //     } break;
+    //     
+    //     case NT_FN_DEF:
+    //     {
+    //         PUSH_NODE(curr->as.fn_def.block);
+    //         PUSH_NODE(curr->as.fn_def.decl);
+    //     } break;
+
+        case NT_TYPE_DEF:
+        {
+            PRINTIT(curr);
+            printf(" `%s`", curr->as.type_def.ident->as.ident);
+            if (curr->as.type_def.kind == TD_ALIAS)
+            { printf(" ALIAS TO\n"); }
+            else
+            { printf("\n"); }
+
+            type_print_full = true;
+            ast_dump_node(curr->as.type_def.tdef, depth+1);
+        } break;
+
+    //     case NT_ENUM_FIELDS:
+    //     {
+    //         PUSH_NODE(curr->as.enum_flds.next_field);
+    //         PUSH_NODE(curr->as.enum_flds.ident);
+    //     } break;
+
+        case NT_RECORD:
+        {
+            PRINTIT(curr);
+            printf(" %s\n", curr->as.record.kind == TDRT_UNION ? "UNION" : "STRUCTURE");
+            ast_dump_node(curr->as.record.fields, depth+1);
+        } break;
+
+        case NT_FIELD:
+        {
+            PRINTIT(curr);
+            printf(" `%s` of type ", curr->as.rcrd_flds.ident->as.ident);
+            type_print_full = false;
+            ast_dump_node(curr->as.rcrd_flds.type, depth);
+            printf("\n");
+            ast_dump_node(curr->as.rcrd_flds.next_field, depth);
+        } break;
+
+        case NT_TYPE:
+        {
+            const static char *type_str[BT_QUANTITY] = 
+            {
+                "ABYSS", "B1", "C1",
+                "U8", "U16", "U32", "U64",
+                "I8", "I16", "I32", "I64",
+                "USIZE", "ISIZE", "F32", "F64"
+            };
+
+            if (type_print_full)
+            { PRINTIT(curr); printf(" "); }
+
+            for (size_t i = 0; i < curr->as.type.ptrs; ++i)
+            { printf("PTR TO "); }
+
+            if (curr->as.type.kind == TT_USER_TYPE)
+            { printf("`%s`", curr->as.type.type->as.ident); }
+            else
+            { printf("%s", type_str[curr->as.type.type->as.base_type]); }
+
+            if (type_print_full)
+            { printf("\n"); }
+        } break;
+
+    //     case NT_BLOCK:
+    //     {
+    //         PUSH_NODE(curr->as.block.stmts);
+    //     } break;
+    //     
+    //     case NT_STMT:
+    //     {
+    //         PUSH_NODE(curr->as.stmt.next_stmt);
+    //         PUSH_NODE(curr->as.stmt.stmt);
+    //     } break;
+
+    //     case NT_RET:
+    //     {
+    //         PUSH_NODE(curr->as.ret.expr);
+    //     } break;
+
+    //     case NT_COND:
+    //     {
+    //         PUSH_NODE(curr->as.cond.else_part);
+    //         PUSH_NODE(curr->as.cond.elif_part);
+    //         PUSH_NODE(curr->as.cond.if_part);
+    //     } break;
+
+    //     case NT_IF:
+    //     {
+    //         PUSH_NODE(curr->as.if_cond.block);
+    //         PUSH_NODE(curr->as.if_cond.expr);
+    //     } break;
+
+    //     case NT_ELIF:
+    //     {
+    //         PUSH_NODE(curr->as.elif_cond.next_elif);
+    //         PUSH_NODE(curr->as.elif_cond.block);
+    //         PUSH_NODE(curr->as.elif_cond.expr);
+    //     } break;
+
+    //     case NT_ELSE:
+    //     {
+    //         PUSH_NODE(curr->as.else_cond.block);
+    //     } break;
+
+    //     case NT_LOOP:
+    //     {
+    //         PUSH_NODE(curr->as.loop.block);
+    //     } break;
+
+    //     case NT_VAR_DECL:
+    //     {
+    //         PUSH_NODE(curr->as.var_decl.init);
+    //         PUSH_NODE(curr->as.var_decl.ident);
+    //         PUSH_NODE(curr->as.var_decl.type);
+    //     } break;
+
+    //     case NT_EXPR:
+    //     {
+    //         PUSH_NODE(curr->as.expr.expr);
+    //     } break;
+
+    //     case NT_BIN_OP:
+    //     {
+    //         PUSH_NODE(curr->as.bin_op.right);
+    //         PUSH_NODE(curr->as.bin_op.left);
+    //     } break;
+
+    //     case NT_UNY_OP:
+    //     {
+    //         PUSH_NODE(curr->as.uny_op.operand);
+    //     } break;
+
+    //     case NT_FN_CALL:
+    //     {
+    //         PUSH_NODE(curr->as.fn_call.args);
+    //         PUSH_NODE(curr->as.fn_call.ident);
+    //     } break; 
+
+    //     case NT_ARGUMENT:
+    //     {
+    //         PUSH_NODE(curr->as.argument.next_arg);
+    //         PUSH_NODE(curr->as.argument.argument);
+    //     } break;
+
+    //     case NT_IDENT:
+    //     case NT_LITERAL:
+    //     case NT_TYPE:
+    //     case NT_BASE_TYPE:
+    //         break;
+
+        defualt:
+            assert(0 && "UNREACHABLE");
+    }
+}
+
 DEFINE_DYNSTACK(ast_stack, ASTStack, ASTNode *)
+

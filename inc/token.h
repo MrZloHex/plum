@@ -57,8 +57,10 @@ token_dump(Token);
 #ifdef TOKEN_DUMP
 
 #include "trace.h"
+#define _POSIX_C_SOURCE  200809L
+#include <string.h>
 
-static char *type_str[TOK_SIZE+1] =
+const static char *type_str[TOK_SIZE+1] =
 {
     "EOF", "NEWLINE", "COLON", "LBRACKET", "RBRACKET",
     "LPAREN", "RPAREN", "VBAR", "DOT", "AT", "QMARK",
@@ -67,6 +69,14 @@ static char *type_str[TOK_SIZE+1] =
     "STRUCTURE", "UNION", "ENUMERATION", "IF", "ELIF",
     "ELSE", "LOOP", "BREAK", "RET", "SIZE"
 };
+
+const char *
+token_str(TokenType t)
+{ return type_str[t]; }
+
+char *
+token_dup_lex(Token *t)
+{ return (t && t->lexeme) ? strdup(t->lexeme) : NULL; }
 
 void
 token_dump(Token tok)

@@ -12,11 +12,11 @@ if exists("b:current_syntax")
 endif
 
 " Language keywords
-syntax keyword plumKeywords RET TYPE IFACE IMPL CLASS EXTENDS REQUIRE
+syntax keyword plumKeywords RET TYPE IFACE IMPL CLASS EXTENDS REQUIRE STRUCT UNION ENUM
 syntax keyword plumConditionKeywords IF
-syntax keyword plumLoopKeywords WHILE DO FOR LOOP
+syntax keyword plumLoopKeywords WHILE DO FOR LOOP BREAK
 syntax keyword plumDirectiveKeywords USES DEF
-syntax keyword plumTypeKeywords BOOL ABYSS C1 U8 U16 U32 U64 USIZE I8 I16 I32 I64 ISIZE F32 F64
+syntax keyword plumTypeKeywords B1 ABYSS C1 U8 U16 U32 U64 USIZE I8 I16 I32 I64 ISIZE F32 F64
 
 " Values
 syntax region plumImmediateValue start="#" end="\d\+"
