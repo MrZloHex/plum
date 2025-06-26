@@ -47,6 +47,7 @@ ast_dump(AST *ast)
     ast_dump_node(ast->root, 0);
 }
 
+
 #define PUSH_NODE(EL)                           \
     if (EL)                                     \
     { ast_stack_push(&ast->stack, EL); }
@@ -99,6 +100,11 @@ ast_next(AST *ast)
         {
             PUSH_NODE(curr->as.type_def.tdef);
             PUSH_NODE(curr->as.type_def.ident);
+        } break;
+
+        case NT_ENUM:
+        {
+            PUSH_NODE(curr->as.enumeration.fields);
         } break;
 
         case NT_ENUM_FIELDS:
@@ -236,7 +242,7 @@ const static char *ast_type_str[] =
 {
     "TranslationUnit", "TU Statement",
     "FuncDecl", "FuncDef", "TypeDef",
-    "Parametre", "EnumField", "Record", "RecordField",
+    "Parametre", "Enum", "EnumField", "Record", "RecordField",
     "Type", "BaseType", "Identifier",
     "Block", "Statement", "Return", "Condition", "Loop", "VarDecl", "Expression",
     "IfStmt", "ElifStmt", "ElseStmt",
@@ -247,6 +253,19 @@ const static char *ast_type_str[] =
     print_offset(depth); \
     printf("%s %d:%d", ast_type_str[node->kind], node->loc.line, node->loc.col);
 
+
+void
+dummy_dump(AST *ast)
+{
+    ast_reinit(ast);
+    ASTNode *curr = ast_next(ast);
+    size_t depth = 0;
+    while (curr)
+    {
+        PRINTIT(curr); printf("\n");
+        curr = ast_next(ast);
+    }
+}
 
 void
 ast_dump_node(ASTNode *curr, size_t depth)
@@ -269,20 +288,31 @@ ast_dump_node(ASTNode *curr, size_t depth)
             ast_dump_node(curr->as.tu_stmt.next_tu_stmt, depth);
         } break;
 
-    //     case NT_FN_DECL:
-    //     {
-    //         PUSH_NODE(curr->as.fn_decl.params);
-    //         PUSH_NODE(curr->as.fn_decl.ident);
-    //         PUSH_NODE(curr->as.fn_decl.type);
-    //     } break;
+        case NT_FN_DECL:
+        {
+            PRINTIT(curr);
+            printf(" `%s` of type ", curr->as.fn_decl.ident->as.ident);
+            type_print_full = false;
+            ast_dump_node(curr->as.fn_decl.type, depth);
+            printf("\n");
+            ast_dump_node(curr->as.fn_decl.params, depth+1);
+        } break;
 
-    //     case NT_PARAMETRE:
-    //     {
-    //         PUSH_NODE(curr->as.parametre.next_param);
-    //         PUSH_NODE(curr->as.parametre.ident);
-    //         PUSH_NODE(curr->as.parametre.type);
-    //     } break;
-    //     
+        case NT_PARAMETRE:
+        {
+            PRINTIT(curr);
+            if (curr->as.parametre.vaarg)
+            { printf(" VAARG\n"); }
+            else
+            {
+                printf(" `%s` of type ", curr->as.parametre.ident->as.ident);
+                type_print_full = false;
+                ast_dump_node(curr->as.parametre.type, depth);
+                printf("\n");
+            }
+            ast_dump_node(curr->as.parametre.next_param, depth);
+        } break;
+ 
     //     case NT_FN_DEF:
     //     {
     //         PUSH_NODE(curr->as.fn_def.block);
@@ -295,6 +325,8 @@ ast_dump_node(ASTNode *curr, size_t depth)
             printf(" `%s`", curr->as.type_def.ident->as.ident);
             if (curr->as.type_def.kind == TD_ALIAS)
             { printf(" ALIAS TO\n"); }
+            else if (curr->as.type_def.kind == TD_ENUM)
+            { printf(" ENUM\n"); }
             else
             { printf("\n"); }
 
@@ -302,11 +334,17 @@ ast_dump_node(ASTNode *curr, size_t depth)
             ast_dump_node(curr->as.type_def.tdef, depth+1);
         } break;
 
-    //     case NT_ENUM_FIELDS:
-    //     {
-    //         PUSH_NODE(curr->as.enum_flds.next_field);
-    //         PUSH_NODE(curr->as.enum_flds.ident);
-    //     } break;
+        case NT_ENUM:
+        {
+            ast_dump_node(curr->as.enumeration.fields, depth);
+        } break;
+
+        case NT_ENUM_FIELDS:
+        {
+            PRINTIT(curr);
+            printf(" `%s`\n", curr->as.enum_flds.ident->as.ident);
+            ast_dump_node(curr->as.enum_flds.next_field, depth);
+        } break;
 
         case NT_RECORD:
         {

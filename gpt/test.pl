@@ -4,6 +4,7 @@ TYPE MyInt: @I32
 TYPE Point: STRUCT
  | F64 x
  | F64 y
+ | F32 q
  \_
 
 TYPE Shape: UNION
@@ -11,22 +12,22 @@ TYPE Shape: UNION
  | @@I32 radius
  \_
  
-;TYPE Color: ENUM
-; | RED
-; | GREEN
-; | BLUE
-; \_
-;
-;; Объявления внешних C-функций
-;ABYSS log: [ @C1 fmt | ... ]
-;@C1   malloc: [ USIZE size ]
-;
-;; === Функция add (возвращает I32) ===
-;I32 add: [ I32 a | I32 b ]
-; | I32 result = a + b
-; | RET [ result ]
-; \_
-;
+TYPE Color: ENUM
+ | RED
+ | GREEN
+ | BLUE
+ \_
+
+; Объявления внешних C-функций
+ABYSS log: [ @C1 fmt | ... ]
+@C1   malloc: [ USIZE size ]
+
+; === Функция add (возвращает I32) ===
+I32 add: [ I32 a | I32 b ]
+ | I32 result = a + b
+ | RET [ result ]
+ \_
+
 ;; === Главная функция ===
 ;I32 main: []
 ; | ; переменные и указатели

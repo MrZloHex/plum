@@ -35,6 +35,11 @@ ast_next(AST *ast);
 DynString
 ast_dump(AST *ast);
 
+void
+dummy_dump(AST *ast);
+
+void
+ast_dump_node(ASTNode *, size_t);
 
 #include <stddef.h>
 
@@ -53,6 +58,7 @@ typedef enum
     
     // TL STMT EXTRA
     NT_PARAMETRE,
+    NT_ENUM,
     NT_ENUM_FIELDS,
     NT_RECORD,
     NT_FIELD,
@@ -134,8 +140,13 @@ typedef struct
         TD_ENUM
     } kind;
     ASTNode *ident; // N_Ident;
-    ASTNode *tdef;   // N_Type || N_Record || N_EnumField Linked list
+    ASTNode *tdef;   // N_Type || N_Record || N_Enum
 } N_TypeDef;
+
+typedef struct
+{
+    ASTNode *fields; // N_EnumField Linked list
+} N_Enum;
 
 typedef struct
 {
@@ -343,6 +354,7 @@ typedef struct ASTNode
         N_FnDecl        fn_decl;
         N_FnDef         fn_def;
         N_TypeDef       type_def;
+        N_Enum          enumeration;
         N_EnumField     enum_flds;
         N_Record        record;
         N_Field         rcrd_flds;
