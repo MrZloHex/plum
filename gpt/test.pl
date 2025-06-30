@@ -40,23 +40,28 @@ I32 main: [ ]
  | I32 sum = (add)[ count | 7 ]
  | 
  | ; проверка if-elif-else
-;| IF [ sum > 10 ]
-;|  | (log) [ "Sum > 10\n" | sum ]
-;| ELIF [ sum == 10 ]
-;|  | (log) [ "Sum == 10\n" ]
-;| ELSE
-;|  | (log) [ "Sum < 10\n" | sum ]
-;|  \_
+ | IF [ sum > 10 ]
+ |  | (log) [ "Sum > 10\n" | sum ]
+ |  | IF [sum < 20]
+ |  |  | (log)[]
+ |  | ELSE
+ |  |  | (huy)[]
+ |  |  \_
+ | ELIF [ sum == 10 ]
+ |  | (log) [ "Sum == 10\n" ]
+ | ELSE
+ |  | (log) [ "Sum < 10\n" | sum ]
+ |  \_
  | 
  | ; цикл с BREAK
  | USIZE i = 0
-;| LOOP
-;|  | IF [ i >= 5 ]
-;|  |  | BREAK
-;|  |  \_
-;|  | (log) [ "Loop i=%u\n" | i ]
-;|  | i = i + 1
-;|  \_
+ | LOOP
+ |  | IF [ i >= 5 ]
+ |  |  | BREAK
+ |  |  \_
+ |  | (log) [ "Loop i=%u\n" | i ]
+ |  | i = i + 1
+ |  \_
  | 
  | ; sizeof
  | I32 size_point = SIZE [ Point ]
@@ -89,14 +94,14 @@ I32 main: [ ]
  | ; указатели и арифметика по указателям
  | @I32 arr = (malloc)[ 5 * SIZE [ I32 ] ]
  | I32 idx  = 0
-;| LOOP
-;|  | IF [ idx >= 5 ]
-;|  |  | BREAK
-;|  |  \_
-;|  | ?arr     = idx * 2
-;|  | arr      = arr + 1
-;|  | idx      = idx + 1
-;|  \_
+ | LOOP
+ |  | IF [ idx >= 5 ]
+ |  |  | BREAK
+ |  |  \_
+ |  | ?arr     = idx * 2
+ |  | arr      = arr + 1
+ |  | idx      = idx + 1
+ |  \_
  | 
  | RET [ 0 ]
  \_

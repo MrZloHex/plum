@@ -422,35 +422,39 @@ ast_dump_node(ASTNode *curr, size_t depth)
 
         } break;
 
-    //     case NT_COND:
-    //     {
-    //         PUSH_NODE(curr->as.cond.else_part);
-    //         PUSH_NODE(curr->as.cond.elif_part);
-    //         PUSH_NODE(curr->as.cond.if_part);
-    //     } break;
+        case NT_COND:
+        {
+            PRINTIT(curr); printf("\n");
+            ast_dump_node(curr->as.cond.if_part, depth+1);
+            ast_dump_node(curr->as.cond.elif_part, depth+1);
+            ast_dump_node(curr->as.cond.else_part, depth+1);
+        } break;
 
-    //     case NT_IF:
-    //     {
-    //         PUSH_NODE(curr->as.if_cond.block);
-    //         PUSH_NODE(curr->as.if_cond.expr);
-    //     } break;
+        case NT_IF:
+        {
+            PRINTIT(curr); printf("\n");
+            ast_dump_node(curr->as.if_cond.expr, depth+1);
+            ast_dump_node(curr->as.if_cond.block, depth+1);
+        } break;
 
-    //     case NT_ELIF:
-    //     {
-    //         PUSH_NODE(curr->as.elif_cond.next_elif);
-    //         PUSH_NODE(curr->as.elif_cond.block);
-    //         PUSH_NODE(curr->as.elif_cond.expr);
-    //     } break;
+        case NT_ELIF:
+        {
+            PRINTIT(curr); printf("\n");
+            ast_dump_node(curr->as.elif_cond.expr, depth+1);
+            ast_dump_node(curr->as.elif_cond.block, depth+1);
+        } break;
 
-    //     case NT_ELSE:
-    //     {
-    //         PUSH_NODE(curr->as.else_cond.block);
-    //     } break;
+        case NT_ELSE:
+        {
+            PRINTIT(curr); printf("\n");
+            ast_dump_node(curr->as.else_cond.block, depth+1);
+        } break;
 
-    //     case NT_LOOP:
-    //     {
-    //         PUSH_NODE(curr->as.loop.block);
-    //     } break;
+        case NT_LOOP:
+        {
+            PRINTIT(curr); printf("\n");
+            ast_dump_node(curr->as.loop.block, depth+1);
+        } break;
 
         case NT_VAR_DECL:
         {

@@ -67,9 +67,9 @@ const static char *type_str[TOK_SIZE+1] =
     "EOF", "NEWLINE", "COLON", "LBRACKET", "RBRACKET",
     "LPAREN", "RPAREN", "VBAR", "DOT", "AT", "QMARK",
     "ELLIPSIS", "OPERATOR", "END BLOCK", "IDENTIFIER",
-    "FLOAT", "INTEGER", "CHARACTER", "STRING", "TYPE",
-    "STRUCTURE", "UNION", "ENUMERATION", "IF", "ELIF",
-    "ELSE", "LOOP", "BREAK", "RET", "SIZE"
+    "FLOAT", "INTEGER", "CHARACTER", "STRING", "TRUE",
+    "FALSE", "TYPE", "STRUCTURE", "UNION", "ENUMERATION",
+    "IF", "ELIF", "ELSE", "LOOP", "BREAK", "RET", "SIZE"
 };
 
 const char *

@@ -91,7 +91,7 @@ parse_cli_options(int argc, char *argv[])
 int
 main(int argc, char *argv[])
 {
-    tracer_init(TRC_DEBUG, TP_ALL);
+    tracer_init(TRC_DEBUG, TP_FUNC | TP_LINE);
 
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd)) != NULL)
