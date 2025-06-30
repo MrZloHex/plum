@@ -490,22 +490,28 @@ ast_dump_node(ASTNode *curr, size_t depth)
             ast_dump_node(curr->as.bin_op.right, depth+1);
         } break;
 
-    //     case NT_UNY_OP:
-    //     {
-    //         PUSH_NODE(curr->as.uny_op.operand);
-    //     } break;
+        case NT_UNY_OP:
+        {
+            const static char *uny_op_str[] =
+            { "DEREF", "REF", "NEG" };
+            PRINTIT(curr);
+            printf(" %s\n", uny_op_str[curr->as.uny_op.kind]);
+            ast_dump_node(curr->as.uny_op.operand, depth+1);
+        } break;
 
-    //     case NT_FN_CALL:
-    //     {
-    //         PUSH_NODE(curr->as.fn_call.args);
-    //         PUSH_NODE(curr->as.fn_call.ident);
-    //     } break; 
+        case NT_FN_CALL:
+        {
+            PRINTIT(curr);
+            printf(" `%s`\n", curr->as.fn_call.ident->as.ident);
+            ast_dump_node(curr->as.fn_call.args, depth+1);
+        } break;
 
-    //     case NT_ARGUMENT:
-    //     {
-    //         PUSH_NODE(curr->as.argument.next_arg);
-    //         PUSH_NODE(curr->as.argument.argument);
-    //     } break;
+        case NT_ARGUMENT:
+        {
+            PRINTIT(curr); printf("\n");
+            ast_dump_node(curr->as.argument.argument, depth+1);
+            ast_dump_node(curr->as.argument.next_arg, depth);
+        } break;
 
         case NT_IDENT:
         {
@@ -513,7 +519,26 @@ ast_dump_node(ASTNode *curr, size_t depth)
             printf(" `%s`\n", curr->as.ident);
         } break;
 
-    //     case NT_LITERAL:
+        case NT_LITERAL:
+        {
+            const static char *lit_type_str[] =
+            {
+                "INTEGER", "CHARACTER",
+                "STRING", "BOOLEAN"
+            };
+            PRINTIT(curr);
+            printf(" %s ", lit_type_str[curr->as.literal.kind]);
+            if (curr->as.literal.kind == LT_INTEGER)
+            {
+                printf("`%d`\n", curr->as.literal.as.int_lit);
+            }
+            else
+            {
+                TRACE_FATAL("UNIMPL");
+            }
+
+        } break;
+
     //     case NT_TYPE:
     //     case NT_BASE_TYPE:
     //         break;

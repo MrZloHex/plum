@@ -29,15 +29,15 @@ I32 add: [ I32 a | I32 b ]
  | RET [ result ]
  \_
 
-;; === Главная функция ===
-;I32 main: []
-; | ; переменные и указатели
-; | I32 count    = 3
-; | @I32 pcount  = @count
-; | ?pcount      = ?pcount + 2    ; теперь count == 5
-; |
-; | ; вызов функции add
-; | I32 sum = (add) [ count | 7 ]
+; === Главная функция ===
+I32 main: [ ]
+ | ; переменные и указатели
+ | I32 count    = 3
+ | @I32 pcount  = @count
+ | ?pcount      = ?pcount + 2    ; теперь count == 5
+ | 
+ | ; вызов функции add
+ | I32 sum = (add)[ count | 7 ]
 ; |
 ; | ; проверка if-elif-else
 ; | IF [ sum > 10 ]
@@ -97,5 +97,5 @@ I32 add: [ I32 a | I32 b ]
 ; |  | idx      = idx + 1
 ; |  \_
 ; |
-; | RET [ 0 ]
-; \_
+ | RET [ 0 ]
+ \_
