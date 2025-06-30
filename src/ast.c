@@ -313,11 +313,16 @@ ast_dump_node(ASTNode *curr, size_t depth)
             ast_dump_node(curr->as.parametre.next_param, depth);
         } break;
  
-    //     case NT_FN_DEF:
-    //     {
-    //         PUSH_NODE(curr->as.fn_def.block);
-    //         PUSH_NODE(curr->as.fn_def.decl);
-    //     } break;
+        case NT_FN_DEF:
+        {
+            PRINTIT(curr);
+            printf(" `%s` of type ", curr->as.fn_def.decl->as.fn_decl.ident->as.ident);
+            type_print_full = false;
+            ast_dump_node(curr->as.fn_def.decl->as.fn_decl.type, depth);
+            printf("\n");
+            ast_dump_node(curr->as.fn_def.decl->as.fn_decl.params, depth+1);
+            ast_dump_node(curr->as.fn_def.block, depth+1);
+        } break;
 
         case NT_TYPE_DEF:
         {
@@ -388,21 +393,34 @@ ast_dump_node(ASTNode *curr, size_t depth)
             { printf("\n"); }
         } break;
 
-    //     case NT_BLOCK:
-    //     {
-    //         PUSH_NODE(curr->as.block.stmts);
-    //     } break;
-    //     
-    //     case NT_STMT:
-    //     {
-    //         PUSH_NODE(curr->as.stmt.next_stmt);
-    //         PUSH_NODE(curr->as.stmt.stmt);
-    //     } break;
+        case NT_BLOCK:
+        {
+            PRINTIT(curr); printf("\n");
+            ast_dump_node(curr->as.block.stmts, depth+1);
+        } break;
+        
+        case NT_STMT:
+        {
+            // TODO: remove exceecive printing
+            // print just the stmt
+            PRINTIT(curr);
+            const static char *stmt_type_str[] =
+            {
+                "RETURN", "BREAK", "CONDITION",
+                "LOOP", "VAR DECL", "EXPRESSION"
+            };
 
-    //     case NT_RET:
-    //     {
-    //         PUSH_NODE(curr->as.ret.expr);
-    //     } break;
+            printf(" %s\n", stmt_type_str[curr->as.stmt.kind]);
+            ast_dump_node(curr->as.stmt.stmt, depth+1);
+            ast_dump_node(curr->as.stmt.next_stmt, depth);
+        } break;
+
+        case NT_RET:
+        {
+            PRINTIT(curr); printf("\n");
+            ast_dump_node(curr->as.ret.expr, depth+1);
+
+        } break;
 
     //     case NT_COND:
     //     {
@@ -441,10 +459,17 @@ ast_dump_node(ASTNode *curr, size_t depth)
     //         PUSH_NODE(curr->as.var_decl.type);
     //     } break;
 
-    //     case NT_EXPR:
-    //     {
-    //         PUSH_NODE(curr->as.expr.expr);
-    //     } break;
+        case NT_EXPR:
+        {
+            const static char *expr_type_str[] =
+            {
+                "IDENT", "BIN OP", "UNY OP",
+                "FN CALL", "LITERAL"
+            };
+            PRINTIT(curr);
+            printf(" %s\n", expr_type_str[curr->as.expr.kind]);
+            ast_dump_node(curr->as.expr.expr, depth+1);
+        } break;
 
     //     case NT_BIN_OP:
     //     {
@@ -469,7 +494,12 @@ ast_dump_node(ASTNode *curr, size_t depth)
     //         PUSH_NODE(curr->as.argument.argument);
     //     } break;
 
-    //     case NT_IDENT:
+        case NT_IDENT:
+        {
+            PRINTIT(curr);
+            printf(" `%s`\n", curr->as.ident);
+        } break;
+
     //     case NT_LITERAL:
     //     case NT_TYPE:
     //     case NT_BASE_TYPE:

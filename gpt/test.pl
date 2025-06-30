@@ -24,7 +24,7 @@ ABYSS log: [ @C1 fmt | ... ]
 
 ; === Функция add (возвращает I32) ===
 I32 add: [ I32 a | I32 b ]
- | I32 result = a + b
+;| I32 result = a + b
  | RET [ result ]
  \_
 

@@ -307,7 +307,8 @@ typedef struct
     enum // Unary Operation Type
     {
         UOT_DEREF,
-        UOT_REF
+        UOT_REF,
+        UOT_NEG
     } kind;
     ASTNode *operand; // N_Expr
 } N_UnyOp;

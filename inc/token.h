@@ -26,6 +26,8 @@ typedef enum
     TOK_INTEGER,
     TOK_CHARACTER,
     TOK_STRING,
+    TOK_TRUE,
+    TOK_FALSE,
 
     TOK_TYPE,
     TOK_STRUCTURE,
