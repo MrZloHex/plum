@@ -212,8 +212,8 @@ ast_next(AST *ast)
         case NT_BASE_TYPE:
             break;
 
-        // defualt:
-        //     assert(0 && "UNREACHABLE");
+        default:
+            assert(0 && "UNREACHABLE");
     }
 
     return curr;
@@ -305,7 +305,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
             { printf(" VAARG\n"); }
             else
             {
-                printf(" `%s` of type ", curr->as.parametre.ident->as.ident);
+                printf(" `%s` - ", curr->as.parametre.ident->as.ident);
                 type_print_full = false;
                 ast_dump_node(curr->as.parametre.type, depth);
                 printf("\n");
@@ -316,7 +316,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
         case NT_FN_DEF:
         {
             PRINTIT(curr);
-            printf(" `%s` of type ", curr->as.fn_def.decl->as.fn_decl.ident->as.ident);
+            printf(" `%s` - ", curr->as.fn_def.decl->as.fn_decl.ident->as.ident);
             type_print_full = false;
             ast_dump_node(curr->as.fn_def.decl->as.fn_decl.type, depth);
             printf("\n");
@@ -361,7 +361,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
         case NT_FIELD:
         {
             PRINTIT(curr);
-            printf(" `%s` of type ", curr->as.rcrd_flds.ident->as.ident);
+            printf(" `%s` - ", curr->as.rcrd_flds.ident->as.ident);
             type_print_full = false;
             ast_dump_node(curr->as.rcrd_flds.type, depth);
             printf("\n");
@@ -452,12 +452,18 @@ ast_dump_node(ASTNode *curr, size_t depth)
     //         PUSH_NODE(curr->as.loop.block);
     //     } break;
 
-    //     case NT_VAR_DECL:
-    //     {
-    //         PUSH_NODE(curr->as.var_decl.init);
-    //         PUSH_NODE(curr->as.var_decl.ident);
-    //         PUSH_NODE(curr->as.var_decl.type);
-    //     } break;
+        case NT_VAR_DECL:
+        {
+            PRINTIT(curr);
+            printf(" `%s` - ", curr->as.var_decl.ident->as.ident);
+            type_print_full = false;
+            ast_dump_node(curr->as.var_decl.type, depth);
+            if (curr->as.var_decl.init)
+            { printf(" INIT\n"); ast_dump_node(curr->as.var_decl.init, depth+1); }
+            else
+            { printf("\n"); }
+
+        } break;
 
         case NT_EXPR:
         {
@@ -471,11 +477,18 @@ ast_dump_node(ASTNode *curr, size_t depth)
             ast_dump_node(curr->as.expr.expr, depth+1);
         } break;
 
-    //     case NT_BIN_OP:
-    //     {
-    //         PUSH_NODE(curr->as.bin_op.right);
-    //         PUSH_NODE(curr->as.bin_op.left);
-    //     } break;
+        case NT_BIN_OP:
+        {
+            const static char *bin_op_str[] =
+            {
+                "ASSIGN", "PLUS", "MINUS", "MULT", "DIV",
+                "MOD", "EQUAL", "NEQ", "LESS", "LEQ",
+                "GREAT", "GEQ", "MEMBER"
+            };
+            PRINTIT(curr); printf(" %s\n", bin_op_str[curr->as.bin_op.kind]);
+            ast_dump_node(curr->as.bin_op.left, depth+1);
+            ast_dump_node(curr->as.bin_op.right, depth+1);
+        } break;
 
     //     case NT_UNY_OP:
     //     {
@@ -505,8 +518,8 @@ ast_dump_node(ASTNode *curr, size_t depth)
     //     case NT_BASE_TYPE:
     //         break;
 
-        defualt:
-            assert(0 && "UNREACHABLE");
+    //    default:
+    //        assert(0 && "UNREACHABLE");
     }
 }
 
