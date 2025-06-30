@@ -528,13 +528,20 @@ ast_dump_node(ASTNode *curr, size_t depth)
             };
             PRINTIT(curr);
             printf(" %s ", lit_type_str[curr->as.literal.kind]);
-            if (curr->as.literal.kind == LT_INTEGER)
+            switch (curr->as.literal.kind)
             {
-                printf("`%d`\n", curr->as.literal.as.int_lit);
-            }
-            else
-            {
-                TRACE_FATAL("UNIMPL");
+                case LT_INTEGER:
+                    printf("`%d`\n", curr->as.literal.as.int_lit);
+                    break;
+                case LT_BOOLEAN:
+                    printf("%s\n", curr->as.literal.as.bool_lit ? "TRUE": "FALSE");
+                    break;
+                case LT_CHARACTER:
+                    printf("`%c`\n", curr->as.literal.as.char_lit);
+                    break;
+                case LT_STRING:
+                    printf("`%s`\n", curr->as.literal.as.str_lit);
+                    break;
             }
 
         } break;
