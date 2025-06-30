@@ -222,19 +222,8 @@ ast_next(AST *ast)
 static inline void
 print_offset(size_t depth)
 {
-        for (size_t i = 0; i < depth; ++i)
-        {
-            printf("  ");
-        }
-        return;
-    if (depth == 1)
-    {
-        printf("|-");
-    }
-    else if (depth > 1)
-    {
-        printf("`-");
-    }
+    for (size_t i = 0; i < depth; ++i)
+    { printf("  "); }
 }
 
 
@@ -562,12 +551,11 @@ ast_dump_node(ASTNode *curr, size_t depth)
             printf(" SIZE OF `%s`\n", curr->as.builtin.as.size->as.ident);
         } break;
 
-    //     case NT_TYPE:
-    //     case NT_BASE_TYPE:
-    //         break;
+        case NT_BASE_TYPE:
+            break;
 
-    //    default:
-    //        assert(0 && "UNREACHABLE");
+       default:
+           assert(0 && "UNREACHABLE");
     }
 }
 
