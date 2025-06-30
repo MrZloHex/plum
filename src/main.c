@@ -143,6 +143,7 @@ main(int argc, char *argv[])
     ast_init(&ast);
     parse_unit(&ast, &src);
     //dummy_dump(&ast);
+    TRACE_FATAL("HERE");
     DynString ast_str = ast_dump(&ast);
 
     ast_deinit(&ast);

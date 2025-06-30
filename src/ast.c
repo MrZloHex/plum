@@ -246,7 +246,7 @@ const static char *ast_type_str[] =
     "Type", "BaseType", "Identifier",
     "Block", "Statement", "Return", "Condition", "Loop", "VarDecl", "Expression",
     "IfStmt", "ElifStmt", "ElseStmt",
-    "BinOp", "UnyOp", "FuncCall", "Argument", "Literal"
+    "BinOp", "UnyOp", "FuncCall", "Argument", "Literal", "BuiltIn"
 };
 
 #define PRINTIT(node) \
@@ -470,7 +470,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
             const static char *expr_type_str[] =
             {
                 "IDENT", "BIN OP", "UNY OP",
-                "FN CALL", "LITERAL"
+                "FN CALL", "LITERAL", "EXPR", "BUILT IN"
             };
             PRINTIT(curr);
             printf(" %s\n", expr_type_str[curr->as.expr.kind]);
@@ -523,7 +523,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
         {
             const static char *lit_type_str[] =
             {
-                "INTEGER", "CHARACTER",
+                "INTEGER", "FLOAT", "CHARACTER",
                 "STRING", "BOOLEAN"
             };
             PRINTIT(curr);
@@ -542,8 +542,20 @@ ast_dump_node(ASTNode *curr, size_t depth)
                 case LT_STRING:
                     printf("`%s`\n", curr->as.literal.as.str_lit);
                     break;
+                case LT_FLOAT:
+                    printf("`%f`\n", curr->as.literal.as.float_lit);
+                    break;
             }
 
+        } break;
+
+        case NT_BUILTIN:
+        {
+            PRINTIT(curr);
+            if (curr->as.builtin.kind != BI_SIZE)
+            { assert(0 && "UNREACHABLE"); }
+
+            printf(" SIZE OF `%s`\n", curr->as.builtin.as.size->as.ident);
         } break;
 
     //     case NT_TYPE:

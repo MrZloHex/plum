@@ -87,7 +87,8 @@ typedef enum
     NT_UNY_OP,
     NT_FN_CALL,
     NT_ARGUMENT,
-    NT_LITERAL
+    NT_LITERAL,
+    NT_BUILTIN
 } ASTNodeType;
 
 typedef struct ASTNode ASTNode;
@@ -219,7 +220,7 @@ typedef struct
         ST_COND,
         ST_LOOP,
         ST_VAR_DECL, // TODO: maybe allow not only var decl, maybe record decl?? idk
-        ST_EXPR
+        ST_EXPR,
     } kind;
     ASTNode *stmt;      // The statement
     ASTNode *next_stmt; // N_Stmt
@@ -275,7 +276,9 @@ typedef struct
         ET_BIN_OP,
         ET_UNY_OP,
         ET_FN_CALL,
-        ET_LITERAL
+        ET_LITERAL,
+        ET_EXPR,
+        ET_BUILTIN
     } kind;
     ASTNode *expr; // The expression
 } N_Expr;
@@ -330,6 +333,7 @@ typedef struct
     enum // Literal Type
     {
         LT_INTEGER,
+        LT_FLOAT,
         LT_CHARACTER,
         LT_STRING,
         LT_BOOLEAN
@@ -337,11 +341,24 @@ typedef struct
     union
     {
         int   int_lit;
+        float float_lit;
         char  char_lit;
         char *str_lit;
         bool  bool_lit;
     } as;
 } N_Literal;
+
+typedef struct
+{
+    enum
+    {
+        BI_SIZE,
+    } kind;
+    union
+    {
+        ASTNode *size; // N_Ident
+    } as;
+} N_BuiltIn;
 
 typedef struct ASTNode
 {
@@ -382,6 +399,7 @@ typedef struct ASTNode
         N_FnCall        fn_call;
         N_Argument      argument;
         N_Literal       literal;
+        N_BuiltIn       builtin;
     } as;
 } ASTNode;
 

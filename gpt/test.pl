@@ -25,7 +25,7 @@ ABYSS log: [ @C1 fmt | ... ]
 ; === Функция add (возвращает I32) ===
 I32 add: [ I32 a | I32 b ]
  | I32 result = a + b
-;|
+ | 
  | RET [ result ]
  \_
 
@@ -39,7 +39,7 @@ I32 main: [ ]
  | ; вызов функции add
  | I32 sum = (add)[ count | 7 ]
  | 
-;| ; проверка if-elif-else
+ | ; проверка if-elif-else
 ;| IF [ sum > 10 ]
 ;|  | (log) [ "Sum > 10\n" | sum ]
 ;| ELIF [ sum == 10 ]
@@ -59,26 +59,27 @@ I32 main: [ ]
 ;|  \_
  | 
  | ; sizeof
-;| I32 size_point = SIZE [ Point ]
+ | I32 size_point = SIZE [ Point ]
  | 
  | ; структуры и доступ к полям
  | Point pt
-;| pt.x = 1.0
-;| pt.y = 2.0
+ | pt.x = 10
+ | pt.y = 20
  | 
  | @Point p_pt = @pt
-;| ?p_pt.x = 3.14
+ | ?p_pt.x = 3.14
  | 
  | ; объединения
  | Shape s1
-;| s1.p      = pt
+ | s1.p      = pt
  | Shape s2
-;| s2.radius = 42
+ | s2.radius = 42
  | 
  | ; перечисления и булевы
  | Color c   = RED
  | B1    flag = TRUE
-;| B1    neq  = (sum != 10)
+ | B1    neq  = (sum != 10)
+ | neq = (sum == 10)
  | 
  | ; литералы
  | C1    ch    = '\n'
@@ -86,7 +87,7 @@ I32 main: [ ]
  | STRING msg  = "Hello, \\\"PLUM\\\"!\n"
  | 
  | ; указатели и арифметика по указателям
-;| @I32 arr = malloc(5 * SIZE [ I32 ])
+ | @I32 arr = (malloc)[ 5 * SIZE [ I32 ] ]
  | I32 idx  = 0
 ;| LOOP
 ;|  | IF [ idx >= 5 ]
