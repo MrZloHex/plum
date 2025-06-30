@@ -6,7 +6,7 @@
 void
 ast_init(AST *ast)
 {
-    arena_init(&ast->arena, sizeof(ASTNode)*512);
+    arena_init(&ast->arena, sizeof(ASTNode)*1024);
     ast->root = ast_node_new(ast);
     *ast->root = (ASTNode)
     { .kind = NT_TRANSLATION_UNIT };
