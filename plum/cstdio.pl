@@ -1,6 +1,11 @@
-; io.pl
+; cstdio.pl
+
 I32 puts:    [ @C1 str ]
 I32 putchar: [ I32 char ]
-
 I32 printf:  [ @C1 fmt | ... ]
-; io.pl
+
+@ABYSS fopen:  [ @C1 path | @C1 mode ]
+I32    fclose: [ @ABYSS f ]
+U64    fread:  [ @ABYSS buf | U64 sz | U64 n | @ABYSS f ]
+I32    fseek:  [ @ABYSS f | I64 off | I32 whence ]
+I64    ftell:  [ @ABYSS f ]

@@ -222,6 +222,10 @@ static void collect_node(ASTNode *node, Meta *m)
         collect_node(node->as.expr.expr, m);
         break;
 
+    case NT_CAST:
+        collect_node(node->as.cast.expr, m);
+        break;
+
     case NT_BIN_OP:
         collect_node(node->as.bin_op.left, m);
         collect_node(node->as.bin_op.right, m);

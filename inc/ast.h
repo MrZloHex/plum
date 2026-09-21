@@ -89,7 +89,8 @@ typedef enum
     NT_FN_CALL,
     NT_ARGUMENT,
     NT_LITERAL,
-    NT_BUILTIN
+    NT_BUILTIN,
+    NT_CAST
 } ASTNodeType;
 
 typedef struct ASTNode ASTNode;
@@ -106,7 +107,8 @@ typedef struct
     {
         TUST_FN_DEF,
         TUST_FN_DECL,
-        TUST_TYPE_DEF
+        TUST_TYPE_DEF,
+        TUST_VAR_DECL
     } kind;
     ASTNode *tu_stmt;      // The tu statement
     ASTNode *next_tu_stmt; // N_TUStmt;
@@ -218,6 +220,7 @@ typedef struct
     {
         ST_RET,
         ST_BREAK,
+        ST_CONTINUE,
         ST_COND,
         ST_LOOP,
         ST_VAR_DECL, // TODO: maybe allow not only var decl, maybe record decl?? idk
@@ -259,6 +262,7 @@ typedef struct
 
 typedef struct
 {
+    ASTNode *expr;  // N_Expr, NULL for a bare LOOP
     ASTNode *block; // N_Block;
 } N_Loop;
 
@@ -279,7 +283,8 @@ typedef struct
         ET_FN_CALL,
         ET_LITERAL,
         ET_EXPR,
-        ET_BUILTIN
+        ET_BUILTIN,
+        ET_CAST
     } kind;
     ASTNode *expr; // The expression
 } N_Expr;
@@ -300,6 +305,13 @@ typedef struct
         BOT_LEQ,
         BOT_GREAT,
         BOT_GEQ,
+        BOT_AND,
+        BOT_OR,
+        BOT_BAND,
+        BOT_BOR,
+        BOT_BXOR,
+        BOT_SHL,
+        BOT_SHR,
         BOT_MEMBER
     } kind;
     ASTNode *left;  // N_Expr
@@ -312,7 +324,9 @@ typedef struct
     {
         UOT_DEREF,
         UOT_REF,
-        UOT_NEG
+        UOT_NEG,
+        UOT_NOT,
+        UOT_BNOT
     } kind;
     ASTNode *operand; // N_Expr
 } N_UnyOp;
@@ -348,6 +362,12 @@ typedef struct
         bool  bool_lit;
     } as;
 } N_Literal;
+
+typedef struct
+{
+    ASTNode *type; // N_Type -- what we are converting to
+    ASTNode *expr; // N_Expr -- what is being converted
+} N_Cast;
 
 typedef struct
 {
@@ -400,6 +420,7 @@ typedef struct ASTNode
         N_FnCall        fn_call;
         N_Argument      argument;
         N_Literal       literal;
+        N_Cast          cast;
         N_BuiltIn       builtin;
     } as;
 } ASTNode;

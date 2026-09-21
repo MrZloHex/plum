@@ -242,7 +242,7 @@ const static char *ast_type_str[] =
     "Type", "BaseType", "Identifier",
     "Block", "Statement", "Return", "Condition", "Loop", "VarDecl", "Expression",
     "IfStmt", "ElifStmt", "ElseStmt",
-    "BinOp", "UnyOp", "FuncCall", "Argument", "Literal", "BuiltIn"
+    "BinOp", "UnyOp", "FuncCall", "Argument", "Literal", "BuiltIn", "Cast"
 };
 
 #define PRINTIT(node) \
@@ -484,7 +484,8 @@ ast_dump_node(ASTNode *curr, size_t depth)
             {
                 "ASSIGN", "PLUS", "MINUS", "MULT", "DIV",
                 "MOD", "EQUAL", "NEQ", "LESS", "LEQ",
-                "GREAT", "GEQ", "MEMBER"
+                "GREAT", "GEQ", "AND", "OR",
+                "BAND", "BOR", "BXOR", "SHL", "SHR", "MEMBER"
             };
             PRINTIT(curr); fprintf(DUMP_OUT, " %s\n", bin_op_str[curr->as.bin_op.kind]);
             ast_dump_node(curr->as.bin_op.left, depth+1);
@@ -494,7 +495,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
         case NT_UNY_OP:
         {
             const static char *uny_op_str[] =
-            { "DEREF", "REF", "NEG" };
+            { "DEREF", "REF", "NEG", "NOT", "BNOT" };
             PRINTIT(curr);
             fprintf(DUMP_OUT, " %s\n", uny_op_str[curr->as.uny_op.kind]);
             ast_dump_node(curr->as.uny_op.operand, depth+1);
@@ -518,6 +519,14 @@ ast_dump_node(ASTNode *curr, size_t depth)
         {
             PRINTIT(curr);
             fprintf(DUMP_OUT, " `%s`\n", curr->as.ident);
+        } break;
+
+        case NT_CAST:
+        {
+            PRINTIT(curr); fprintf(DUMP_OUT, " CAST TO ");
+            ast_dump_node(curr->as.cast.type, depth);
+            fprintf(DUMP_OUT, "\n");
+            ast_dump_node(curr->as.cast.expr, depth+1);
         } break;
 
         case NT_LITERAL:

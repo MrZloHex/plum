@@ -15,7 +15,19 @@ declare i32 @putchar(i32)
 
 declare i32 @printf(ptr, ...)
 
+declare ptr @fopen(ptr, ptr)
+
+declare i32 @fclose(ptr)
+
+declare i64 @fread(ptr, i64, i64, ptr)
+
+declare i32 @fseek(ptr, i64, i32)
+
+declare i64 @ftell(ptr)
+
 declare ptr @malloc(i64)
+
+declare ptr @realloc(ptr, i64)
 
 declare void @free(ptr)
 

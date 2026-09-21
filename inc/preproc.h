@@ -11,6 +11,6 @@ typedef struct Macro
 } Macro;
 
 int
-preprocess(DynString *src);
+preprocess(DynString *src, const char *path);
 
 #endif /* __PREPROC_H__ */

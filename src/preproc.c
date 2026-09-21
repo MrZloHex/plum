@@ -10,10 +10,27 @@
 #define MAX_INCLUDE_DEPTH 32
 
 int
-preproc_internal(DynString *str, int depth);
+preproc_internal(DynString *str, int depth, const char *dir);
+
+/* Directory part of a path, or "." -- returned in a caller-owned buffer. */
+static char *
+dir_of(const char *path)
+{
+    const char *slash = path ? strrchr(path, '/') : NULL;
+    if (!slash)
+    { return strdup("."); }
+
+    size_t n = (size_t)(slash - path);
+    char *d = malloc(n + 1);
+    if (!d)
+    { return NULL; }
+    memcpy(d, path, n);
+    d[n] = '\0';
+    return d;
+}
 
 static int
-insert_file(DynString *dst, size_t at, const char *path, int depth)
+insert_file(DynString *dst, size_t at, const char *path, int depth, const char *dir)
 {
     if (depth > MAX_INCLUDE_DEPTH)
     {
@@ -21,10 +38,27 @@ insert_file(DynString *dst, size_t at, const char *path, int depth)
         return -1;
     }
 
-    FILE *f = fopen(path, "r");
+    /* Resolve against the including file's directory, the way C resolves
+       #include "..." -- otherwise a library can only be used from the one
+       directory the compiler happens to be run from. */
+    char *full = NULL;
+    if (path[0] == '/')
+    { full = strdup(path); }
+    else
+    {
+        size_t n = strlen(dir) + 1 + strlen(path) + 1;
+        full = malloc(n);
+        if (full)
+        { snprintf(full, n, "%s/%s", dir, path); }
+    }
+    if (!full)
+    { return -1; }
+
+    FILE *f = fopen(full, "r");
     if (!f)
     {
-        fprintf(stderr, "preproc: cannot open \"%s\": %s\n", path, strerror(errno));
+        fprintf(stderr, "preproc: cannot open \"%s\": %s\n", full, strerror(errno));
+        free(full);
         return -1;
     }
 
@@ -32,7 +66,15 @@ insert_file(DynString *dst, size_t at, const char *path, int depth)
     dynstr_init(&buf, f);
     fclose(f);
 
-    if (preproc_internal(&buf, depth + 1) != 0)
+    char *sub_dir = dir_of(full);
+    free(full);
+    if (!sub_dir)
+    { dynstr_deinit(&buf); return -1; }
+
+    int rc = preproc_internal(&buf, depth + 1, sub_dir);
+    free(sub_dir);
+
+    if (rc != 0)
     {
         dynstr_deinit(&buf);
         return -1;
@@ -44,7 +86,7 @@ insert_file(DynString *dst, size_t at, const char *path, int depth)
 }
 
 static int
-preproc_uses(DynString *s, size_t pos, int depth)
+preproc_uses(DynString *s, size_t pos, int depth, const char *dir)
 {
     size_t i = pos + 5;
 
@@ -75,7 +117,7 @@ preproc_uses(DynString *s, size_t pos, int depth)
 
     dynstr_remove_range(s, pos, directive_len);
 
-    if (insert_file(s, pos, fname, depth) != 0)
+    if (insert_file(s, pos, fname, depth, dir) != 0)
     {
         free(fname);
         return -1;
@@ -87,14 +129,14 @@ preproc_uses(DynString *s, size_t pos, int depth)
 
 
 int
-preproc_internal(DynString *src, int depth)
+preproc_internal(DynString *src, int depth, const char *dir)
 {
    for (size_t i = 0; i < src->size; ++i)
    {
         if (src->data[i] == '!' && i + 5 < src->size &&
             strncmp(&src->data[i], "!USES", 5) == 0)
         {
-            if (preproc_uses(src, i, depth) != 0)
+            if (preproc_uses(src, i, depth, dir) != 0)
             { return -1; }
             i = (size_t)-1;
         }
@@ -103,11 +145,17 @@ preproc_internal(DynString *src, int depth)
 }
 
 int
-preprocess(DynString *src)
+preprocess(DynString *src, const char *path)
 {
     if (!src)
     { return -1; }
 
-    return preproc_internal(src, 0);
+    char *dir = dir_of(path);
+    if (!dir)
+    { return -1; }
+
+    int rc = preproc_internal(src, 0, dir);
+    free(dir);
+    return rc;
 }
 

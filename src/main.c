@@ -149,9 +149,8 @@ main(int argc, char *argv[])
     dynstr_init(&src, src_f);
     fclose(src_f);
 
-    /* !USES expansion. Paths resolve against the CWD, not the including
-       file, which is why build.sh runs plc from inside the test directory. */
-    if (preprocess(&src) != 0)
+    /* !USES expansion; paths resolve relative to the including file. */
+    if (preprocess(&src, source_file) != 0)
     {
         fprintf(stderr, "Preprocessing failed: %s\n", source_file);
         dynstr_deinit(&src);

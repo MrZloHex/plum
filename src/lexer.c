@@ -157,9 +157,12 @@ const static struct { const char *kw; TokenType tk; } kw_table[] =
     { "ELIF",   TOK_ELIF        },
     { "ELSE",   TOK_ELSE        },
     { "LOOP",   TOK_LOOP        },
+    { "WHILE",  TOK_WHILE       },
     { "BREAK",  TOK_BREAK       },
+    { "CONTINUE", TOK_CONTINUE  },
     { "RET",    TOK_RET         },
     { "SIZE",   TOK_SIZE        },
+    { "AS",     TOK_AS          },
     { "TRUE",   TOK_TRUE        },
     { "FALSE",  TOK_FALSE       },
     { NULL,     TOK_EOF         },
@@ -253,8 +256,24 @@ lexer_next(Lexer *lx)
         { lex_nextc(lx); return make_tok(TOK_LPAREN, NULL, lx->line, lx->col-1, -1); }
         if (c == ')')
         { lex_nextc(lx); return make_tok(TOK_RPAREN, NULL, lx->line, lx->col-1, -1); }
+        /* `||` is an operator; a lone `|` is still the block/list separator.
+           Block indent never reaches here -- lex_count_indent eats it. */
+        if (c == '|' && lex_look(lx, 1) == '|')
+        {
+            int line = lx->line, col = lx->col;
+            lx->col += 2; lx->pos += 2;
+            return make_tok(TOK_OPERATOR, dynstr_substr(lx->src, lx->pos - 2, 2),
+                            line, col, -1);
+        }
         if (c == '|')
         { lex_nextc(lx); return make_tok(TOK_VBAR, NULL, lx->line, lx->col-1, -1); }
+        if (c == '&' && lex_look(lx, 1) == '&')
+        {
+            int line = lx->line, col = lx->col;
+            lx->col += 2; lx->pos += 2;
+            return make_tok(TOK_OPERATOR, dynstr_substr(lx->src, lx->pos - 2, 2),
+                            line, col, -1);
+        }
         if (c == '?')
         { lex_nextc(lx); return make_tok(TOK_QMARK, NULL, lx->line, lx->col-1, -1); }
         if (c == '@')
@@ -275,7 +294,7 @@ lexer_next(Lexer *lx)
         if (isalpha(c) || c == '_')
         { return lex_indent_or_keyword(lx); }
 
-        if (strchr("+-*/%<>=!", c))
+        if (strchr("+-*/%<>=!&^~", c))
         {
             int line = lx->line, col = lx->col;
             size_t start = lx->pos;

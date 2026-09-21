@@ -339,6 +339,7 @@ static LLVMValueRef gen_expr(CodegenContext *c, ASTNode *e);
 static bool         gen_lvalue(CodegenContext *c, ASTNode *e, LValue *out);
 static void         gen_block(CodegenContext *c, ASTNode *blk);
 static TypeInfo     infer(CodegenContext *c, ASTNode *e);
+static LLVMValueRef gen_literal(CodegenContext *c, ASTNode *n);
 
 /* Realise a TypeInfo as an LLVM type, or NULL if it is not known. */
 static LLVMTypeRef
@@ -397,12 +398,44 @@ coerce(CodegenContext *c, LLVMValueRef v, LLVMTypeRef to)
     if (fk == LLVMIntegerTypeKind && (tk == LLVMFloatTypeKind || tk == LLVMDoubleTypeKind))
     { return LLVMBuildSIToFP(c->builder, v, to, "sitofp"); }
 
+    /* There is no type checker yet, so a nonsensical conversion would
+       otherwise slip through and produce garbage at run time. Aggregates
+       convert to nothing but themselves. */
+    if (fk == LLVMStructTypeKind || tk == LLVMStructTypeKind)
+    {
+        char *fs = LLVMPrintTypeToString(from);
+        char *ts = LLVMPrintTypeToString(to);
+        TRACE_ERROR("cannot convert `%s` to `%s`", fs, ts);
+        LLVMDisposeMessage(fs);
+        LLVMDisposeMessage(ts);
+        exit(1);
+    }
+
     return v;
 }
 
 static bool     field_index(ASTNode *record, const char *field,
                             unsigned *idx, ASTNode **type_out);
 static CGType  *type_of_struct(CodegenContext *c, LLVMTypeRef t);
+
+/* Like coerce(), but for constants: no builder, no basic block. */
+static LLVMValueRef
+coerce_const(CodegenContext *c, LLVMValueRef v, LLVMTypeRef to)
+{
+    (void)c;
+    if (!v || !to || LLVMTypeOf(v) == to)
+    { return v; }
+
+    LLVMTypeKind fk = LLVMGetTypeKind(LLVMTypeOf(v));
+    LLVMTypeKind tk = LLVMGetTypeKind(to);
+
+    if (fk == LLVMIntegerTypeKind && tk == LLVMIntegerTypeKind)
+    { return LLVMConstInt(to, (unsigned long long)LLVMConstIntGetSExtValue(v), true); }
+    if (fk == LLVMPointerTypeKind && tk == LLVMPointerTypeKind)
+    { return v; }
+
+    return v;
+}
 
 /* Unwrap NT_EXPR down to the node that carries meaning. */
 static ASTNode *
@@ -470,6 +503,9 @@ infer(CodegenContext *c, ASTNode *e)
             /* assignment and arithmetic take the shape of the left side */
             return infer(c, n->as.bin_op.left);
         }
+
+        case NT_CAST:
+            return (TypeInfo){ n->as.cast.type, n->as.cast.type->as.type.ptrs };
 
         case NT_FN_CALL:
         {
@@ -552,11 +588,27 @@ gen_lvalue(CodegenContext *c, ASTNode *e, LValue *out)
     if (n->kind == NT_BIN_OP && n->as.bin_op.kind == BOT_MEMBER)
     {
         LValue base;
-        if (!gen_lvalue(c, n->as.bin_op.left, &base))
-        { return false; }
+        LLVMTypeRef  sty;
+        LLVMValueRef sptr;
 
-        LLVMTypeRef  sty  = base.type;
-        LLVMValueRef sptr = base.ptr;
+        if (gen_lvalue(c, n->as.bin_op.left, &base))
+        {
+            sty  = base.type;
+            sptr = base.ptr;
+        }
+        else
+        {
+            /* The base is a pointer *value* rather than a storage location,
+               as in (@x).f -- use it as the object pointer directly. */
+            TypeInfo ti = infer(c, n->as.bin_op.left);
+            if (!ti.node || ti.ptrs == 0)
+            { return false; }
+
+            sptr = gen_expr(c, n->as.bin_op.left);
+            sty  = llvm_of(c, (TypeInfo){ ti.node, ti.ptrs });
+            if (!sptr || !sty)
+            { return false; }
+        }
 
         /* @Foo f ... f.x -- step through the pointer first */
         if (LLVMGetTypeKind(sty) == LLVMPointerTypeKind)
@@ -605,6 +657,30 @@ gen_lvalue(CodegenContext *c, ASTNode *e, LValue *out)
     return false;
 }
 
+/* B1 and the U* family zero-extend; the I* family sign-extends. Without
+   this, printf("%d", someB1) prints -1 and any U8 over 127 goes negative. */
+static bool
+is_unsigned_expr(CodegenContext *c, ASTNode *e)
+{
+    TypeInfo ti = infer(c, e);
+    if (!ti.node || ti.ptrs > 0)
+    { return false; }
+
+    N_Type *t = &ti.node->as.type;
+    if (t->kind != TT_BASE_TYPE)
+    { return false; }
+
+    switch (t->type->as.base_type)
+    {
+        case BT_B1:
+        case BT_U8:  case BT_U16: case BT_U32:
+        case BT_U64: case BT_USIZE:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static LLVMValueRef
 gen_call(CodegenContext *c, ASTNode *call)
 {
@@ -631,13 +707,19 @@ gen_call(CodegenContext *c, ASTNode *call)
          a = a->as.argument.next_arg)
     {
         LLVMValueRef v = gen_expr(c, a->as.argument.argument);
+        if (!v)
+        { CG_FATAL("could not evaluate argument %u to `%s`", n + 1, name); }
         if (n < nparams)
         { v = coerce(c, v, ptypes[n]); }
         else if (v && LLVMGetTypeKind(LLVMTypeOf(v)) == LLVMIntegerTypeKind
                    && LLVMGetIntTypeWidth(LLVMTypeOf(v)) < 32)
         {
-            /* C variadic default promotion */
-            v = LLVMBuildSExt(c->builder, v, LLVMInt32TypeInContext(c->ctx), "vapromo");
+            /* C variadic default promotion, respecting signedness */
+            LLVMTypeRef i32 = LLVMInt32TypeInContext(c->ctx);
+            bool uns = LLVMGetIntTypeWidth(LLVMTypeOf(v)) == 1
+                    || is_unsigned_expr(c, a->as.argument.argument);
+            v = uns ? LLVMBuildZExt(c->builder, v, i32, "vapromo")
+                    : LLVMBuildSExt(c->builder, v, i32, "vapromo");
         }
         args[n++] = v;
     }
@@ -661,6 +743,11 @@ gen_binop(CodegenContext *c, ASTNode *n)
             return NULL;
         }
         LLVMValueRef v = coerce(c, gen_expr(c, b->right), lv.type);
+        if (!v)
+        {
+            CG_FATAL("could not evaluate the right side of `=` at %d:%d",
+                     n->loc.line, n->loc.col);
+        }
         LLVMBuildStore(c->builder, v, lv.ptr);
         return v;
     }
@@ -669,8 +756,45 @@ gen_binop(CodegenContext *c, ASTNode *n)
     {
         LValue lv;
         if (!gen_lvalue(c, n, &lv))
-        { return NULL; }
+        {
+            CG_FATAL("cannot resolve member access at %d:%d",
+                     n->loc.line, n->loc.col);
+        }
         return LLVMBuildLoad2(c->builder, lv.type, lv.ptr, "fldval");
+    }
+
+    /* && and || must not evaluate the right side unless they have to,
+       so they get their own blocks and a phi rather than a plain op. */
+    if (b->kind == BOT_AND || b->kind == BOT_OR)
+    {
+        LLVMTypeRef i1 = LLVMInt1TypeInContext(c->ctx);
+
+        LLVMValueRef lv = coerce(c, gen_expr(c, b->left), i1);
+        LLVMBasicBlockRef lhs_end = LLVMGetInsertBlock(c->builder);
+
+        LLVMBasicBlockRef rhs_bb = LLVMAppendBasicBlockInContext(c->ctx, c->fn, "sc.rhs");
+        LLVMBasicBlockRef end_bb = LLVMAppendBasicBlockInContext(c->ctx, c->fn, "sc.end");
+
+        if (b->kind == BOT_AND)
+        { LLVMBuildCondBr(c->builder, lv, rhs_bb, end_bb); }
+        else
+        { LLVMBuildCondBr(c->builder, lv, end_bb, rhs_bb); }
+
+        LLVMPositionBuilderAtEnd(c->builder, rhs_bb);
+        LLVMValueRef rv = coerce(c, gen_expr(c, b->right), i1);
+        /* the right side may itself have added blocks */
+        LLVMBasicBlockRef rhs_end = LLVMGetInsertBlock(c->builder);
+        LLVMBuildBr(c->builder, end_bb);
+
+        LLVMPositionBuilderAtEnd(c->builder, end_bb);
+        LLVMValueRef phi = LLVMBuildPhi(c->builder, i1, "sc");
+
+        /* short-circuiting out of && yields false, out of || yields true */
+        LLVMValueRef      vals[2] = { LLVMConstInt(i1, b->kind == BOT_OR, false), rv };
+        LLVMBasicBlockRef blks[2] = { lhs_end, rhs_end };
+        LLVMAddIncoming(phi, vals, blks, 2);
+
+        return phi;
     }
 
     LLVMValueRef l = gen_expr(c, b->left);
@@ -732,6 +856,12 @@ gen_binop(CodegenContext *c, ASTNode *n)
         case BOT_LEQ:   return LLVMBuildICmp(c->builder, LLVMIntSLE, l, r, "le");
         case BOT_GREAT: return LLVMBuildICmp(c->builder, LLVMIntSGT, l, r, "gt");
         case BOT_GEQ:   return LLVMBuildICmp(c->builder, LLVMIntSGE, l, r, "ge");
+
+        case BOT_BAND:  return LLVMBuildAnd (c->builder, l, r, "band");
+        case BOT_BOR:   return LLVMBuildOr  (c->builder, l, r, "bor");
+        case BOT_BXOR:  return LLVMBuildXor (c->builder, l, r, "bxor");
+        case BOT_SHL:   return LLVMBuildShl (c->builder, l, r, "shl");
+        case BOT_SHR:   return LLVMBuildAShr(c->builder, l, r, "shr");
 
         default:
             CG_FATAL("unhandled binary operator %d", b->kind);
@@ -818,7 +948,56 @@ gen_expr(CodegenContext *c, ASTNode *e)
             }
 
             LLVMValueRef v = gen_expr(c, u->operand);
-            return v ? LLVMBuildNeg(c->builder, v, "neg") : NULL;
+            if (!v)
+            { return NULL; }
+
+            if (u->kind == UOT_BNOT)
+            { return LLVMBuildNot(c->builder, v, "bnot"); }
+
+            if (u->kind == UOT_NOT)
+            {
+                /* !x is x == 0, for any integer or pointer */
+                LLVMTypeRef vt = LLVMTypeOf(v);
+                LLVMValueRef zero = LLVMGetTypeKind(vt) == LLVMPointerTypeKind
+                                  ? LLVMConstPointerNull(vt)
+                                  : LLVMConstInt(vt, 0, false);
+                return LLVMBuildICmp(c->builder, LLVMIntEQ, v, zero, "not");
+            }
+
+            return LLVMBuildNeg(c->builder, v, "neg");
+        }
+
+        case NT_CAST:
+        {
+            LLVMValueRef v  = gen_expr(c, n->as.cast.expr);
+            LLVMTypeRef  to = map_type(c, n->as.cast.type);
+            if (!v || !to)
+            { CG_FATAL("bad cast at %d:%d", n->loc.line, n->loc.col); }
+
+            LLVMTypeRef from = LLVMTypeOf(v);
+            if (from == to)
+            { return v; }
+
+            LLVMTypeKind fk = LLVMGetTypeKind(from);
+            LLVMTypeKind tk = LLVMGetTypeKind(to);
+
+            if (fk == LLVMIntegerTypeKind && tk == LLVMIntegerTypeKind)
+            { return LLVMBuildIntCast2(c->builder, v, to, true, "cast"); }
+            if (fk == LLVMIntegerTypeKind && tk == LLVMPointerTypeKind)
+            { return LLVMBuildIntToPtr(c->builder, v, to, "cast"); }
+            if (fk == LLVMPointerTypeKind && tk == LLVMIntegerTypeKind)
+            { return LLVMBuildPtrToInt(c->builder, v, to, "cast"); }
+            if (fk == LLVMPointerTypeKind && tk == LLVMPointerTypeKind)
+            { return v; }
+            if (fk == LLVMIntegerTypeKind && (tk == LLVMFloatTypeKind || tk == LLVMDoubleTypeKind))
+            { return LLVMBuildSIToFP(c->builder, v, to, "cast"); }
+            if ((fk == LLVMFloatTypeKind || fk == LLVMDoubleTypeKind) && tk == LLVMIntegerTypeKind)
+            { return LLVMBuildFPToSI(c->builder, v, to, "cast"); }
+            if ((fk == LLVMFloatTypeKind || fk == LLVMDoubleTypeKind)
+             && (tk == LLVMFloatTypeKind || tk == LLVMDoubleTypeKind))
+            { return LLVMBuildFPCast(c->builder, v, to, "cast"); }
+
+            CG_FATAL("cannot cast at %d:%d", n->loc.line, n->loc.col);
         }
 
         case NT_FN_CALL:
@@ -939,6 +1118,17 @@ gen_loop(CodegenContext *c, ASTNode *loop)
     LLVMBuildBr(c->builder, body);
 
     LLVMPositionBuilderAtEnd(c->builder, body);
+
+    /* WHILE [ cond ] is a LOOP that tests before each pass */
+    if (loop->as.loop.expr)
+    {
+        LLVMValueRef cv = coerce(c, gen_expr(c, loop->as.loop.expr),
+                                 LLVMInt1TypeInContext(c->ctx));
+        LLVMBasicBlockRef inner = LLVMAppendBasicBlockInContext(c->ctx, c->fn, "while.body");
+        LLVMBuildCondBr(c->builder, cv, inner, brk);
+        LLVMPositionBuilderAtEnd(c->builder, inner);
+    }
+
     gen_block(c, loop->as.loop.block);
     if (block_open(c))
     { LLVMBuildBr(c->builder, contn); }
@@ -972,6 +1162,11 @@ gen_stmt(CodegenContext *c, ASTNode *st)
             if (d->as.var_decl.init)
             {
                 LLVMValueRef v = coerce(c, gen_expr(c, d->as.var_decl.init), ty);
+                if (!v)
+                {
+                    CG_FATAL("could not evaluate the initialiser of `%s` at %d:%d",
+                             nm, d->loc.line, d->loc.col);
+                }
                 LLVMBuildStore(c->builder, v, slot);
             }
         } break;
@@ -991,11 +1186,15 @@ gen_stmt(CodegenContext *c, ASTNode *st)
         case ST_BREAK:
         {
             if (!c->loop_break)
-            {
-                CG_FATAL("BREAK outside of a loop at %d:%d", st->loc.line, st->loc.col);
-                return;
-            }
+            { CG_FATAL("BREAK outside of a loop at %d:%d", st->loc.line, st->loc.col); }
             LLVMBuildBr(c->builder, c->loop_break);
+        } break;
+
+        case ST_CONTINUE:
+        {
+            if (!c->loop_continue)
+            { CG_FATAL("CONTINUE outside of a loop at %d:%d", st->loc.line, st->loc.col); }
+            LLVMBuildBr(c->builder, c->loop_continue);
         } break;
 
         case ST_COND:
@@ -1172,6 +1371,33 @@ gen_type_def(CodegenContext *c, ASTNode *td)
     ut->type   = map_type(c, td->as.type_def.tdef);
 }
 
+static void
+gen_global(CodegenContext *c, ASTNode *d)
+{
+    const char  *nm = d->as.var_decl.ident->as.ident;
+    LLVMTypeRef  ty = map_type(c, d->as.var_decl.type);
+
+    LLVMValueRef g = LLVMAddGlobal(c->mod, ty, nm);
+
+    /* A global's initialiser has to be a constant, so only literals are
+       accepted; everything else starts zeroed, as in C. */
+    LLVMValueRef init = LLVMConstNull(ty);
+    if (d->as.var_decl.init)
+    {
+        ASTNode *lit = strip(d->as.var_decl.init);
+        if (lit && lit->kind == NT_LITERAL)
+        { init = coerce_const(c, gen_literal(c, lit), ty); }
+        else
+        {
+            CG_FATAL("global `%s` needs a constant initialiser at %d:%d",
+                     nm, d->loc.line, d->loc.col);
+        }
+    }
+
+    LLVMSetInitializer(g, init);
+    scope_define(c, nm, g, ty, d->as.var_decl.type);
+}
+
 /* ==========================================================================
  * Entry points
  * ======================================================================== */
@@ -1241,7 +1467,14 @@ codegen_generate(ASTNode *root, CodegenContext *c)
         { gen_fn_proto(c, n->as.fn_def.decl); }
     }
 
-    scope_push(c); /* module scope */
+    scope_push(c); /* module scope: globals live here */
+
+    for (ASTNode *ts = root->as.tu.tu_stmt; ts; ts = ts->as.tu_stmt.next_tu_stmt)
+    {
+        if (ts->as.tu_stmt.kind == TUST_VAR_DECL)
+        { gen_global(c, ts->as.tu_stmt.tu_stmt); }
+    }
+
     for (ASTNode *ts = root->as.tu.tu_stmt; ts; ts = ts->as.tu_stmt.next_tu_stmt)
     {
         if (ts->as.tu_stmt.kind == TUST_FN_DEF)

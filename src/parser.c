@@ -326,7 +326,10 @@ static inline int
 prefix_precendence(Parser *pr)
 {
     if (TokType(pr) == TOK_QMARK || TokType(pr) == TOK_AT ||
-        (TokType(pr) == TOK_OPERATOR && strcmp(pr->curr.lexeme, "-") == 0))
+        (TokType(pr) == TOK_OPERATOR &&
+         (strcmp(pr->curr.lexeme, "-") == 0 ||
+          strcmp(pr->curr.lexeme, "!") == 0 ||
+          strcmp(pr->curr.lexeme, "~") == 0)))
     { return 50; }
     else
     { return -1; }
@@ -337,6 +340,16 @@ infix_precendence(Parser *pr)
 {
     if (pr->curr.kind == TOK_DOT)
     { return 40; }
+
+    // a cast binds tighter than arithmetic but looser than `.` and prefix
+    if (pr->curr.kind == TOK_AS)
+    { return 35; }
+
+    // Bitwise-or. `|` also separates arguments, so parse_arguments asks for
+    // a min_prec above this and a top-level `|` breaks out to the list;
+    // inside parens it binds as an operator, as it does everywhere else.
+    if (pr->curr.kind == TOK_VBAR)
+    { return 9; }
 
     if (pr->curr.kind != TOK_OPERATOR)
     { return -1; }
@@ -349,6 +362,9 @@ infix_precendence(Parser *pr)
     if (strcmp(op, "+") == 0 ||
         strcmp(op, "-") == 0)
     { return 20; }
+    if (strcmp(op, "<<") == 0 ||
+        strcmp(op, ">>") == 0)
+    { return 17; }
     if (strcmp(op, "<")  == 0 ||
         strcmp(op, "<=") == 0 ||
         strcmp(op, ">")  == 0 ||
@@ -357,7 +373,17 @@ infix_precendence(Parser *pr)
     if (strcmp(op, "==") == 0 ||
         strcmp(op, "!=") == 0)
     { return 10; }
+    if (strcmp(op, "||") == 0)
+    { return 7; }
+    if (strcmp(op, "&&") == 0)
+    { return 8; }
+    if (strcmp(op, "^") == 0)
+    { return 11; }
+    if (strcmp(op, "&") == 0)
+    { return 12; }
     if (strcmp(op, "=") == 0)
+    { return 5; }
+    if (op[0] && op[1] == '=' && op[2] == '\0' && strchr("+-*/%", op[0]))
     { return 5; }
 
     return -1;
@@ -376,6 +402,24 @@ is_fn_call(Parser *pr)
     return parser_peek(pr, 3).kind == TOK_LBRACKET;
 }
 
+// At top level a declaration is a function only if a `:` follows the name.
+static bool
+is_tu_var_decl(Parser *pr)
+{
+    Lexer lx  = pr->lexer;
+    Token tok = pr->curr;
+
+    while (tok.kind == TOK_AT)
+    { tok = lexer_next(&lx); }
+
+    if (tok.kind != TOK_IDENTIFIER)
+    { return false; }
+    if (lexer_next(&lx).kind != TOK_IDENTIFIER)
+    { return false; }
+
+    return lexer_next(&lx).kind != TOK_COLON;
+}
+
 static bool
 is_var_decl(Parser *pr)
 {
@@ -391,6 +435,7 @@ is_var_decl(Parser *pr)
 }
 
 static ASTNode *parse_expr(Parser *);
+static ASTNode *parse_expr_prec(Parser *, int);
 
 static ASTNode * // N_Argument
 parse_arguments(Parser *pr)
@@ -410,7 +455,9 @@ parse_arguments(Parser *pr)
         arg->as.argument.next_arg = NULL;
         set_loc(arg, pr->curr);
 
-        arg->as.argument.argument = parse_expr(pr);
+        // VBAR_PREC + 1: a bare `|` here separates arguments; `(a | b)`
+        // is how you pass a bitwise-or as one argument.
+        arg->as.argument.argument = parse_expr_prec(pr, 10);
 
         *tail = arg;
         tail = &arg->as.argument.next_arg;
@@ -571,34 +618,31 @@ parse_expression(Parser *pr, int min_prec)
 {
     ASTNode *lhs;
 
-    if (TokType(pr) == TOK_QMARK || TokType(pr) == TOK_AT ||
-        (TokType(pr) == TOK_OPERATOR && strcmp(pr->curr.lexeme, "-") == 0))
+    // prefix_precendence is the single source of truth for what can lead
+    // an expression; duplicating the token test here drifts out of sync.
+    int pfx = prefix_precendence(pr);
+    if (pfx > 0)
     {
-        int pfx = prefix_precendence(pr);
-        if (pfx > 0)
-        {
-            Token op_tok = pr->curr;
-            parser_next(pr);
+        Token op_tok = pr->curr;
+        parser_next(pr);
 
-            
-            ASTNode *node = ast_node_new(pr->ast);
-            node->kind = NT_UNY_OP;
-            node->as.uny_op.operand = parse_expression(pr, pfx);
-            set_loc(node, op_tok);
+        ASTNode *node = ast_node_new(pr->ast);
+        node->kind = NT_UNY_OP;
+        node->as.uny_op.operand = parse_expression(pr, pfx);
+        set_loc(node, op_tok);
 
-            if (op_tok.kind == TOK_QMARK)
-            { node->as.uny_op.kind = UOT_DEREF; }
-            else if (op_tok.kind == TOK_AT)
-            { node->as.uny_op.kind = UOT_REF; }
-            else
-            { node->as.uny_op.kind = UOT_NEG; }
-
-            lhs = node;
-        }
+        if (op_tok.kind == TOK_QMARK)
+        { node->as.uny_op.kind = UOT_DEREF; }
+        else if (op_tok.kind == TOK_AT)
+        { node->as.uny_op.kind = UOT_REF; }
+        else if (op_tok.lexeme && strcmp(op_tok.lexeme, "!") == 0)
+        { node->as.uny_op.kind = UOT_NOT; }
+        else if (op_tok.lexeme && strcmp(op_tok.lexeme, "~") == 0)
+        { node->as.uny_op.kind = UOT_BNOT; }
         else
-        {
-            lhs = parse_primary(pr);
-        }
+        { node->as.uny_op.kind = UOT_NEG; }
+
+        lhs = node;
     }
     else
     {
@@ -614,6 +658,17 @@ parse_expression(Parser *pr, int min_prec)
         Token op_tok = pr->curr;
         parser_next(pr);
 
+        if (op_tok.kind == TOK_AS)
+        {
+            ASTNode *cast = ast_node_new(pr->ast);
+            cast->kind = NT_CAST;
+            set_loc(cast, op_tok);
+            cast->as.cast.type = parse_type(pr);
+            cast->as.cast.expr = lhs;
+            lhs = cast;
+            continue;
+        }
+
         int next_min = prec + 1;
         ASTNode *rhs = parse_expression(pr, next_min);
 
@@ -625,6 +680,8 @@ parse_expression(Parser *pr, int min_prec)
 
         if (op_tok.kind == TOK_DOT)
         { node->as.bin_op.kind = BOT_MEMBER; }
+        else if (op_tok.kind == TOK_VBAR)
+        { node->as.bin_op.kind = BOT_BOR; }
         else if (strcmp(op_tok.lexeme, "+") == 0)
         { node->as.bin_op.kind = BOT_PLUS; }
         else if (strcmp(op_tok.lexeme, "-") == 0)
@@ -647,8 +704,49 @@ parse_expression(Parser *pr, int min_prec)
         { node->as.bin_op.kind = BOT_GREAT; }
         else if (strcmp(op_tok.lexeme, ">=") == 0)
         { node->as.bin_op.kind = BOT_GEQ; }
+        else if (strcmp(op_tok.lexeme, "&") == 0)
+        { node->as.bin_op.kind = BOT_BAND; }
+        else if (strcmp(op_tok.lexeme, "|") == 0)
+        { node->as.bin_op.kind = BOT_BOR; }
+        else if (strcmp(op_tok.lexeme, "^") == 0)
+        { node->as.bin_op.kind = BOT_BXOR; }
+        else if (strcmp(op_tok.lexeme, "<<") == 0)
+        { node->as.bin_op.kind = BOT_SHL; }
+        else if (strcmp(op_tok.lexeme, ">>") == 0)
+        { node->as.bin_op.kind = BOT_SHR; }
+        else if (strcmp(op_tok.lexeme, "&&") == 0)
+        { node->as.bin_op.kind = BOT_AND; }
+        else if (strcmp(op_tok.lexeme, "||") == 0)
+        { node->as.bin_op.kind = BOT_OR; }
         else if (strcmp(op_tok.lexeme, "=") == 0)
         { node->as.bin_op.kind = BOT_ASSIGN; }
+        else if (op_tok.lexeme[1] == '=' && strchr("+-*/%", op_tok.lexeme[0]))
+        {
+            // a += b  is  a = a + b. PLUM has no side-effecting lvalues,
+            // so evaluating the left side twice is safe.
+            ASTNode *inner = ast_node_new(pr->ast);
+            inner->kind = NT_BIN_OP;
+            set_loc(inner, op_tok);
+            inner->as.bin_op.left  = node->as.bin_op.left;
+            inner->as.bin_op.right = node->as.bin_op.right;
+            switch (op_tok.lexeme[0])
+            {
+                case '+': inner->as.bin_op.kind = BOT_PLUS;  break;
+                case '-': inner->as.bin_op.kind = BOT_MINUS; break;
+                case '*': inner->as.bin_op.kind = BOT_MULT;  break;
+                case '/': inner->as.bin_op.kind = BOT_DIV;   break;
+                default:  inner->as.bin_op.kind = BOT_MOD;   break;
+            }
+
+            ASTNode *wrap = ast_node_new(pr->ast);
+            wrap->kind = NT_EXPR;
+            wrap->as.expr.kind = ET_BIN_OP;
+            wrap->as.expr.expr = inner;
+            set_loc(wrap, op_tok);
+
+            node->as.bin_op.kind  = BOT_ASSIGN;
+            node->as.bin_op.right = wrap;
+        }
         else
         { TRACE_FATAL("UNIMPL"); }
 
@@ -659,14 +757,14 @@ parse_expression(Parser *pr, int min_prec)
 }
 
 static ASTNode * // N_Expr
-parse_expr(Parser *pr)
+parse_expr_prec(Parser *pr, int min_prec)
 {
     // PRATT PARSING
     ASTNode *expr = ast_node_new(pr->ast);
     expr->kind = NT_EXPR;
     set_loc(expr, pr->curr);
 
-    expr->as.expr.expr = parse_expression(pr, 0);
+    expr->as.expr.expr = parse_expression(pr, min_prec);
     if (expr->as.expr.expr->kind == NT_UNY_OP)
     { expr->as.expr.kind = ET_UNY_OP; }
     else if (expr->as.expr.expr->kind == NT_IDENT)
@@ -681,11 +779,17 @@ parse_expr(Parser *pr)
     { expr->as.expr.kind = ET_EXPR; }
     else if (expr->as.expr.expr->kind == NT_BUILTIN)
     { expr->as.expr.kind = ET_BUILTIN; }
+    else if (expr->as.expr.expr->kind == NT_CAST)
+    { expr->as.expr.kind = ET_CAST; }
     else
     { TRACE_FATAL("FUCKY WACKY %u", expr->as.expr.expr->kind); }
 
     return expr;
 }
+
+static ASTNode * // N_Expr
+parse_expr(Parser *pr)
+{ return parse_expr_prec(pr, 0); }
 
 static ASTNode * // N_Ret
 parse_return(Parser *pr)
@@ -845,6 +949,25 @@ parse_cond_stmt(Parser *pr)
 
 
 static ASTNode * // N_Loop
+parse_while(Parser *pr)
+{
+    ASTNode *loop = ast_node_new(pr->ast);
+    loop->kind = NT_LOOP;
+    set_loc(loop, pr->curr);
+
+    expect(pr, TOK_WHILE);
+    expect(pr, TOK_LBRACKET);
+    loop->as.loop.expr = parse_expr(pr);
+    expect(pr, TOK_RBRACKET);
+
+    pr->indent += 1;
+    loop->as.loop.block = parse_block(pr);
+    pr->indent -= 1;
+
+    return loop;
+}
+
+static ASTNode * // N_Loop
 parse_loop(Parser *pr)
 {
     ASTNode *loop = ast_node_new(pr->ast);
@@ -876,6 +999,16 @@ parse_stmt(Parser *pr)
     {
         stmt->as.stmt.kind = ST_BREAK;
         stmt->as.stmt.stmt = NULL;
+    }
+    else if (match(pr, TOK_CONTINUE))
+    {
+        stmt->as.stmt.kind = ST_CONTINUE;
+        stmt->as.stmt.stmt = NULL;
+    }
+    else if (TokType(pr) == TOK_WHILE)
+    {
+        stmt->as.stmt.kind = ST_LOOP;
+        stmt->as.stmt.stmt = parse_while(pr);
     }
     else if (is_var_decl(pr))
     {
@@ -952,6 +1085,12 @@ parse_tu_stmt(Parser *pr)
     {
         tu_stmt->as.tu_stmt.kind = TUST_TYPE_DEF;
         tu_stmt->as.tu_stmt.tu_stmt = parse_type_def(pr);
+    }
+    else if ((pr->curr.kind == TOK_AT || pr->curr.kind == TOK_IDENTIFIER)
+             && is_tu_var_decl(pr))
+    {
+        tu_stmt->as.tu_stmt.kind = TUST_VAR_DECL;
+        tu_stmt->as.tu_stmt.tu_stmt = parse_var_decl(pr);
     }
     else if (pr->curr.kind == TOK_AT || pr->curr.kind == TOK_IDENTIFIER)
     {

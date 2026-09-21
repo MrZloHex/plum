@@ -19,6 +19,7 @@ typedef enum
     TOK_QMARK,
     TOK_ELLIPSIS,
     TOK_OPERATOR,
+    TOK_AS,
     TOK_END_BLOCK,
 
     TOK_IDENTIFIER,
@@ -38,7 +39,9 @@ typedef enum
     TOK_ELIF,
     TOK_ELSE,
     TOK_LOOP,
+    TOK_WHILE,
     TOK_BREAK,
+    TOK_CONTINUE,
     TOK_RET,
     TOK_SIZE
 } TokenType;
@@ -59,17 +62,16 @@ token_dump(Token);
 #ifdef TOKEN_DUMP
 
 #include "trace.h"
-#define _POSIX_C_SOURCE  200809L
 #include <string.h>
 
 const static char *type_str[TOK_SIZE+1] =
 {
     "EOF", "NEWLINE", "COLON", "LBRACKET", "RBRACKET",
     "LPAREN", "RPAREN", "VBAR", "DOT", "AT", "QMARK",
-    "ELLIPSIS", "OPERATOR", "END BLOCK", "IDENTIFIER",
+    "ELLIPSIS", "OPERATOR", "AS", "END BLOCK", "IDENTIFIER",
     "FLOAT", "INTEGER", "CHARACTER", "STRING", "TRUE",
     "FALSE", "TYPE", "STRUCTURE", "UNION", "ENUMERATION",
-    "IF", "ELIF", "ELSE", "LOOP", "BREAK", "RET", "SIZE"
+    "IF", "ELIF", "ELSE", "LOOP", "WHILE", "BREAK", "CONTINUE", "RET", "SIZE"
 };
 
 const char *
