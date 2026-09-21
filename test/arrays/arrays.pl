@@ -1,6 +1,6 @@
 ; ARRAYS
 
-; !USES <../std/std.pl>
+!USES <../std/lib.pl>
 
 I32 main: []
  | (puts)["ARRAY TEST"]
@@ -14,7 +14,7 @@ I32 main: []
  |  |  | BREAK
  |  |  \_
  |  | 
- |  | @a = c
+ |  | ?a = c
  |  | a = a + 1
  |  | c = c + 1
  |  \_
@@ -26,9 +26,8 @@ I32 main: []
  |  |  | BREAK
  |  |  \_
  |  |  
- |  | U8 huy = @a
- |  | (print_num)[ huy ]
- |  | (puts)[" qwe"]
+ |  | U8 huy = ?a
+ |  | (printf)[ "%d qwe\n" | huy ]
  |  |  
  |  | a = a + 1
  |  | c = c + 1
@@ -39,4 +38,3 @@ I32 main: []
  \_
 
 ; ARRAYS
-

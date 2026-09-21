@@ -41,3 +41,5 @@ I32 main: [ I32 argc | @@C1 argv ]
  \_
 
 I32 printf: [ @C1 fmt | ... ]
+
+I32 putchar: [ I32 char ]

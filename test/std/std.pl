@@ -1,8 +1,15 @@
-; std.pl
+; std.pl -- the program: exercises chained includes std.pl -> lib.pl -> io.pl
 
-@ABYSS malloc: [ U64 size ]
-ABYSS  free:   [ @ABYSS ptr ]
+!USES <../std/lib.pl>
 
-!USES <../std/io.pl>
-
-; std.pl
+I32 main: []
+ | (puts)[ "STD TEST" ]
+ | @ABYSS p = (malloc)[ 16 ]
+ | IF [ p != 0 ]
+ |  | (puts)[ "malloc ok" ]
+ | ELSE
+ |  | (puts)[ "malloc failed" ]
+ |  \_
+ | (free)[ p ]
+ | RET [ 0 ]
+ \_

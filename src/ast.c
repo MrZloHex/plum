@@ -438,6 +438,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
             PRINTIT(curr); fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.elif_cond.expr, depth+1);
             ast_dump_node(curr->as.elif_cond.block, depth+1);
+            ast_dump_node(curr->as.elif_cond.next_elif, depth);
         } break;
 
         case NT_ELSE:

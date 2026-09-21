@@ -27,7 +27,7 @@ I32 main: [ I32 argc | @@C1 argv ]
 ;| (parse_cli_opts)[ argc | argv | <
  | 
  | 
- | @C1 progname = @argv
+ | @C1 progname = ?argv
  | (usage)[ progname ]
  | 
  | (free)[cwd]

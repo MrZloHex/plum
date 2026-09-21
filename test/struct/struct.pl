@@ -26,7 +26,7 @@ I32 main: []
  | t.a.fla = TRUE
  | t.q = 69
  | 
- | (printf)[ "A %d t.q %d\n" ]
+ | (printf)[ "A %d t.q %d\n" | t.a.a | t.q ]
  | 
  | RET [ 0 ]
  \_

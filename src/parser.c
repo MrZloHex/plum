@@ -172,18 +172,15 @@ parse_record(Parser *pr, int kind)
     record->as.record.fields = NULL;
     set_loc(record, pr->curr);
 
+    ASTNode **fields_tail = &record->as.record.fields;
+
     while (pr->curr.kind == TOK_NEWLINE)
     {
         Token newline = pr->curr; expect(pr, TOK_NEWLINE);
         check_indent(pr, newline);
         ASTNode *field = parse_field(pr);
-        if (!record->as.record.fields)
-        { record->as.record.fields = field; }
-        else
-        {
-            field->as.rcrd_flds.next_field = record->as.record.fields;
-            record->as.record.fields = field;
-        }
+        *fields_tail = field;
+        fields_tail = &field->as.rcrd_flds.next_field;
     }
     expect(pr, TOK_END_BLOCK);
     
@@ -209,18 +206,15 @@ parse_enum(Parser *pr)
     enumer->as.enumeration.fields = NULL;
     set_loc(enumer, pr->curr);
 
+    ASTNode **fields_tail = &enumer->as.enumeration.fields;
+
     while (pr->curr.kind == TOK_NEWLINE)
     {
         Token newline = pr->curr; expect(pr, TOK_NEWLINE);
         check_indent(pr, newline);
         ASTNode *field = parse_enum_field(pr);
-        if (!enumer->as.enumeration.fields)
-        { enumer->as.enumeration.fields = field; }
-        else
-        {
-            field->as.enum_flds.next_field = enumer->as.enumeration.fields;
-            enumer->as.enumeration.fields = field;
-        }
+        *fields_tail = field;
+        fields_tail = &field->as.enum_flds.next_field;
     }
     expect(pr, TOK_END_BLOCK);
     
@@ -277,13 +271,15 @@ parse_params(Parser *pr)
     if (match(pr, TOK_RBRACKET))
     { return NULL; }
 
-    ASTNode *param = ast_node_new(pr->ast);
-    param->kind = NT_PARAMETRE;
-    param->as.parametre.next_param = NULL;
+    ASTNode *head = NULL;
+    ASTNode **tail = &head;
 
     bool is_param = true;
     while (is_param)
     {
+        ASTNode *param = ast_node_new(pr->ast);
+        param->kind = NT_PARAMETRE;
+        param->as.parametre.next_param = NULL;
         set_loc(param, pr->curr);
 
         if (match(pr, TOK_ELLIPSIS))
@@ -300,20 +296,15 @@ parse_params(Parser *pr)
             unexpected(pr);
         }
 
+        *tail = param;
+        tail = &param->as.parametre.next_param;
+
         if (!match(pr, TOK_VBAR))
         { is_param = false; }
-        else
-        {
-            ASTNode *next = ast_node_new(pr->ast);
-            next->kind = NT_PARAMETRE;
-            next->as.parametre.next_param = param;
-            param = next;
-        }
-
     }
 
     expect(pr, TOK_RBRACKET);
-    return param;
+    return head;
 }
 
 static ASTNode * // N_FnDecl
@@ -408,31 +399,28 @@ parse_arguments(Parser *pr)
     if (match(pr, TOK_RBRACKET))
     { return NULL; }
 
-    ASTNode *arg= ast_node_new(pr->ast);
-    arg->kind = NT_ARGUMENT;
-    arg->as.argument.next_arg = NULL;
+    ASTNode *head = NULL;
+    ASTNode **tail = &head;
 
     bool is_arg = true;
     while (is_arg)
     {
+        ASTNode *arg = ast_node_new(pr->ast);
+        arg->kind = NT_ARGUMENT;
+        arg->as.argument.next_arg = NULL;
         set_loc(arg, pr->curr);
-    
+
         arg->as.argument.argument = parse_expr(pr);
+
+        *tail = arg;
+        tail = &arg->as.argument.next_arg;
 
         if (!match(pr, TOK_VBAR))
         { is_arg = false; }
-        else
-        {
-            ASTNode *next = ast_node_new(pr->ast);
-            next->kind = NT_ARGUMENT;
-            next->as.argument.next_arg = arg;
-            arg = next;
-        }
-
     }
 
     expect(pr, TOK_RBRACKET);
-    return arg;
+    return head;
 }
 
 static ASTNode * // N_FnCall
@@ -757,6 +745,8 @@ parse_block_if(Parser *pr)
     block->as.block.stmts = NULL;
     set_loc(block, start);
 
+    ASTNode **stmts_tail = &block->as.block.stmts;
+
     while (1)
     {
         while (TokType(pr) == TOK_NEWLINE)
@@ -764,13 +754,8 @@ parse_block_if(Parser *pr)
 
         ASTNode *stmt = parse_stmt(pr);
 
-        if (!block->as.block.stmts)
-        { block->as.block.stmts = stmt; }
-        else
-        {
-            stmt->as.stmt.next_stmt = block->as.block.stmts;
-            block->as.block.stmts = stmt;
-        }
+        *stmts_tail = stmt;
+        stmts_tail = &stmt->as.stmt.next_stmt;
 
         while (TokType(pr) == TOK_NEWLINE)
         {
@@ -821,7 +806,8 @@ parse_cond_stmt(Parser *pr)
     {
         return cond;
     }
-    if (match(pr, TOK_ELIF))
+    ASTNode **elif_tail = &cond->as.cond.elif_part;
+    while (match(pr, TOK_ELIF))
     {
         ASTNode *elif_p = ast_node_new(pr->ast);
         elif_p->kind = NT_ELIF;
@@ -829,12 +815,17 @@ parse_cond_stmt(Parser *pr)
         expect(pr, TOK_LBRACKET);
         elif_p->as.elif_cond.expr = parse_expr(pr);
         expect(pr, TOK_RBRACKET);
-            
+
         pr->indent += 1;
         elif_p->as.elif_cond.block = parse_block_if(pr);
         pr->indent -= 1;
 
-        cond->as.cond.elif_part = elif_p;
+        *elif_tail = elif_p;
+        elif_tail = &elif_p->as.elif_cond.next_elif;
+
+        // a chain with no ELSE is closed by \_ , as the bare IF case is
+        if (match(pr, TOK_END_BLOCK))
+        { return cond; }
     }
     if (match(pr, TOK_ELSE))
     {
@@ -928,6 +919,8 @@ parse_block(Parser *pr)
     expect(pr, TOK_NEWLINE);
     check_indent(pr, start);
 
+    ASTNode **stmts_tail = &block->as.block.stmts;
+
     while (1)
     {
 
@@ -936,13 +929,8 @@ parse_block(Parser *pr)
 
         ASTNode *stmt = parse_stmt(pr);
 
-        if (!block->as.block.stmts)
-        { block->as.block.stmts = stmt; }
-        else
-        {
-            stmt->as.stmt.next_stmt = block->as.block.stmts;
-            block->as.block.stmts = stmt;
-        }
+        *stmts_tail = stmt;
+        stmts_tail = &stmt->as.stmt.next_stmt;
 
         while (TokType(pr) == TOK_NEWLINE)
         { check_indent(pr, pr->curr); parser_next(pr); }
@@ -1005,7 +993,9 @@ parse_unit(AST *ast, DynString *source)
     parser.ast = ast;
     parser.indent = 1;
     lexer_init(&parser.lexer, source);
-    
+
+    ASTNode **tu_tail = &parser.ast->root->as.tu.tu_stmt;
+
     parser_next(&parser);
 
     while (!IS_EOF(parser))
@@ -1017,12 +1007,7 @@ parse_unit(AST *ast, DynString *source)
         { parser_next(&parser); continue; }
 
         ASTNode *tu_stmt = parse_tu_stmt(&parser);
-        if (!parser.ast->root->as.tu.tu_stmt)
-        { parser.ast->root->as.tu.tu_stmt = tu_stmt; }
-        else
-        {
-            tu_stmt->as.tu_stmt.next_tu_stmt = parser.ast->root->as.tu.tu_stmt;
-            parser.ast->root->as.tu.tu_stmt = tu_stmt;
-        }
+        *tu_tail = tu_stmt;
+        tu_tail = &tu_stmt->as.tu_stmt.next_tu_stmt;
     }
 }
