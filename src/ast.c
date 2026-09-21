@@ -41,10 +41,17 @@ ast_deinit(AST *ast)
 void
 ast_dump_node(ASTNode *, size_t);
 
-DynString
-ast_dump(AST *ast)
+/* Where the dump goes; stdout unless ast_dump was given something else. */
+static FILE *dump_out = NULL;
+#define DUMP_OUT (dump_out ? dump_out : stdout)
+
+void
+ast_dump(AST *ast, FILE *out)
 {
+    dump_out = out;
     ast_dump_node(ast->root, 0);
+    fflush(DUMP_OUT);
+    dump_out = NULL;
 }
 
 
@@ -223,7 +230,7 @@ static inline void
 print_offset(size_t depth)
 {
     for (size_t i = 0; i < depth; ++i)
-    { printf("  "); }
+    { fprintf(DUMP_OUT, "  "); }
 }
 
 
@@ -240,7 +247,7 @@ const static char *ast_type_str[] =
 
 #define PRINTIT(node) \
     print_offset(depth); \
-    printf("%s %d:%d", ast_type_str[node->kind], node->loc.line, node->loc.col);
+    fprintf(DUMP_OUT, "%s %d:%d", ast_type_str[node->kind], node->loc.line, node->loc.col);
 
 
 void
@@ -251,7 +258,7 @@ dummy_dump(AST *ast)
     size_t depth = 0;
     while (curr)
     {
-        PRINTIT(curr); printf("\n");
+        PRINTIT(curr); fprintf(DUMP_OUT, "\n");
         curr = ast_next(ast);
     }
 }
@@ -267,7 +274,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
     {
         case NT_TRANSLATION_UNIT:
         {
-            PRINTIT(curr); printf("\n");
+            PRINTIT(curr); fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.tu.tu_stmt, depth+1);
         } break;
 
@@ -280,10 +287,10 @@ ast_dump_node(ASTNode *curr, size_t depth)
         case NT_FN_DECL:
         {
             PRINTIT(curr);
-            printf(" `%s` of type ", curr->as.fn_decl.ident->as.ident);
+            fprintf(DUMP_OUT, " `%s` of type ", curr->as.fn_decl.ident->as.ident);
             type_print_full = false;
             ast_dump_node(curr->as.fn_decl.type, depth);
-            printf("\n");
+            fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.fn_decl.params, depth+1);
         } break;
 
@@ -291,13 +298,13 @@ ast_dump_node(ASTNode *curr, size_t depth)
         {
             PRINTIT(curr);
             if (curr->as.parametre.vaarg)
-            { printf(" VAARG\n"); }
+            { fprintf(DUMP_OUT, " VAARG\n"); }
             else
             {
-                printf(" `%s` - ", curr->as.parametre.ident->as.ident);
+                fprintf(DUMP_OUT, " `%s` - ", curr->as.parametre.ident->as.ident);
                 type_print_full = false;
                 ast_dump_node(curr->as.parametre.type, depth);
-                printf("\n");
+                fprintf(DUMP_OUT, "\n");
             }
             ast_dump_node(curr->as.parametre.next_param, depth);
         } break;
@@ -305,10 +312,10 @@ ast_dump_node(ASTNode *curr, size_t depth)
         case NT_FN_DEF:
         {
             PRINTIT(curr);
-            printf(" `%s` - ", curr->as.fn_def.decl->as.fn_decl.ident->as.ident);
+            fprintf(DUMP_OUT, " `%s` - ", curr->as.fn_def.decl->as.fn_decl.ident->as.ident);
             type_print_full = false;
             ast_dump_node(curr->as.fn_def.decl->as.fn_decl.type, depth);
-            printf("\n");
+            fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.fn_def.decl->as.fn_decl.params, depth+1);
             ast_dump_node(curr->as.fn_def.block, depth+1);
         } break;
@@ -316,13 +323,13 @@ ast_dump_node(ASTNode *curr, size_t depth)
         case NT_TYPE_DEF:
         {
             PRINTIT(curr);
-            printf(" `%s`", curr->as.type_def.ident->as.ident);
+            fprintf(DUMP_OUT, " `%s`", curr->as.type_def.ident->as.ident);
             if (curr->as.type_def.kind == TD_ALIAS)
-            { printf(" ALIAS TO\n"); }
+            { fprintf(DUMP_OUT, " ALIAS TO\n"); }
             else if (curr->as.type_def.kind == TD_ENUM)
-            { printf(" ENUM\n"); }
+            { fprintf(DUMP_OUT, " ENUM\n"); }
             else
-            { printf("\n"); }
+            { fprintf(DUMP_OUT, "\n"); }
 
             type_print_full = true;
             ast_dump_node(curr->as.type_def.tdef, depth+1);
@@ -336,24 +343,24 @@ ast_dump_node(ASTNode *curr, size_t depth)
         case NT_ENUM_FIELDS:
         {
             PRINTIT(curr);
-            printf(" `%s`\n", curr->as.enum_flds.ident->as.ident);
+            fprintf(DUMP_OUT, " `%s`\n", curr->as.enum_flds.ident->as.ident);
             ast_dump_node(curr->as.enum_flds.next_field, depth);
         } break;
 
         case NT_RECORD:
         {
             PRINTIT(curr);
-            printf(" %s\n", curr->as.record.kind == TDRT_UNION ? "UNION" : "STRUCTURE");
+            fprintf(DUMP_OUT, " %s\n", curr->as.record.kind == TDRT_UNION ? "UNION" : "STRUCTURE");
             ast_dump_node(curr->as.record.fields, depth+1);
         } break;
 
         case NT_FIELD:
         {
             PRINTIT(curr);
-            printf(" `%s` - ", curr->as.rcrd_flds.ident->as.ident);
+            fprintf(DUMP_OUT, " `%s` - ", curr->as.rcrd_flds.ident->as.ident);
             type_print_full = false;
             ast_dump_node(curr->as.rcrd_flds.type, depth);
-            printf("\n");
+            fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.rcrd_flds.next_field, depth);
         } break;
 
@@ -368,23 +375,23 @@ ast_dump_node(ASTNode *curr, size_t depth)
             };
 
             if (type_print_full)
-            { PRINTIT(curr); printf(" "); }
+            { PRINTIT(curr); fprintf(DUMP_OUT, " "); }
 
             for (size_t i = 0; i < curr->as.type.ptrs; ++i)
-            { printf("PTR TO "); }
+            { fprintf(DUMP_OUT, "PTR TO "); }
 
             if (curr->as.type.kind == TT_USER_TYPE)
-            { printf("`%s`", curr->as.type.type->as.ident); }
+            { fprintf(DUMP_OUT, "`%s`", curr->as.type.type->as.ident); }
             else
-            { printf("%s", type_str[curr->as.type.type->as.base_type]); }
+            { fprintf(DUMP_OUT, "%s", type_str[curr->as.type.type->as.base_type]); }
 
             if (type_print_full)
-            { printf("\n"); }
+            { fprintf(DUMP_OUT, "\n"); }
         } break;
 
         case NT_BLOCK:
         {
-            PRINTIT(curr); printf("\n");
+            PRINTIT(curr); fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.block.stmts, depth+1);
         } break;
         
@@ -399,21 +406,21 @@ ast_dump_node(ASTNode *curr, size_t depth)
                 "LOOP", "VAR DECL", "EXPRESSION"
             };
 
-            printf(" %s\n", stmt_type_str[curr->as.stmt.kind]);
+            fprintf(DUMP_OUT, " %s\n", stmt_type_str[curr->as.stmt.kind]);
             ast_dump_node(curr->as.stmt.stmt, depth+1);
             ast_dump_node(curr->as.stmt.next_stmt, depth);
         } break;
 
         case NT_RET:
         {
-            PRINTIT(curr); printf("\n");
+            PRINTIT(curr); fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.ret.expr, depth+1);
 
         } break;
 
         case NT_COND:
         {
-            PRINTIT(curr); printf("\n");
+            PRINTIT(curr); fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.cond.if_part, depth+1);
             ast_dump_node(curr->as.cond.elif_part, depth+1);
             ast_dump_node(curr->as.cond.else_part, depth+1);
@@ -421,40 +428,40 @@ ast_dump_node(ASTNode *curr, size_t depth)
 
         case NT_IF:
         {
-            PRINTIT(curr); printf("\n");
+            PRINTIT(curr); fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.if_cond.expr, depth+1);
             ast_dump_node(curr->as.if_cond.block, depth+1);
         } break;
 
         case NT_ELIF:
         {
-            PRINTIT(curr); printf("\n");
+            PRINTIT(curr); fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.elif_cond.expr, depth+1);
             ast_dump_node(curr->as.elif_cond.block, depth+1);
         } break;
 
         case NT_ELSE:
         {
-            PRINTIT(curr); printf("\n");
+            PRINTIT(curr); fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.else_cond.block, depth+1);
         } break;
 
         case NT_LOOP:
         {
-            PRINTIT(curr); printf("\n");
+            PRINTIT(curr); fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.loop.block, depth+1);
         } break;
 
         case NT_VAR_DECL:
         {
             PRINTIT(curr);
-            printf(" `%s` - ", curr->as.var_decl.ident->as.ident);
+            fprintf(DUMP_OUT, " `%s` - ", curr->as.var_decl.ident->as.ident);
             type_print_full = false;
             ast_dump_node(curr->as.var_decl.type, depth);
             if (curr->as.var_decl.init)
-            { printf(" INIT\n"); ast_dump_node(curr->as.var_decl.init, depth+1); }
+            { fprintf(DUMP_OUT, " INIT\n"); ast_dump_node(curr->as.var_decl.init, depth+1); }
             else
-            { printf("\n"); }
+            { fprintf(DUMP_OUT, "\n"); }
 
         } break;
 
@@ -466,7 +473,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
                 "FN CALL", "LITERAL", "EXPR", "BUILT IN"
             };
             PRINTIT(curr);
-            printf(" %s\n", expr_type_str[curr->as.expr.kind]);
+            fprintf(DUMP_OUT, " %s\n", expr_type_str[curr->as.expr.kind]);
             ast_dump_node(curr->as.expr.expr, depth+1);
         } break;
 
@@ -478,7 +485,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
                 "MOD", "EQUAL", "NEQ", "LESS", "LEQ",
                 "GREAT", "GEQ", "MEMBER"
             };
-            PRINTIT(curr); printf(" %s\n", bin_op_str[curr->as.bin_op.kind]);
+            PRINTIT(curr); fprintf(DUMP_OUT, " %s\n", bin_op_str[curr->as.bin_op.kind]);
             ast_dump_node(curr->as.bin_op.left, depth+1);
             ast_dump_node(curr->as.bin_op.right, depth+1);
         } break;
@@ -488,20 +495,20 @@ ast_dump_node(ASTNode *curr, size_t depth)
             const static char *uny_op_str[] =
             { "DEREF", "REF", "NEG" };
             PRINTIT(curr);
-            printf(" %s\n", uny_op_str[curr->as.uny_op.kind]);
+            fprintf(DUMP_OUT, " %s\n", uny_op_str[curr->as.uny_op.kind]);
             ast_dump_node(curr->as.uny_op.operand, depth+1);
         } break;
 
         case NT_FN_CALL:
         {
             PRINTIT(curr);
-            printf(" `%s`\n", curr->as.fn_call.ident->as.ident);
+            fprintf(DUMP_OUT, " `%s`\n", curr->as.fn_call.ident->as.ident);
             ast_dump_node(curr->as.fn_call.args, depth+1);
         } break;
 
         case NT_ARGUMENT:
         {
-            PRINTIT(curr); printf("\n");
+            PRINTIT(curr); fprintf(DUMP_OUT, "\n");
             ast_dump_node(curr->as.argument.argument, depth+1);
             ast_dump_node(curr->as.argument.next_arg, depth);
         } break;
@@ -509,7 +516,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
         case NT_IDENT:
         {
             PRINTIT(curr);
-            printf(" `%s`\n", curr->as.ident);
+            fprintf(DUMP_OUT, " `%s`\n", curr->as.ident);
         } break;
 
         case NT_LITERAL:
@@ -520,23 +527,23 @@ ast_dump_node(ASTNode *curr, size_t depth)
                 "STRING", "BOOLEAN"
             };
             PRINTIT(curr);
-            printf(" %s ", lit_type_str[curr->as.literal.kind]);
+            fprintf(DUMP_OUT, " %s ", lit_type_str[curr->as.literal.kind]);
             switch (curr->as.literal.kind)
             {
                 case LT_INTEGER:
-                    printf("`%d`\n", curr->as.literal.as.int_lit);
+                    fprintf(DUMP_OUT, "`%d`\n", curr->as.literal.as.int_lit);
                     break;
                 case LT_BOOLEAN:
-                    printf("%s\n", curr->as.literal.as.bool_lit ? "TRUE": "FALSE");
+                    fprintf(DUMP_OUT, "%s\n", curr->as.literal.as.bool_lit ? "TRUE": "FALSE");
                     break;
                 case LT_CHARACTER:
-                    printf("`%c`\n", curr->as.literal.as.char_lit);
+                    fprintf(DUMP_OUT, "`%c`\n", curr->as.literal.as.char_lit);
                     break;
                 case LT_STRING:
-                    printf("`%s`\n", curr->as.literal.as.str_lit);
+                    fprintf(DUMP_OUT, "`%s`\n", curr->as.literal.as.str_lit);
                     break;
                 case LT_FLOAT:
-                    printf("`%f`\n", curr->as.literal.as.float_lit);
+                    fprintf(DUMP_OUT, "`%f`\n", curr->as.literal.as.float_lit);
                     break;
             }
 
@@ -548,7 +555,7 @@ ast_dump_node(ASTNode *curr, size_t depth)
             if (curr->as.builtin.kind != BI_SIZE)
             { assert(0 && "UNREACHABLE"); }
 
-            printf(" SIZE OF `%s`\n", curr->as.builtin.as.size->as.ident);
+            fprintf(DUMP_OUT, " SIZE OF `%s`\n", curr->as.builtin.as.size->as.ident);
         } break;
 
         case NT_BASE_TYPE:

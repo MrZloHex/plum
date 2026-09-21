@@ -72,8 +72,8 @@ tracer_set_level(Trace_Level level)
 static void
 _tracer_print(Trace_Entry entry)
 {
-    printf("%s\n", entry.fmt);
-    fflush(stdout);
+    fprintf(stderr, "%s\n", entry.fmt);
+    fflush(stderr);
 }
 
 void

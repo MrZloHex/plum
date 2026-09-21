@@ -60,24 +60,28 @@ static int
 lex_count_indent(Lexer *lx)
 {
     int indent = 0;
-    bool is_indent =
-    (
-        lex_peek(lx)    == ' ' &&
-        lex_look(lx, 1) == '|' &&
-        lex_look(lx, 2) == ' '
-    );
 
-    while (is_indent)
+    while (lex_peek(lx) == ' ' && lex_look(lx, 1) == '|')
     {
+        char after = lex_look(lx, 2);
+
+        // A bare `|` ending the line is a blank statement, and still counts
+        // as one level of indent -- eat only the two chars, so the newline
+        // that follows is left for lexer_next to see.
+        if (after == '\n' || after == '\r' || after == '\0')
+        {
+            indent++;
+            lx->col += 2;
+            lx->pos += 2;
+            break;
+        }
+
+        if (after != ' ' && after != '\t')
+        { break; }
+
         indent++;
         lx->col += 3;
         lx->pos += 3;
-        is_indent =
-        (
-            lex_peek(lx)    == ' ' &&
-            lex_look(lx, 1) == '|' &&
-            lex_look(lx, 2) == ' '
-        );
     }
 
     return indent;

@@ -1,6 +1,8 @@
 #ifndef __AST_H__
 #define __AST_H__
 
+#include <stdio.h>
+
 #include "arena.h"
 #include "dynstack.h"
 #include "dynstr.h"
@@ -31,8 +33,8 @@ ast_deinit(AST *ast);
 ASTNode *
 ast_next(AST *ast);
 
-DynString
-ast_dump(AST *ast);
+void
+ast_dump(AST *ast, FILE *out);
 
 void
 dummy_dump(AST *ast);

@@ -83,6 +83,7 @@ parse_cli_options(int argc, char *argv[])
 #include "trace.h"
 
 #include "parser.h"
+#include "preproc.h"
 #include "meta.h"
 #include "codegen.h"
 
@@ -90,14 +91,27 @@ parse_cli_options(int argc, char *argv[])
 #include "dynstr.h"
 
 
+/* Basename without directory or extension; used to name the LLVM module. */
+static const char *
+module_name_of(const char *path)
+{
+    static char buf[256];
+
+    const char *slash = strrchr(path, '/');
+    const char *base  = slash ? slash + 1 : path;
+
+    snprintf(buf, sizeof(buf), "%s", base);
+    char *dot = strrchr(buf, '.');
+    if (dot)
+    { *dot = '\0'; }
+
+    return buf;
+}
+
 int
 main(int argc, char *argv[])
 {
     tracer_init(TRC_DEBUG, TP_FUNC | TP_LINE);
-
-    char cwd[PATH_MAX];
-    if (getcwd(cwd, sizeof(cwd)) != NULL)
-    { printf("Current working dir: %s\n", cwd); }
 
     Options opts = parse_cli_options(argc, argv);
     if (opts.file_start_index >= argc)
@@ -107,26 +121,21 @@ main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    FILE *fout = NULL;
-    if (opts.output_file)
+    if (argc - opts.file_start_index > 1)
     {
-        fout = fopen(opts.output_file, "w");
-        if (!fout)
-        {
-            fprintf(stderr, "Failed to open output file: %s\n", opts.output_file);
-            exit(EXIT_FAILURE);
-        }
+        fprintf(stderr, "Warning: only `%s' is compiled; %d further input file(s) ignored.\n",
+                argv[opts.file_start_index], argc - opts.file_start_index - 1);
     }
-    else
-    { fout = stdout; }
 
-    if (!fout)
-    {
-        fprintf(stderr, "failed to open output file: %s\n", opts.output_file);
-        exit(EXIT_FAILURE);
-    }
+    /* IR is the default; the AST dump is a debugging aid. */
+    bool emit_ir = !(opts.emit_type && strcmp(opts.emit_type, "AST") == 0);
 
     char *source_file = realpath(argv[opts.file_start_index], NULL);
+    if (!source_file)
+    {
+        fprintf(stderr, "Failed to resolve source file: %s\n", argv[opts.file_start_index]);
+        exit(EXIT_FAILURE);
+    }
 
     FILE *src_f = fopen(source_file, "r");
     if (!src_f)
@@ -139,29 +148,56 @@ main(int argc, char *argv[])
     DynString src;
     dynstr_init(&src, src_f);
     fclose(src_f);
-    free(source_file);
+
+    /* !USES expansion. Paths resolve against the CWD, not the including
+       file, which is why build.sh runs plc from inside the test directory. */
+    if (preprocess(&src) != 0)
+    {
+        fprintf(stderr, "Preprocessing failed: %s\n", source_file);
+        dynstr_deinit(&src);
+        free(source_file);
+        exit(EXIT_FAILURE);
+    }
 
     AST ast;
     ast_init(&ast);
     parse_unit(&ast, &src);
-    //dummy_dump(&ast);
-    ast_dump(&ast);
 
     Meta meta;
     meta_init(&meta);
     meta_pass(&meta, &ast);
-    meta_dump(&meta);
 
-    
-    //CodegenContext cg;
-    //codegen_init(&cg, "my_module", &meta);
-    //codegen_generate(ast.root, &cg);
-    //codegen_deinit(&cg, "out.ll");
+    if (emit_ir)
+    {
+        CodegenContext cg;
+        codegen_init(&cg, module_name_of(source_file), &meta);
+        codegen_generate(ast.root, &cg);
+        codegen_deinit(&cg, opts.output_file ? opts.output_file : "/dev/stdout");
+    }
+    else
+    {
+        FILE *fout = stdout;
+        if (opts.output_file)
+        {
+            fout = fopen(opts.output_file, "w");
+            if (!fout)
+            {
+                fprintf(stderr, "Failed to open output file: %s\n", opts.output_file);
+                exit(EXIT_FAILURE);
+            }
+        }
 
+        ast_dump(&ast, fout);
+        meta_dump(&meta, fout);
+
+        if (fout != stdout)
+        { fclose(fout); }
+    }
 
     ast_deinit(&ast);
     meta_deinit(&meta);
     dynstr_deinit(&src);
+    free(source_file);
 
     return 0;
 }

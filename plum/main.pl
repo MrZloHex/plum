@@ -11,9 +11,9 @@ ABYSS usage: [ @C1 progname ]
  | RET []
  \_
  
- ABYSS parse_cli_opts: []
-  | RET []
-  \_
+ABYSS parse_cli_opts: []
+ | RET []
+ \_
 
 I32 main: [ I32 argc | @@C1 argv ]
  | @C1 cwd = (get_current_dir_name)[]

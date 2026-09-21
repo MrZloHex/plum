@@ -56,7 +56,7 @@ void
 meta_pass(Meta *meta, AST *ast);
 
 void
-meta_dump(const Meta *meta);
+meta_dump(const Meta *meta, FILE *out);
 
 void
 meta_deinit(Meta *meta);

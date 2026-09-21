@@ -477,16 +477,26 @@ parse_literal(Parser *pr)
     }
     else if (match(pr, TOK_CHARACTER))
     {
+        // lex still carries both quotes: 'a' -> lex[1] is the character
         lit->as.literal.kind = LT_CHARACTER;
         if (lex[1] == '\\')
         {
-            if (lex[2] == 'n')
-            { lit->as.literal.as.char_lit = '\n'; }
-            else
-            { TRACE_FATAL("UNIMPL"); }
+            switch (lex[2])
+            {
+                case 'n':  lit->as.literal.as.char_lit = '\n'; break;
+                case 't':  lit->as.literal.as.char_lit = '\t'; break;
+                case 'r':  lit->as.literal.as.char_lit = '\r'; break;
+                case '0':  lit->as.literal.as.char_lit = '\0'; break;
+                case '\\': lit->as.literal.as.char_lit = '\\'; break;
+                case '\'': lit->as.literal.as.char_lit = '\''; break;
+                case '"':  lit->as.literal.as.char_lit = '"';  break;
+                default:
+                    TRACE_FATAL("UNKNOWN ESCAPE `\\%c` at %d:%d",
+                                lex[2], lit->loc.line, lit->loc.col);
+            }
         }
         else
-        { lit->as.literal.as.char_lit = lex[0]; }
+        { lit->as.literal.as.char_lit = lex[1]; }
     }
     else if (match(pr, TOK_STRING))
     {
@@ -699,6 +709,10 @@ parse_return(Parser *pr)
 
     expect(pr, TOK_RET);
     if (!match(pr, TOK_LBRACKET))
+    { return ret; }
+
+    // RET [] -- void return, as in syntax/plum.ebnf and plum/main.pl
+    if (match(pr, TOK_RBRACKET))
     { return ret; }
 
     ret->as.ret.expr = parse_expr(pr);

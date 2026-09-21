@@ -6,6 +6,10 @@
 
 #include "meta.h"
 
+/* Where the dump goes; stdout unless meta_dump was given something else. */
+static FILE *dump_out = NULL;
+#define DUMP_OUT (dump_out ? dump_out : stdout)
+
 /*------------------------------------------------------------
  * Вспомогательные: работа со стеком областей (SymTab)
  *-----------------------------------------------------------*/
@@ -243,14 +247,16 @@ static void collect_node(ASTNode *node, Meta *m)
 }
 
 void
-meta_dump(const Meta *m)
+meta_dump(const Meta *m, FILE *out)
 {
-    printf("=== Scopes (%zu) ===\n", scs_size(&m->symtab.scopes));
+    dump_out = out;
+
+    fprintf(DUMP_OUT, "=== Scopes (%zu) ===\n", scs_size(&m->symtab.scopes));
     for (size_t lvl = 0; lvl < scs_size(&m->symtab.scopes); ++lvl)
     {
         Scope sc;
         scs_get(&m->symtab.scopes, lvl, &sc);
-        printf(" Scope %zu:\n", lvl);
+        fprintf(DUMP_OUT, " Scope %zu:\n", lvl);
         for (size_t i = 0; i < sms_size(&sc.syms); ++i)
         {
             Symbol s;
@@ -258,7 +264,7 @@ meta_dump(const Meta *m)
             const char *kstr = (s.kind==SYM_FN  ? "FN"
                                 : s.kind==SYM_TYPE? "TYPE"
                                 :                   "VAR");
-            printf("   [%s] %s\n", kstr, s.name);
+            fprintf(DUMP_OUT, "   [%s] %s\n", kstr, s.name);
         }
     }
 
@@ -266,10 +272,10 @@ meta_dump(const Meta *m)
     // {
     //     size_t n = name_size(&m->func_decls);
     //     name_entry *arr = name_data(&m->func_decls);
-    //     printf("=== Functions (%zu) ===\n", n);
+    //     fprintf(DUMP_OUT, "=== Functions (%zu) ===\n", n);
     //     for (size_t i = 0; i < n; ++i)
     //     {
-    //         printf("  %s\n", arr[i].key);
+    //         fprintf(DUMP_OUT, "  %s\n", arr[i].key);
     //     }
     // }
 
@@ -277,12 +283,15 @@ meta_dump(const Meta *m)
     // {
     //     size_t n = name_map_size(&m->str_lits);
     //     name_entry *arr = name_map_data(&m->str_lits);
-    //     printf("=== String Literals (%zu) ===\n", n);
+    //     fprintf(DUMP_OUT, "=== String Literals (%zu) ===\n", n);
     //     for (size_t i = 0; i < n; ++i)
     //     {
-    //         printf("  \"%s\"\n", arr[i].key);
+    //         fprintf(DUMP_OUT, "  \"%s\"\n", arr[i].key);
     //     }
     // }
+
+    fflush(DUMP_OUT);
+    dump_out = NULL;
 }
 
 /*------------------------------------------------------------
