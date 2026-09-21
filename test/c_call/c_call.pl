@@ -2,7 +2,7 @@
 
 ABYSS qwe_qwe_qwe: []
  | (puts)["QWEQWEQWE"]
- | RET []
+ | RET
  \_
 
 I32 main: []

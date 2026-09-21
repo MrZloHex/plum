@@ -1,10 +1,9 @@
 #ifndef __AST_H__
 #define __AST_H__
 
-// #include "ast_nodes.h"
+#include "arena.h"
 #include "dynstack.h"
 #include "dynstr.h"
-#include "arena.h"
 
 typedef struct ASTNode ASTNode;
 

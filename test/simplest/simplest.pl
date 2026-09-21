@@ -1,9 +1,7 @@
 ; SOME COMMENT
 
 ABYSS baz: [ @ABYSS qwe | U8 asd]
-
-ABYSS bar: [ @ABYSS qwe | U8 asd]
- | RET [ ] 
+ABYSS bar: [ @ABYSS qwe | U8 asd ]
  \_
 
 U8 foo: [ U8 a | U8 b ]

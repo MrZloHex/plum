@@ -83,6 +83,8 @@ parse_cli_options(int argc, char *argv[])
 #include "trace.h"
 
 #include "parser.h"
+#include "meta.h"
+#include "codegen.h"
 
 #define DYNSTR_IMPL
 #include "dynstr.h"
@@ -145,7 +147,20 @@ main(int argc, char *argv[])
     //dummy_dump(&ast);
     ast_dump(&ast);
 
+    Meta meta;
+    meta_init(&meta);
+    meta_pass(&meta, &ast);
+    meta_dump(&meta);
+
+    
+    //CodegenContext cg;
+    //codegen_init(&cg, "my_module", &meta);
+    //codegen_generate(ast.root, &cg);
+    //codegen_deinit(&cg, "out.ll");
+
+
     ast_deinit(&ast);
+    meta_deinit(&meta);
     dynstr_deinit(&src);
 
     return 0;
