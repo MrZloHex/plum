@@ -27,7 +27,7 @@ done
 pushd $TEST
 ../../bin/plc $TEST.pl -o $TEST.ll --emit=IR
 llvm-as $TEST.ll -o $TEST.bc 
-clang $TEST.bc -o $TEST
+clang $TEST.bc -o $TEST $(llvm-config --ldflags --libs core analysis target 2>/dev/null)
 popd
 
 if $WITH_EXE; then

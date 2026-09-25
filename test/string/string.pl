@@ -1,6 +1,6 @@
 ; Exercises plum/string.pl -- the PLUM counterpart of inc/dynstr.h
 
-!USES <../../plum/string.pl>
+!USES <../../lib/string.pl>
 
 ABYSS show: [ @C1 tag | @String s ]
  | (printf)[ "%-12s size=%d cap=%d `%s`\n" | tag | s.size | s.cap | s.data ]

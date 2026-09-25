@@ -1,4 +1,4 @@
-;!USES <../std/io.pl>
+!USES <../std/io.pl>
 
 TYPE Foo: STRUCT
  | I32 a

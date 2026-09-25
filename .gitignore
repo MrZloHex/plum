@@ -5,3 +5,13 @@ obj/
 bin/
 test.sh
 CLAUDE.md
+
+# plum/ build artifacts -- seed/plc.ll is checked in, everything else is not
+plum/plc-plum*
+plum/plc-seed
+plum/*.ll
+plum/*.bc
+!plum/seed/plc.ll
+
+# scratch
+gpt/

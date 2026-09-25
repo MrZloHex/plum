@@ -8,9 +8,11 @@ VERBOSE=false
 [[ "$1" == "-v" ]] && VERBOSE=true
 
 TESTS=(
-    simplest c_call elif if_stmt logic loops bitwise casts globals
-    byvalue selfref compilerish string
-    printf aryph_logic cli_args arrays struct include std
+    simplest c_call elif if_stmt logic loops
+    bitwise casts globals byvalue selfref compilerish
+    string containers llvm trace preproc lexer
+    ast parser meta printf aryph_logic cli_args
+    arrays struct include std
 )
 
 pass=0; fail=0; failed=()
