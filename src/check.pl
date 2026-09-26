@@ -9,7 +9,8 @@
 ;   * a U64 hash flowing into a signed SRem, indexing before an array
 ;   * a struct value assigned to a pointer, silently producing garbage
 ;   * `!p.field` grouping as `(!p).field`, loading a field off an i1
-;   * float arithmetic reaching LLVM as `sdiv double`
+;   * float arithmetic reaching LLVM as `sdiv double` -- floats have their
+;     own opcodes now; what is rejected is a bitwise operator on one
 ;
 ; Each of those is now an error here, with a line and column.
 
@@ -37,6 +38,7 @@ TYPE Type: STRUCT
  | B1       sign       ; TY_INT only
  | @C1      name       ; TY_RECORD / TY_ENUM
  | @ASTNode decl       ; the NT_TYPE_DEF, for field lookup
+ | U64      arr        ; N for an array `T x{N}`, which reads as a pointer
  \_
 
 TYPE CkSym: STRUCT
@@ -54,6 +56,7 @@ TYPE Checker: STRUCT
  | @CkScope  scope
  | Type      ret_type     ; of the function being checked
  | @ASTNode  tu           ; the translation unit, for enum lookup
+ | @C1       owner        ; the class whose method is being checked, or 0
  | I32       errors
  \_
 
@@ -67,6 +70,7 @@ Type ty_make: [ I32 kind | U64 ptrs | I32 bits | B1 sign ]
  | t.sign = sign
  | t.name = 0
  | t.decl = 0
+ | t.arr = 0
  | RET [ t ]
  \_
 
@@ -234,8 +238,12 @@ Type ty_resolve: [ @Checker c | @ASTNode tn ]
  |  |  | ELSE
  |  |  |  | t = (ty_resolve)[ c | td.as.type_def.tdef ]
  |  |  |  \_
- |  |  | t.name = nm
- |  |  | t.decl = td
+ |  |  | ; an alias of a struct is that struct: keep the definition that
+ |  |  | ; has the fields, and the name its methods are filed under
+ |  |  | IF [ t.decl == 0 ]
+ |  |  |  | t.name = nm
+ |  |  |  | t.decl = td
+ |  |  |  \_
  |  | ELSE
  |  |  | (ck_error2)[ c | tn | "unknown type `%s`%s" | nm | "" ]
  |  |  \_
@@ -243,6 +251,25 @@ Type ty_resolve: [ @Checker c | @ASTNode tn ]
  |
  | t.ptrs = t.ptrs + tn.as.type.ptrs
  | RET [ t ]
+ \_
+
+; The type a declared variable or field has in an expression: an array
+; `T x{N}` is used as a pointer to its first element, like C's.
+Type ty_decl: [ @Checker c | @ASTNode tn ]
+ | Type t = (ty_resolve)[ c | tn ]
+ | IF [ tn != 0 && tn.as.type.arr > 0 ]
+ |  | t.ptrs = t.ptrs + 1
+ |  | t.arr = tn.as.type.arr
+ |  \_
+ | RET [ t ]
+ \_
+
+B1 ty_is_float: [ Type t ]
+ | RET [ t.ptrs == 0 && t.kind == TY_FLOAT ]
+ \_
+
+B1 ty_is_integral: [ Type t ]
+ | RET [ t.ptrs == 0 && (t.kind == TY_INT || t.kind == TY_BOOL || t.kind == TY_ENUM) ]
  \_
 
 ; --- scopes ---------------------------------------------------------------
@@ -361,7 +388,7 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode at ]
  | @ASTNode f = rec.as.record.fields
  | WHILE [ f != 0 ]
  |  | IF [ (strcmp)[ f.as.rcrd_flds.ident.as.ident | field ] == 0 ]
- |  |  | ?(out) = (ty_resolve)[ c | f.as.rcrd_flds.type ]
+ |  |  | ?(out) = (ty_decl)[ c | f.as.rcrd_flds.type ]
  |  |  | RET [ TRUE ]
  |  |  \_
  |  | f = f.as.rcrd_flds.next_field
@@ -369,21 +396,67 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode at ]
  | RET [ FALSE ]
  \_
 
-Type ck_call: [ @Checker c | @ASTNode n ]
- | @C1 name = n.as.fn_call.ident.as.ident
- | @ABYSS d = 0
+; (obj.method)[ ... ] calls the function "<obj's type>.method", with obj
+; itself or a pointer to it as the receiver. 0 when there is no such method.
+@ASTNode ck_method: [ @Checker c | @ASTNode n ]
+ | @C1 m = n.as.fn_call.ident.as.ident
+ | Type rt = (ck_expr)[ c | n.as.fn_call.recv ]
+ | IF [ rt.kind == TY_UNKNOWN ]
+ |  | RET [ 0 ]
+ |  \_
+ | IF [ rt.kind != TY_RECORD || rt.ptrs > 1 || rt.name == 0 ]
+ |  | @C1 s = (ty_str)[ rt ]
+ |  | (ck_error2)[ c | n | "%s has no methods, so no `%s`" | s | m ]
+ |  | (free)[ s AS @ABYSS ]
+ |  | RET [ 0 ]
+ |  \_
  |
- | IF [ (map_get)[ @(c.meta.func_decls) | name | @d AS @@ABYSS ] != 1 ]
- |  | (ck_error2)[ c | n | "call to undeclared function `%s`%s" | name | "" ]
- |  | RET [ (ty_unknown)[] ]
+ | @ABYSS d = 0
+ | IF [ (map_get)[ @(c.meta.func_decls) | (method_name)[ rt.name | m ] | @d AS @@ABYSS ] != 1 ]
+ |  | (ck_error2)[ c | n | "`%s` has no method `%s`" | rt.name | m ]
+ |  | RET [ 0 ]
  |  \_
  |
  | @ASTNode decl = d AS @ASTNode
+ | IF [ decl.as.fn_decl.is_private ]
+ |  | IF [ c.owner == 0 || (strcmp)[ c.owner | decl.as.fn_decl.owner ] != 0 ]
+ |  |  | (ck_error2)[ c | n | "`%s` is PRIVATE to `%s`" | m | decl.as.fn_decl.owner ]
+ |  |  \_
+ |  \_
+ | RET [ decl ]
+ \_
+
+Type ck_call: [ @Checker c | @ASTNode n ]
+ | @C1 name = n.as.fn_call.ident.as.ident
+ | @ASTNode decl = 0
+ | @ASTNode params = 0
+ |
+ | IF [ n.as.fn_call.recv != 0 ]
+ |  | decl = (ck_method)[ c | n ]
+ |  | IF [ decl == 0 ]
+ |  |  | @ASTNode x = n.as.fn_call.args
+ |  |  | WHILE [ x != 0 ]
+ |  |  |  | (ck_expr)[ c | x.as.argument.argument ]
+ |  |  |  | x = x.as.argument.next_arg
+ |  |  |  \_
+ |  |  | RET [ (ty_unknown)[] ]
+ |  |  \_
+ |  | ; `me` is supplied by the call itself
+ |  | params = decl.as.fn_decl.params.as.parametre.next_param
+ | ELSE
+ |  | @ABYSS d = 0
+ |  | IF [ (map_get)[ @(c.meta.func_decls) | name | @d AS @@ABYSS ] != 1 ]
+ |  |  | (ck_error2)[ c | n | "call to undeclared function `%s`%s" | name | "" ]
+ |  |  | RET [ (ty_unknown)[] ]
+ |  |  \_
+ |  | decl = d AS @ASTNode
+ |  | params = decl.as.fn_decl.params
+ |  \_
  |
  | ; count declared parameters, and note whether it is variadic
  | I32 want = 0
  | B1 va = FALSE
- | @ASTNode p = decl.as.fn_decl.params
+ | @ASTNode p = params
  | WHILE [ p != 0 ]
  |  | IF [ p.as.parametre.vaarg ]
  |  |  | va = TRUE
@@ -395,7 +468,7 @@ Type ck_call: [ @Checker c | @ASTNode n ]
  |
  | ; walk the arguments against them
  | I32 got = 0
- | p = decl.as.fn_decl.params
+ | p = params
  | @ASTNode a = n.as.fn_call.args
  | WHILE [ a != 0 ]
  |  | Type at = (ck_expr)[ c | a.as.argument.argument ]
@@ -439,6 +512,11 @@ Type ck_binop: [ @Checker c | @ASTNode n ]
  |  |  \_
  |  |
  |  | ; `.` steps through at most one pointer, as the backend does
+ |  | IF [ base.arr > 0 ]
+ |  |  | (ck_error)[ c | n | "`.` applied to an array; index it first, as in a{0}.field" ]
+ |  |  | RET [ (ty_unknown)[] ]
+ |  |  \_
+ |  |
  |  | Type obj = base
  |  | IF [ obj.ptrs == 1 ]
  |  |  | obj.ptrs = 0
@@ -467,7 +545,32 @@ Type ck_binop: [ @Checker c | @ASTNode n ]
  | Type lt = (ck_expr)[ c | n.as.bin_op.left ]
  | Type rt = (ck_expr)[ c | n.as.bin_op.right ]
  |
+ | ; x{i}: x an array or a pointer, i an integer
+ | IF [ k == BOT_INDEX ]
+ |  | IF [ rt.kind != TY_UNKNOWN && !(ty_is_integral)[ rt ] ]
+ |  |  | @C1 si = (ty_str)[ rt ]
+ |  |  | (ck_error2)[ c | n | "an index must be an integer, not %s%s" | si | "" ]
+ |  |  | (free)[ si AS @ABYSS ]
+ |  |  \_
+ |  | IF [ lt.kind == TY_UNKNOWN ]
+ |  |  | RET [ lt ]
+ |  |  \_
+ |  | IF [ lt.ptrs == 0 ]
+ |  |  | @C1 sl = (ty_str)[ lt ]
+ |  |  | (ck_error2)[ c | n | "cannot index %s: it is neither an array nor a pointer%s" | sl | "" ]
+ |  |  | (free)[ sl AS @ABYSS ]
+ |  |  | RET [ (ty_unknown)[] ]
+ |  |  \_
+ |  | lt.ptrs = lt.ptrs - 1
+ |  | lt.arr = 0
+ |  | RET [ lt ]
+ |  \_
+ |
  | IF [ k == BOT_ASSIGN ]
+ |  | IF [ lt.arr > 0 ]
+ |  |  | (ck_error)[ c | n | "cannot assign to a whole array; assign its elements" ]
+ |  |  | RET [ lt ]
+ |  |  \_
  |  | IF [ !(ty_assignable)[ lt | rt ] ]
  |  |  | @C1 sl = (ty_str)[ lt ]
  |  |  | @C1 sr = (ty_str)[ rt ]
@@ -504,15 +607,28 @@ Type ck_binop: [ @Checker c | @ASTNode n ]
  |  | RET [ (ty_unknown)[] ]
  |  \_
  |
- | ; the backend emits integer opcodes only -- float arithmetic would
- | ; reach LLVM as `sdiv double` and be rejected there
- | IF [ lt.ptrs == 0 && lt.kind == TY_FLOAT ]
- |  | (ck_error)[ c | n | "float arithmetic is not implemented by the backend" ]
+ | lt.arr = 0
+ | rt.arr = 0
+ |
+ | ; floats: + - * / % and comparisons, which were handled above
+ | IF [ (ty_is_float)[ lt ] || (ty_is_float)[ rt ] ]
+ |  | B1 bitwise = k == BOT_BAND || k == BOT_BOR || k == BOT_BXOR
+ |  | IF [ bitwise || k == BOT_SHL || k == BOT_SHR ]
+ |  |  | (ck_error)[ c | n | "bitwise operator on a float" ]
+ |  |  | RET [ (ty_unknown)[] ]
+ |  |  \_
+ |  | IF [ lt.ptrs > 0 || rt.ptrs > 0 ]
+ |  |  | (ck_error)[ c | n | "pointer arithmetic needs an integer, not a float" ]
+ |  |  | RET [ (ty_unknown)[] ]
+ |  |  \_
+ |  | ; the wider float wins; an integer operand is converted
+ |  | IF [ !(ty_is_float)[ lt ] ]
+ |  |  | RET [ rt ]
+ |  |  \_
+ |  | IF [ (ty_is_float)[ rt ] && rt.bits > lt.bits ]
+ |  |  | RET [ rt ]
+ |  |  \_
  |  | RET [ lt ]
- |  \_
- | IF [ rt.ptrs == 0 && rt.kind == TY_FLOAT ]
- |  | (ck_error)[ c | n | "float arithmetic is not implemented by the backend" ]
- |  | RET [ rt ]
  |  \_
  |
  | ; pointer arithmetic keeps the pointer's type
@@ -582,6 +698,7 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  |  \_
  |
  | IF [ n.kind == NT_BUILTIN ]
+ |  | (ty_resolve)[ c | n.as.builtin.size ]
  |  | RET [ (ty_int)[ 64 | FALSE ] ]
  |  \_
  |
@@ -600,11 +717,17 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  |  |  |  | RET [ (ty_unknown)[] ]
  |  |  |  \_
  |  |  | t.ptrs = t.ptrs - 1
+ |  |  | t.arr = 0
  |  |  | RET [ t ]
  |  |  \_
  |  |
  |  | IF [ uk == UOT_REF ]
  |  |  | IF [ t.kind == TY_UNKNOWN ]
+ |  |  |  | RET [ t ]
+ |  |  |  \_
+ |  |  | ; an array already reads as the address of its first element
+ |  |  | IF [ t.arr > 0 ]
+ |  |  |  | t.arr = 0
  |  |  |  | RET [ t ]
  |  |  |  \_
  |  |  | t.ptrs = t.ptrs + 1
@@ -621,6 +744,10 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  |  | IF [ (ty_is_aggregate)[ t ] ]
  |  |  | (ck_error)[ c | n | "arithmetic on a struct" ]
  |  |  \_
+ |  | IF [ uk == UOT_BNOT && (ty_is_float)[ t ] ]
+ |  |  | (ck_error)[ c | n | "bitwise operator on a float" ]
+ |  |  \_
+ |  | t.arr = 0
  |  | RET [ t ]
  |  \_
  |
@@ -666,13 +793,19 @@ ABYSS ck_stmt: [ @Checker c | @ASTNode st ]
  | IF [ k == ST_VAR_DECL ]
  |  | @ASTNode d = st.as.stmt.stmt
  |  | @C1 nm = d.as.var_decl.ident.as.ident
- |  | Type dt = (ty_resolve)[ c | d.as.var_decl.type ]
+ |  | Type dt = (ty_decl)[ c | d.as.var_decl.type ]
  |  |
  |  | IF [ dt.kind == TY_VOID && dt.ptrs == 0 ]
  |  |  | (ck_error2)[ c | d | "`%s` cannot have type ABYSS%s" | nm | "" ]
  |  |  \_
  |  | IF [ (ck_declared_here)[ c | nm ] ]
  |  |  | (ck_error2)[ c | d | "`%s` is already declared in this scope%s" | nm | "" ]
+ |  |  \_
+ |  |
+ |  | IF [ d.as.var_decl.init != 0 && dt.arr > 0 ]
+ |  |  | (ck_error2)[ c | d | "array `%s` cannot have an initialiser; assign its elements%s" | nm | "" ]
+ |  |  | (ck_define)[ c | nm | dt ]
+ |  |  | RET
  |  |  \_
  |  |
  |  | IF [ d.as.var_decl.init != 0 ]
@@ -769,6 +902,7 @@ ABYSS ck_block: [ @Checker c | @ASTNode blk ]
 ABYSS ck_fn: [ @Checker c | @ASTNode def ]
  | @ASTNode decl = def.as.fn_def.decl
  | c.ret_type = (ty_resolve)[ c | decl.as.fn_decl.type ]
+ | c.owner = decl.as.fn_decl.owner
  |
  | (ck_push)[ c ]
  | @ASTNode p = decl.as.fn_decl.params
@@ -792,6 +926,7 @@ ABYSS check_init: [ @Checker c | @Meta m ]
  | c.scope = 0
  | c.errors = 0
  | c.tu = 0
+ | c.owner = 0
  | c.ret_type = (ty_void)[]
  | RET
  \_
@@ -806,7 +941,7 @@ B1 check_unit: [ @Checker c | @ASTNode root ]
  |  | IF [ ts.as.tu_stmt.kind == TUST_VAR_DECL ]
  |  |  | @ASTNode d = ts.as.tu_stmt.tu_stmt
  |  |  | @C1 nm = d.as.var_decl.ident.as.ident
- |  |  | (ck_define)[ c | nm | (ty_resolve)[ c | d.as.var_decl.type ] ]
+ |  |  | (ck_define)[ c | nm | (ty_decl)[ c | d.as.var_decl.type ] ]
  |  |  \_
  |  | ts = ts.as.tu_stmt.next_tu_stmt
  |  \_

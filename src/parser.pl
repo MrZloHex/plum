@@ -118,6 +118,119 @@ I32 base_type_of: [ @C1 s ]
  |  \_
  \_
 
+B1 is_op: [ Token t | @C1 op ]
+ | RET [ t.kind == TOK_OPERATOR && (strcmp)[ t.lexeme | op ] == 0 ]
+ \_
+
+; Having just read a `<` from a scratch lexer, consume a balanced run of
+; type arguments: only `@`, names, `|` and angle brackets may appear. This
+; is what tells `Vec<I32> v` apart from `a AS I32 < b`.
+B1 scan_type_args: [ @Lexer lx ]
+ | I32 depth = 1
+ | WHILE [ depth > 0 ]
+ |  | Token t = (lexer_next)[ lx ]
+ |  | IF [ t.kind == TOK_AT || t.kind == TOK_IDENTIFIER || t.kind == TOK_VBAR ]
+ |  |  | CONTINUE
+ |  |  \_
+ |  | IF [ t.kind != TOK_OPERATOR ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | IF [ (strcmp)[ t.lexeme | "<" ] == 0 ]
+ |  |  | depth += 1
+ |  | ELIF [ (strcmp)[ t.lexeme | ">" ] == 0 ]
+ |  |  | depth -= 1
+ |  | ELIF [ (strcmp)[ t.lexeme | ">>" ] == 0 ]
+ |  |  | depth -= 2
+ |  | ELSE
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  \_
+ | ; -1: a `>>` closed this list and the one around it
+ | RET [ depth == 0 || depth == -1 ]
+ \_
+
+; `tok` came from a scratch lexer, right after a type's name. Step over
+; any `<...>` so the caller sees what follows the whole type.
+Token skip_type_args: [ @Lexer lx | Token tok ]
+ | IF [ !(is_op)[ tok | "<" ] ]
+ |  | RET [ tok ]
+ |  \_
+ | IF [ !(scan_type_args)[ lx ] ]
+ |  | RET [ tok ]
+ |  \_
+ | RET [ (lexer_next)[ lx ] ]
+ \_
+
+B1 at_type_args: [ @Parser pr ]
+ | IF [ !(is_op)[ pr.curr | "<" ] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | Lexer lx = pr.lexer
+ | RET [ (scan_type_args)[ @lx ] ]
+ \_
+
+; `>>` closes two lists at once: eat one `>` and leave the other.
+ABYSS expect_close_angle: [ @Parser pr ]
+ | IF [ pr.curr.kind != TOK_OPERATOR || ?(pr.curr.lexeme) != '>' ]
+ |  | (printf)[ "%d:%d: Unexpected %s, expected `>`\n" | pr.curr.loc.line | pr.curr.loc.col | (token_str)[ pr.curr.kind ] ]
+ |  | (exit)[ 1 ]
+ |  \_
+ | IF [ ?(pr.curr.lexeme + 1) == 0 ]
+ |  | (parser_next)[ pr ]
+ |  | RET
+ |  \_
+ | pr.curr.lexeme = pr.curr.lexeme + 1
+ | pr.curr.loc.col = pr.curr.loc.col + 1
+ | RET
+ \_
+
+@ASTNode parse_type: [ @Parser pr ]
+
+; < T | U >  in a TYPE, IFACE or CLASS header
+@ASTNode parse_gparams: [ @Parser pr ]
+ | IF [ !(is_op)[ pr.curr | "<" ] ]
+ |  | RET [ 0 ]
+ |  \_
+ | (parser_next)[ pr ]
+ |
+ | @ASTNode head = 0
+ | @@ASTNode tail = @head
+ | LOOP
+ |  | @ASTNode item = (ast_node_new)[ pr.ast ]
+ |  | item.kind = NT_LIST
+ |  | (set_loc)[ item | pr.curr ]
+ |  | item.as.list.item = (parse_ident)[ pr ]
+ |  | ?(tail) = item
+ |  | tail = @(item.as.list.next)
+ |  | IF [ !(match)[ pr | TOK_VBAR ] ]
+ |  |  | BREAK
+ |  |  \_
+ |  \_
+ | (expect_close_angle)[ pr ]
+ | RET [ head ]
+ \_
+
+; < I32 | @C1 >  after a type's name
+@ASTNode parse_type_args: [ @Parser pr ]
+ | (parser_next)[ pr ]
+ |
+ | @ASTNode head = 0
+ | @@ASTNode tail = @head
+ | LOOP
+ |  | @ASTNode item = (ast_node_new)[ pr.ast ]
+ |  | item.kind = NT_LIST
+ |  | (set_loc)[ item | pr.curr ]
+ |  | item.as.list.item = (parse_type)[ pr ]
+ |  | ?(tail) = item
+ |  | tail = @(item.as.list.next)
+ |  | IF [ !(match)[ pr | TOK_VBAR ] ]
+ |  |  | BREAK
+ |  |  \_
+ |  \_
+ | (expect_close_angle)[ pr ]
+ | RET [ head ]
+ \_
+
 @ASTNode parse_type: [ @Parser pr ]
  | @ASTNode type = (ast_node_new)[ pr.ast ]
  | type.kind = NT_TYPE
@@ -147,7 +260,34 @@ I32 base_type_of: [ @C1 s ]
  | (set_loc)[ int_type | ident ]
  | (set_loc)[ type | start ]
  | type.as.type.type = int_type
+ |
+ | IF [ (at_type_args)[ pr ] ]
+ |  | IF [ bt >= 0 ]
+ |  |  | (printf)[ "%d:%d: `%s` takes no type arguments\n" | ident.loc.line | ident.loc.col | ident.lexeme ]
+ |  |  | (exit)[ 1 ]
+ |  |  \_
+ |  | type.as.type.args = (parse_type_args)[ pr ]
+ |  \_
  | RET [ type ]
+ \_
+
+I64 parse_int_lexeme: [ @C1 lex ]
+
+; `name{N}` after a variable or field makes it an array of N
+ABYSS parse_array_len: [ @Parser pr | @ASTNode type ]
+ | IF [ !(match)[ pr | TOK_LBRACE ] ]
+ |  | RET
+ |  \_
+ | Token n = pr.curr
+ | (expect)[ pr | TOK_INTEGER ]
+ | I64 len = (parse_int_lexeme)[ n.lexeme ]
+ | IF [ len <= 0 ]
+ |  | (printf)[ "%d:%d: an array needs a positive length\n" | n.loc.line | n.loc.col ]
+ |  | (exit)[ 1 ]
+ |  \_
+ | type.as.type.arr = len AS U64
+ | (expect)[ pr | TOK_RBRACE ]
+ | RET
  \_
 
 @ASTNode parse_field: [ @Parser pr ]
@@ -156,6 +296,7 @@ I32 base_type_of: [ @C1 s ]
  | (set_loc)[ field | pr.curr ]
  | field.as.rcrd_flds.type = (parse_type)[ pr ]
  | field.as.rcrd_flds.ident = (parse_ident)[ pr ]
+ | (parse_array_len)[ pr | field.as.rcrd_flds.type ]
  | field.as.rcrd_flds.next_field = 0
  | RET [ field ]
  \_
@@ -217,6 +358,7 @@ I32 base_type_of: [ @C1 s ]
  |
  | (expect)[ pr | TOK_TYPE ]
  | td.as.type_def.ident = (parse_ident)[ pr ]
+ | td.as.type_def.gparams = (parse_gparams)[ pr ]
  | (expect)[ pr | TOK_COLON ]
  |
  | IF [ (match)[ pr | TOK_STRUCTURE ] ]
@@ -228,6 +370,10 @@ I32 base_type_of: [ @C1 s ]
  | ELIF [ (match)[ pr | TOK_ENUMERATION ] ]
  |  | td.as.type_def.kind = TD_ENUM
  |  | td.as.type_def.tdef = (parse_enum)[ pr ]
+ | ELIF [ pr.curr.kind == TOK_NEWLINE ]
+ |  | ; `TYPE Foo:` straight into fields is a STRUCT
+ |  | td.as.type_def.kind = TD_RECORD
+ |  | td.as.type_def.tdef = (parse_record)[ pr | TDRT_STRUCTURE ]
  | ELIF [ pr.curr.kind == TOK_IDENTIFIER || pr.curr.kind == TOK_AT ]
  |  | td.as.type_def.kind = TD_ALIAS
  |  | td.as.type_def.tdef = (parse_type)[ pr ]
@@ -301,7 +447,7 @@ I32 prefix_precendence: [ @Parser pr ]
  \_
 
 I32 infix_precendence: [ @Parser pr ]
- | IF [ pr.curr.kind == TOK_DOT ]
+ | IF [ pr.curr.kind == TOK_DOT || pr.curr.kind == TOK_LBRACE ]
  |  | RET [ 40 ]
  |  \_
  | IF [ pr.curr.kind == TOK_AS ]
@@ -382,7 +528,7 @@ B1 is_tu_var_decl: [ @Parser pr ]
  | IF [ tok.kind != TOK_IDENTIFIER ]
  |  | RET [ FALSE ]
  |  \_
- | Token t2 = (lexer_next)[ @lx ]
+ | Token t2 = (skip_type_args)[ @lx | (lexer_next)[ @lx ] ]
  | IF [ t2.kind != TOK_IDENTIFIER ]
  |  | RET [ FALSE ]
  |  \_
@@ -399,7 +545,7 @@ B1 is_var_decl: [ @Parser pr ]
  | IF [ tok.kind != TOK_IDENTIFIER ]
  |  | RET [ FALSE ]
  |  \_
- | Token t2 = (lexer_next)[ @lx ]
+ | Token t2 = (skip_type_args)[ @lx | (lexer_next)[ @lx ] ]
  | RET [ t2.kind == TOK_IDENTIFIER ]
  \_
 
@@ -512,6 +658,9 @@ I64 parse_int_lexeme: [ @C1 lex ]
  | ELIF [ (match)[ pr | TOK_FALSE ] ]
  |  | lit.as.literal.kind = LT_BOOLEAN
  |  | lit.as.literal.as.bool_lit = FALSE
+ | ELIF [ (match)[ pr | TOK_NULL ] ]
+ |  | lit.as.literal.kind = LT_INTEGER
+ |  | lit.as.literal.as.int_lit = 0
  | ELIF [ (match)[ pr | TOK_INTEGER ] ]
  |  | lit.as.literal.kind = LT_INTEGER
  |  | lit.as.literal.as.int_lit = (parse_int_lexeme)[ lex ] AS I32
@@ -523,7 +672,7 @@ I64 parse_int_lexeme: [ @C1 lex ]
  |  | lit.as.literal.as.str_lit = lex
  | ELIF [ (match)[ pr | TOK_FLOAT ] ]
  |  | lit.as.literal.kind = LT_FLOAT
- |  | lit.as.literal.as.float_lit = (atof)[ lex ] AS F32
+ |  | lit.as.literal.as.float_lit = (atof)[ lex ]
  | ELSE
  |  | (unexpected)[ pr ]
  |  \_
@@ -539,12 +688,33 @@ I64 parse_int_lexeme: [ @C1 lex ]
  | IF [ (match)[ pr | TOK_SIZE ] ]
  |  | built.as.builtin.kind = BI_SIZE
  |  | (expect)[ pr | TOK_LBRACKET ]
- |  | built.as.builtin.size = (parse_ident)[ pr ]
+ |  | built.as.builtin.size = (parse_type)[ pr ]
  |  | (expect)[ pr | TOK_RBRACKET ]
  | ELSE
  |  | (unexpected)[ pr ]
  |  \_
  | RET [ built ]
+ \_
+
+; (obj.method)[ args ] -- the part in parentheses was parsed as an ordinary
+; member access; split it into the object and the method's name.
+@ASTNode parse_method_call: [ @Parser pr | Token open | @ASTNode e ]
+ | @ASTNode m = e
+ | WHILE [ m.kind == NT_EXPR ]
+ |  | m = m.as.expr.expr
+ |  \_
+ | IF [ m.kind != NT_BIN_OP || m.as.bin_op.kind != BOT_MEMBER || m.as.bin_op.right.kind != NT_IDENT ]
+ |  | (printf)[ "%d:%d: only (function)[...] or (object.method)[...] can be called\n" | open.loc.line | open.loc.col ]
+ |  | (exit)[ 1 ]
+ |  \_
+ |
+ | @ASTNode call = (ast_node_new)[ pr.ast ]
+ | call.kind = NT_FN_CALL
+ | (set_loc)[ call | open ]
+ | call.as.fn_call.ident = m.as.bin_op.right
+ | call.as.fn_call.recv = m.as.bin_op.left
+ | call.as.fn_call.args = (parse_arguments)[ pr ]
+ | RET [ call ]
  \_
 
 @ASTNode parse_primary: [ @Parser pr ]
@@ -554,9 +724,13 @@ I64 parse_int_lexeme: [ @C1 lex ]
  | IF [ (is_fn_call)[ pr ] ]
  |  | RET [ (parse_fn_call)[ pr ] ]
  |  \_
+ | Token open = pr.curr
  | IF [ (match)[ pr | TOK_LPAREN ] ]
  |  | @ASTNode e = (parse_expr)[ pr ]
  |  | (expect)[ pr | TOK_RPAREN ]
+ |  | IF [ pr.curr.kind == TOK_LBRACKET ]
+ |  |  | RET [ (parse_method_call)[ pr | open | e ] ]
+ |  |  \_
  |  | RET [ e ]
  |  \_
  | IF [ pr.curr.kind == TOK_IDENTIFIER ]
@@ -568,7 +742,7 @@ I64 parse_int_lexeme: [ @C1 lex ]
  | IF [ pr.curr.kind == TOK_CHARACTER || pr.curr.kind == TOK_STRING ]
  |  | RET [ (parse_literal)[ pr ] ]
  |  \_
- | IF [ pr.curr.kind == TOK_TRUE || pr.curr.kind == TOK_FALSE ]
+ | IF [ pr.curr.kind == TOK_TRUE || pr.curr.kind == TOK_FALSE || pr.curr.kind == TOK_NULL ]
  |  | RET [ (parse_literal)[ pr ] ]
  |  \_
  |
@@ -679,6 +853,19 @@ I32 binop_kind_of: [ Token op_tok ]
  |  |
  |  | Token op_tok = pr.curr
  |  | (parser_next)[ pr ]
+ |  |
+ |  | ; x{i} -- the element i places past what x points at
+ |  | IF [ op_tok.kind == TOK_LBRACE ]
+ |  |  | @ASTNode idx = (ast_node_new)[ pr.ast ]
+ |  |  | idx.kind = NT_BIN_OP
+ |  |  | (set_loc)[ idx | op_tok ]
+ |  |  | idx.as.bin_op.kind = BOT_INDEX
+ |  |  | idx.as.bin_op.left = lhs
+ |  |  | idx.as.bin_op.right = (parse_expr)[ pr ]
+ |  |  | (expect)[ pr | TOK_RBRACE ]
+ |  |  | lhs = idx
+ |  |  | CONTINUE
+ |  |  \_
  |  |
  |  | IF [ op_tok.kind == TOK_AS ]
  |  |  | @ASTNode cast = (ast_node_new)[ pr.ast ]
@@ -807,6 +994,7 @@ I32 binop_kind_of: [ Token op_tok ]
  | decl.as.var_decl.type = (parse_type)[ pr ]
  | decl.as.var_decl.ident = (parse_ident)[ pr ]
  | decl.as.var_decl.init = 0
+ | (parse_array_len)[ pr | decl.as.var_decl.type ]
  |
  | IF [ pr.curr.kind == TOK_OPERATOR ]
  |  | IF [ (strcmp)[ pr.curr.lexeme | "=" ] == 0 ]
@@ -1029,6 +1217,126 @@ I32 binop_kind_of: [ Token op_tok ]
  | RET [ block ]
  \_
 
+; IFACE Name<T>: [ @Data<T> me ]
+;  + PUBLIC:
+;  | I32 method: [ ... ]
+;  |  | ...
+;  |  \_
+;  + PRIVATE:
+;  | ...
+;  \_
+@ASTNode parse_iface: [ @Parser pr ]
+ | @ASTNode ifc = (ast_node_new)[ pr.ast ]
+ | ifc.kind = NT_IFACE
+ | (set_loc)[ ifc | pr.curr ]
+ |
+ | (expect)[ pr | TOK_IFACE ]
+ | ifc.as.iface.ident = (parse_ident)[ pr ]
+ | ifc.as.iface.gparams = (parse_gparams)[ pr ]
+ | (expect)[ pr | TOK_COLON ]
+ |
+ | Token at = pr.curr
+ | @ASTNode recv = (parse_params)[ pr ]
+ | IF [ recv == 0 || recv.as.parametre.vaarg || recv.as.parametre.next_param != 0 ]
+ |  | (printf)[ "%d:%d: an IFACE takes exactly one receiver, as in [ @Data me ]\n" | at.loc.line | at.loc.col ]
+ |  | (exit)[ 1 ]
+ |  \_
+ | ifc.as.iface.recv = recv
+ |
+ | B1 private = FALSE
+ | @@ASTNode tail = @(ifc.as.iface.methods)
+ |
+ | LOOP
+ |  | WHILE [ pr.curr.kind == TOK_NEWLINE ]
+ |  |  | IF [ pr.curr.indent > 1 ]
+ |  |  |  | (printf)[ "%d:%d: Wrong indentation %d, needed 1\n" | pr.curr.loc.line | pr.curr.loc.col | pr.curr.indent ]
+ |  |  |  | (exit)[ 1 ]
+ |  |  |  \_
+ |  |  | (parser_next)[ pr ]
+ |  |  \_
+ |  |
+ |  | IF [ (match)[ pr | TOK_END_BLOCK ] ]
+ |  |  | BREAK
+ |  |  \_
+ |  |
+ |  | IF [ (is_op)[ pr.curr | "+" ] ]
+ |  |  | (parser_next)[ pr ]
+ |  |  | Token sec = pr.curr
+ |  |  | (expect)[ pr | TOK_IDENTIFIER ]
+ |  |  | IF [ (strcmp)[ sec.lexeme | "PUBLIC" ] == 0 ]
+ |  |  |  | private = FALSE
+ |  |  | ELIF [ (strcmp)[ sec.lexeme | "PRIVATE" ] == 0 ]
+ |  |  |  | private = TRUE
+ |  |  | ELSE
+ |  |  |  | (printf)[ "%d:%d: expected PUBLIC or PRIVATE, got `%s`\n" | sec.loc.line | sec.loc.col | sec.lexeme ]
+ |  |  |  | (exit)[ 1 ]
+ |  |  |  \_
+ |  |  | (expect)[ pr | TOK_COLON ]
+ |  |  | CONTINUE
+ |  |  \_
+ |  |
+ |  | @ASTNode m = (ast_node_new)[ pr.ast ]
+ |  | m.kind = NT_METHOD
+ |  | (set_loc)[ m | pr.curr ]
+ |  | m.as.method.is_private = private
+ |  |
+ |  | @ASTNode decl = (parse_fn_decl)[ pr ]
+ |  | B1 has_block = pr.curr.kind == TOK_END_BLOCK
+ |  | IF [ pr.curr.kind == TOK_NEWLINE && pr.curr.indent == 2 ]
+ |  |  | has_block = TRUE
+ |  |  \_
+ |  | IF [ !has_block ]
+ |  |  | (printf)[ "%d:%d: method `%s` needs a body\n" | decl.loc.line | decl.loc.col | decl.as.fn_decl.ident.as.ident ]
+ |  |  | (exit)[ 1 ]
+ |  |  \_
+ |  |
+ |  | @ASTNode def = (ast_node_new)[ pr.ast ]
+ |  | def.kind = NT_FN_DEF
+ |  | def.loc = decl.loc
+ |  | def.as.fn_def.decl = decl
+ |  | pr.indent = 2
+ |  | def.as.fn_def.block = (parse_block)[ pr ]
+ |  | pr.indent = 1
+ |  |
+ |  | m.as.method.def = def
+ |  | ?(tail) = m
+ |  | tail = @(m.as.method.next)
+ |  \_
+ |
+ | RET [ ifc ]
+ \_
+
+; CLASS Name<T>: Data<T> IMPL [ Face<T> | Other<T> ]
+@ASTNode parse_class: [ @Parser pr ]
+ | @ASTNode cls = (ast_node_new)[ pr.ast ]
+ | cls.kind = NT_CLASS
+ | (set_loc)[ cls | pr.curr ]
+ |
+ | (expect)[ pr | TOK_CLASS ]
+ | cls.as.klass.ident = (parse_ident)[ pr ]
+ | cls.as.klass.gparams = (parse_gparams)[ pr ]
+ | (expect)[ pr | TOK_COLON ]
+ | cls.as.klass.base = (parse_type)[ pr ]
+ |
+ | IF [ (match)[ pr | TOK_IMPL ] ]
+ |  | (expect)[ pr | TOK_LBRACKET ]
+ |  | @@ASTNode tail = @(cls.as.klass.ifaces)
+ |  | LOOP
+ |  |  | @ASTNode item = (ast_node_new)[ pr.ast ]
+ |  |  | item.kind = NT_LIST
+ |  |  | (set_loc)[ item | pr.curr ]
+ |  |  | item.as.list.item = (parse_type)[ pr ]
+ |  |  | ?(tail) = item
+ |  |  | tail = @(item.as.list.next)
+ |  |  | IF [ !(match)[ pr | TOK_VBAR ] ]
+ |  |  |  | BREAK
+ |  |  |  \_
+ |  |  \_
+ |  | (expect)[ pr | TOK_RBRACKET ]
+ |  \_
+ | RET [ cls ]
+ \_
+
 @ASTNode parse_tu_stmt: [ @Parser pr ]
  | @ASTNode tu_stmt = (ast_node_new)[ pr.ast ]
  | tu_stmt.kind = NT_TU_STMT
@@ -1037,6 +1345,16 @@ I32 binop_kind_of: [ Token op_tok ]
  | IF [ pr.curr.kind == TOK_TYPE ]
  |  | tu_stmt.as.tu_stmt.kind = TUST_TYPE_DEF
  |  | tu_stmt.as.tu_stmt.tu_stmt = (parse_type_def)[ pr ]
+ |  | RET [ tu_stmt ]
+ |  \_
+ | IF [ pr.curr.kind == TOK_IFACE ]
+ |  | tu_stmt.as.tu_stmt.kind = TUST_IFACE
+ |  | tu_stmt.as.tu_stmt.tu_stmt = (parse_iface)[ pr ]
+ |  | RET [ tu_stmt ]
+ |  \_
+ | IF [ pr.curr.kind == TOK_CLASS ]
+ |  | tu_stmt.as.tu_stmt.kind = TUST_CLASS
+ |  | tu_stmt.as.tu_stmt.tu_stmt = (parse_class)[ pr ]
  |  | RET [ tu_stmt ]
  |  \_
  |

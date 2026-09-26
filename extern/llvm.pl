@@ -24,6 +24,13 @@ I32 LLVMIntSGE = 39
 I32 LLVMIntSLT = 40
 I32 LLVMIntSLE = 41
 
+I32 LLVMRealOEQ = 1
+I32 LLVMRealOGT = 2
+I32 LLVMRealOGE = 3
+I32 LLVMRealOLT = 4
+I32 LLVMRealOLE = 5
+I32 LLVMRealUNE = 14
+
 I32 LLVMPrivateLinkage = 9
 I32 LLVMReturnStatusAction = 1
 
@@ -134,6 +141,14 @@ ABYSS  LLVMAddIncoming: [ @ABYSS phi | @@ABYSS vals | @@ABYSS blocks | I32 n ]
 @ABYSS LLVMBuildNot: [ @ABYSS b | @ABYSS v | @C1 name ]
 @ABYSS LLVMBuildICmp: [ @ABYSS b | I32 pred | @ABYSS l | @ABYSS r | @C1 name ]
 
+@ABYSS LLVMBuildFAdd: [ @ABYSS b | @ABYSS l | @ABYSS r | @C1 name ]
+@ABYSS LLVMBuildFSub: [ @ABYSS b | @ABYSS l | @ABYSS r | @C1 name ]
+@ABYSS LLVMBuildFMul: [ @ABYSS b | @ABYSS l | @ABYSS r | @C1 name ]
+@ABYSS LLVMBuildFDiv: [ @ABYSS b | @ABYSS l | @ABYSS r | @C1 name ]
+@ABYSS LLVMBuildFRem: [ @ABYSS b | @ABYSS l | @ABYSS r | @C1 name ]
+@ABYSS LLVMBuildFNeg: [ @ABYSS b | @ABYSS v | @C1 name ]
+@ABYSS LLVMBuildFCmp: [ @ABYSS b | I32 pred | @ABYSS l | @ABYSS r | @C1 name ]
+
 @ABYSS LLVMBuildSExt: [ @ABYSS b | @ABYSS v | @ABYSS ty | @C1 name ]
 @ABYSS LLVMBuildZExt: [ @ABYSS b | @ABYSS v | @ABYSS ty | @C1 name ]
 @ABYSS LLVMBuildTrunc: [ @ABYSS b | @ABYSS v | @ABYSS ty | @C1 name ]
@@ -142,6 +157,10 @@ ABYSS  LLVMAddIncoming: [ @ABYSS phi | @@ABYSS vals | @@ABYSS blocks | I32 n ]
 @ABYSS LLVMBuildSIToFP: [ @ABYSS b | @ABYSS v | @ABYSS ty | @C1 name ]
 @ABYSS LLVMBuildFPToSI: [ @ABYSS b | @ABYSS v | @ABYSS ty | @C1 name ]
 @ABYSS LLVMBuildFPCast: [ @ABYSS b | @ABYSS v | @ABYSS ty | @C1 name ]
+@ABYSS LLVMBuildUIToFP: [ @ABYSS b | @ABYSS v | @ABYSS ty | @C1 name ]
+@ABYSS LLVMBuildFPToUI: [ @ABYSS b | @ABYSS v | @ABYSS ty | @C1 name ]
+@ABYSS LLVMBuildFPExt: [ @ABYSS b | @ABYSS v | @ABYSS ty | @C1 name ]
+@ABYSS LLVMBuildFPTrunc: [ @ABYSS b | @ABYSS v | @ABYSS ty | @C1 name ]
 @ABYSS LLVMBuildIntCast2: [ @ABYSS b | @ABYSS v | @ABYSS ty | I32 is_signed | @C1 name ]
 
 ; --- output ---------------------------------------------------------------

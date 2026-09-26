@@ -236,7 +236,27 @@ B1 enum_const_get: [ @CodegenContext c | @C1 name | @I64 out ]
  |  | base = (LLVMPointerType)[ base | 0 ]
  |  | i = i + 1
  |  \_
+ | IF [ tn.as.type.arr > 0 ]
+ |  | base = (LLVMArrayType)[ base | tn.as.type.arr AS I32 ]
+ |  \_
  | RET [ base ]
+ \_
+
+; What a declared variable or field reads as. An array is used as a
+; pointer to its first element, so it carries one more pointer level.
+TypeInfo decl_info: [ @ASTNode tn ]
+ | TypeInfo r
+ | r.node = tn
+ | r.ptrs = tn.as.type.ptrs
+ | IF [ tn.as.type.arr > 0 ]
+ |  | r.ptrs = r.ptrs + 1
+ |  \_
+ | RET [ r ]
+ \_
+
+B1 is_float_ty: [ @ABYSS ty ]
+ | I32 k = (LLVMGetTypeKind)[ ty ]
+ | RET [ k == LLVMFloatTypeKind || k == LLVMDoubleTypeKind ]
  \_
 
 @ABYSS llvm_of: [ @CodegenContext c | TypeInfo ti ]
@@ -307,10 +327,7 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
  |  | IF [ s == 0 || s.ntype == 0 ]
  |  |  | RET [ none ]
  |  |  \_
- |  | TypeInfo r
- |  | r.node = s.ntype
- |  | r.ptrs = s.ntype.as.type.ptrs
- |  | RET [ r ]
+ |  | RET [ (decl_info)[ s.ntype ] ]
  |  \_
  |
  | IF [ n.kind == NT_UNY_OP ]
@@ -327,6 +344,10 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
  |  | IF [ n.as.uny_op.kind == UOT_REF ]
  |  |  | IF [ i.node == 0 ]
  |  |  |  | RET [ none ]
+ |  |  |  \_
+ |  |  | ; @a of an array is the address it already reads as
+ |  |  | IF [ i.node.as.type.arr > 0 && i.ptrs == i.node.as.type.ptrs + 1 ]
+ |  |  |  | RET [ i ]
  |  |  |  \_
  |  |  | TypeInfo r
  |  |  | r.node = i.node
@@ -374,17 +395,30 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
  |  |  |  | RET [ none ]
  |  |  |  \_
  |  |  |
- |  |  | TypeInfo r
- |  |  | r.node = ftype
- |  |  | r.ptrs = ftype.as.type.ptrs
- |  |  | RET [ r ]
+ |  |  | RET [ (decl_info)[ ftype ] ]
+ |  |  \_
+ |  | IF [ n.as.bin_op.kind == BOT_INDEX ]
+ |  |  | TypeInfo base = (infer)[ c | n.as.bin_op.left ]
+ |  |  | IF [ base.node == 0 || base.ptrs == 0 ]
+ |  |  |  | RET [ none ]
+ |  |  |  \_
+ |  |  | base.ptrs = base.ptrs - 1
+ |  |  | RET [ base ]
  |  |  \_
  |  | RET [ (infer)[ c | n.as.bin_op.left ] ]
  |  \_
  |
  | IF [ n.kind == NT_FN_CALL ]
+ |  | @C1 fname = n.as.fn_call.ident.as.ident
+ |  | IF [ n.as.fn_call.recv != 0 ]
+ |  |  | U64 rp = 0
+ |  |  | fname = (method_fn)[ c | n | @rp ]
+ |  |  | IF [ fname == 0 ]
+ |  |  |  | RET [ none ]
+ |  |  |  \_
+ |  |  \_
  |  | @ABYSS d = 0
- |  | IF [ (map_get)[ @(c.meta.func_decls) | n.as.fn_call.ident.as.ident | @d AS @@ABYSS ] == 1 ]
+ |  | IF [ (map_get)[ @(c.meta.func_decls) | fname | @d AS @@ABYSS ] == 1 ]
  |  |  | @ASTNode decl = d AS @ASTNode
  |  |  | TypeInfo r
  |  |  | r.node = decl.as.fn_decl.type
@@ -433,6 +467,19 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
  |  \_
  | IF [ fk == LLVMIntegerTypeKind && (tk == LLVMFloatTypeKind || tk == LLVMDoubleTypeKind) ]
  |  | RET [ (LLVMBuildSIToFP)[ c.builder | v | to | "sitofp" ] ]
+ |  \_
+ | IF [ (is_float_ty)[ from ] && (is_float_ty)[ to ] ]
+ |  | IF [ fk == LLVMFloatTypeKind ]
+ |  |  | RET [ (LLVMBuildFPExt)[ c.builder | v | to | "fpext" ] ]
+ |  |  \_
+ |  | RET [ (LLVMBuildFPTrunc)[ c.builder | v | to | "fptrunc" ] ]
+ |  \_
+ | IF [ (is_float_ty)[ from ] && tk == LLVMIntegerTypeKind ]
+ |  | ; a truth value is `!= 0`, not the low bit
+ |  | IF [ (LLVMGetIntTypeWidth)[ to ] == 1 ]
+ |  |  | RET [ (LLVMBuildFCmp)[ c.builder | LLVMRealUNE | v | (LLVMConstReal)[ from | 0 ] | "tobool" ] ]
+ |  |  \_
+ |  | RET [ (LLVMBuildFPToSI)[ c.builder | v | to | "fptosi" ] ]
  |  \_
  |
  | IF [ fk == LLVMStructTypeKind || tk == LLVMStructTypeKind ]
@@ -575,6 +622,38 @@ B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
  |  | RET [ out.ptr != 0 ]
  |  \_
  |
+ | ; x{i} -- the element i places past what x points at
+ | IF [ n.kind == NT_BIN_OP && n.as.bin_op.kind == BOT_INDEX ]
+ |  | TypeInfo ti = (infer)[ c | n.as.bin_op.left ]
+ |  | IF [ ti.node == 0 || ti.ptrs == 0 ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | TypeInfo inner
+ |  | inner.node = ti.node
+ |  | inner.ptrs = ti.ptrs - 1
+ |  | @ABYSS elem = (llvm_of)[ c | inner ]
+ |  | @ABYSS base = (gen_expr)[ c | n.as.bin_op.left ]
+ |  | IF [ elem == 0 || base == 0 ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  |
+ |  | @ABYSS iv = (gen_expr)[ c | n.as.bin_op.right ]
+ |  | @ABYSS i64 = (LLVMInt64TypeInContext)[ c.ctx ]
+ |  | IF [ (LLVMTypeOf)[ iv ] != i64 ]
+ |  |  | IF [ (is_unsigned_expr)[ c | n.as.bin_op.right ] ]
+ |  |  |  | iv = (LLVMBuildZExt)[ c.builder | iv | i64 | "idx" ]
+ |  |  | ELSE
+ |  |  |  | iv = (coerce)[ c | iv | i64 ]
+ |  |  |  \_
+ |  |  \_
+ |  | @@ABYSS idx = (malloc)[ 8 ] AS @@ABYSS
+ |  | ?(idx) = iv
+ |  | out.ptr = (LLVMBuildGEP2)[ c.builder | elem | base | idx | 1 | "elem" ]
+ |  | out.type = elem
+ |  | (free)[ idx AS @ABYSS ]
+ |  | RET [ TRUE ]
+ |  \_
+ |
  | ; a.b -- GEP into a struct, or the same address for a union
  | IF [ n.kind == NT_BIN_OP && n.as.bin_op.kind == BOT_MEMBER ]
  |  | LValue base
@@ -585,13 +664,28 @@ B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
  |  |  | sty = base.type
  |  |  | sptr = base.ptr
  |  | ELSE
+ |  |  | ; not a variable: a call's result, say. A pointer already is the
+ |  |  | ; object's address; a struct by value goes through a temporary.
  |  |  | TypeInfo ti = (infer)[ c | n.as.bin_op.left ]
- |  |  | IF [ ti.node == 0 || ti.ptrs == 0 ]
+ |  |  | IF [ ti.node == 0 ]
  |  |  |  | RET [ FALSE ]
  |  |  |  \_
- |  |  | sptr = (gen_expr)[ c | n.as.bin_op.left ]
- |  |  | sty = (llvm_of)[ c | ti ]
- |  |  | IF [ sptr == 0 || sty == 0 ]
+ |  |  | @ABYSS v = (gen_expr)[ c | n.as.bin_op.left ]
+ |  |  | IF [ v == 0 ]
+ |  |  |  | RET [ FALSE ]
+ |  |  |  \_
+ |  |  | IF [ ti.ptrs == 0 ]
+ |  |  |  | sty = (LLVMTypeOf)[ v ]
+ |  |  |  | sptr = (entry_alloca)[ c | sty | "tmp" ]
+ |  |  |  | (LLVMBuildStore)[ c.builder | v | sptr ]
+ |  |  | ELSE
+ |  |  |  | TypeInfo inner
+ |  |  |  | inner.node = ti.node
+ |  |  |  | inner.ptrs = ti.ptrs - 1
+ |  |  |  | sptr = v
+ |  |  |  | sty = (llvm_of)[ c | inner ]
+ |  |  |  \_
+ |  |  | IF [ sty == 0 ]
  |  |  |  | RET [ FALSE ]
  |  |  |  \_
  |  |  \_
@@ -662,8 +756,39 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | RET [ bt == BT_B1 || bt == BT_U8 || bt == BT_U16 || bt == BT_U32 || bt == BT_U64 || bt == BT_USIZE ]
  \_
 
+; (obj.method)[ ... ] lands in "<obj's type>.method". The type comes from
+; the LLVM struct, so an alias of a class finds the class's methods too.
+; `ptrs` gets how many pointers obj itself carries.
+@C1 method_fn: [ @CodegenContext c | @ASTNode call | @U64 ptrs ]
+ | TypeInfo ti = (infer)[ c | call.as.fn_call.recv ]
+ | IF [ ti.node == 0 ]
+ |  | RET [ 0 ]
+ |  \_
+ | TypeInfo flat
+ | flat.node = ti.node
+ | flat.ptrs = 0
+ | @ABYSS sty = (llvm_of)[ c | flat ]
+ | IF [ sty == 0 ]
+ |  | RET [ 0 ]
+ |  \_
+ | @CGType ut = (type_of_struct)[ c | sty ]
+ | IF [ ut == 0 ]
+ |  | RET [ 0 ]
+ |  \_
+ | ?(ptrs) = ti.ptrs
+ | RET [ (method_name)[ ut.name | call.as.fn_call.ident.as.ident ] ]
+ \_
+
 @ABYSS gen_call: [ @CodegenContext c | @ASTNode call ]
  | @C1 name = call.as.fn_call.ident.as.ident
+ | U64 rptrs = 0
+ | IF [ call.as.fn_call.recv != 0 ]
+ |  | name = (method_fn)[ c | call | @rptrs ]
+ |  | IF [ name == 0 ]
+ |  |  | (printf)[ "codegen: cannot tell whose method `%s` is at %d:%d\n" | call.as.fn_call.ident.as.ident | call.loc.line | call.loc.col ]
+ |  |  | (exit)[ 1 ]
+ |  |  \_
+ |  \_
  | @ABYSS callee = (LLVMGetNamedFunction)[ c.mod | name ]
  | IF [ callee == 0 ]
  |  | (printf)[ "codegen: call to undeclared function `%s`\n" | name ]
@@ -679,6 +804,27 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | @@ABYSS args = (malloc)[ 64 * 8 ] AS @@ABYSS
  | I32 n = 0
  |
+ | ; a method's first argument is the address of its object
+ | IF [ call.as.fn_call.recv != 0 ]
+ |  | @ASTNode recv = call.as.fn_call.recv
+ |  | @ABYSS self = 0
+ |  | IF [ rptrs > 0 ]
+ |  |  | self = (gen_expr)[ c | recv ]
+ |  | ELSE
+ |  |  | LValue lv
+ |  |  | IF [ (gen_lvalue)[ c | recv | @lv ] ]
+ |  |  |  | self = lv.ptr
+ |  |  | ELSE
+ |  |  |  | ; a temporary, such as a struct returned by value
+ |  |  |  | @ABYSS v = (gen_expr)[ c | recv ]
+ |  |  |  | self = (entry_alloca)[ c | (LLVMTypeOf)[ v ] | "recv" ]
+ |  |  |  | (LLVMBuildStore)[ c.builder | v | self ]
+ |  |  |  \_
+ |  |  \_
+ |  | ?(args) = self
+ |  | n = 1
+ |  \_
+ |
  | @ASTNode a = call.as.fn_call.args
  | WHILE [ a != 0 && n < 64 ]
  |  | @ABYSS v = (gen_expr)[ c | a.as.argument.argument ]
@@ -692,6 +838,9 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | ELSE
  |  |  | ; C variadic default promotion, respecting signedness
  |  |  | @ABYSS vt = (LLVMTypeOf)[ v ]
+ |  |  | IF [ (LLVMGetTypeKind)[ vt ] == LLVMFloatTypeKind ]
+ |  |  |  | v = (LLVMBuildFPExt)[ c.builder | v | (LLVMDoubleTypeInContext)[ c.ctx ] | "vapromo" ]
+ |  |  |  \_
  |  |  | IF [ (LLVMGetTypeKind)[ vt ] == LLVMIntegerTypeKind && (LLVMGetIntTypeWidth)[ vt ] < 32 ]
  |  |  |  | @ABYSS i32 = (LLVMInt32TypeInContext)[ c.ctx ]
  |  |  |  | B1 uns = (LLVMGetIntTypeWidth)[ vt ] == 1
@@ -723,6 +872,71 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | RET [ r ]
  \_
 
+; An integer becomes the float `to` -- unsigned ones as unsigned -- and a
+; float is widened or narrowed to it.
+@ABYSS to_float: [ @CodegenContext c | @ABYSS v | @ASTNode e | @ABYSS to ]
+ | @ABYSS from = (LLVMTypeOf)[ v ]
+ | IF [ from == to ]
+ |  | RET [ v ]
+ |  \_
+ | IF [ (LLVMGetTypeKind)[ from ] == LLVMIntegerTypeKind ]
+ |  | IF [ (LLVMGetIntTypeWidth)[ from ] == 1 || (is_unsigned_expr)[ c | e ] ]
+ |  |  | RET [ (LLVMBuildUIToFP)[ c.builder | v | to | "uitofp" ] ]
+ |  |  \_
+ |  | RET [ (LLVMBuildSIToFP)[ c.builder | v | to | "sitofp" ] ]
+ |  \_
+ | RET [ (coerce)[ c | v | to ] ]
+ \_
+
+; Either side is a float: both become the wider float type.
+@ABYSS gen_float_binop: [ @CodegenContext c | @ASTNode n | @ABYSS l | @ABYSS r ]
+ | I32 k = n.as.bin_op.kind
+ | @ABYSS ft = (LLVMFloatTypeInContext)[ c.ctx ]
+ | IF [ (LLVMGetTypeKind)[ (LLVMTypeOf)[ l ] ] == LLVMDoubleTypeKind || (LLVMGetTypeKind)[ (LLVMTypeOf)[ r ] ] == LLVMDoubleTypeKind ]
+ |  | ft = (LLVMDoubleTypeInContext)[ c.ctx ]
+ |  \_
+ | l = (to_float)[ c | l | n.as.bin_op.left | ft ]
+ | r = (to_float)[ c | r | n.as.bin_op.right | ft ]
+ |
+ | IF [ k == BOT_PLUS ]
+ |  | RET [ (LLVMBuildFAdd)[ c.builder | l | r | "fadd" ] ]
+ |  \_
+ | IF [ k == BOT_MINUS ]
+ |  | RET [ (LLVMBuildFSub)[ c.builder | l | r | "fsub" ] ]
+ |  \_
+ | IF [ k == BOT_MULT ]
+ |  | RET [ (LLVMBuildFMul)[ c.builder | l | r | "fmul" ] ]
+ |  \_
+ | IF [ k == BOT_DIV ]
+ |  | RET [ (LLVMBuildFDiv)[ c.builder | l | r | "fdiv" ] ]
+ |  \_
+ | IF [ k == BOT_MOD ]
+ |  | RET [ (LLVMBuildFRem)[ c.builder | l | r | "frem" ] ]
+ |  \_
+ |
+ | ; ordered comparisons are false on NaN; != is the unordered one, so
+ | ; NaN != NaN holds, as in C
+ | I32 p = -1
+ | IF [ k == BOT_EQUAL ]
+ |  | p = LLVMRealOEQ
+ | ELIF [ k == BOT_NEQ ]
+ |  | p = LLVMRealUNE
+ | ELIF [ k == BOT_LESS ]
+ |  | p = LLVMRealOLT
+ | ELIF [ k == BOT_LEQ ]
+ |  | p = LLVMRealOLE
+ | ELIF [ k == BOT_GREAT ]
+ |  | p = LLVMRealOGT
+ | ELIF [ k == BOT_GEQ ]
+ |  | p = LLVMRealOGE
+ |  \_
+ | IF [ p < 0 ]
+ |  | (printf)[ "codegen: operator not defined on floats at %d:%d\n" | n.loc.line | n.loc.col ]
+ |  | (exit)[ 1 ]
+ |  \_
+ | RET [ (LLVMBuildFCmp)[ c.builder | p | l | r | "fcmp" ] ]
+ \_
+
 @ABYSS gen_binop: [ @CodegenContext c | @ASTNode n ]
  | I32 k = n.as.bin_op.kind
  |
@@ -747,7 +961,20 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  |  | (printf)[ "codegen: cannot resolve member access at %d:%d\n" | n.loc.line | n.loc.col ]
  |  |  | (exit)[ 1 ]
  |  |  \_
+ |  | ; an array field reads as the address of its first element
+ |  | IF [ (LLVMGetTypeKind)[ lv.type ] == LLVMArrayTypeKind ]
+ |  |  | RET [ lv.ptr ]
+ |  |  \_
  |  | RET [ (LLVMBuildLoad2)[ c.builder | lv.type | lv.ptr | "fldval" ] ]
+ |  \_
+ |
+ | IF [ k == BOT_INDEX ]
+ |  | LValue lv
+ |  | IF [ !(gen_lvalue)[ c | n | @lv ] ]
+ |  |  | (printf)[ "codegen: cannot index this at %d:%d\n" | n.loc.line | n.loc.col ]
+ |  |  | (exit)[ 1 ]
+ |  |  \_
+ |  | RET [ (LLVMBuildLoad2)[ c.builder | lv.type | lv.ptr | "elemval" ] ]
  |  \_
  |
  | ; && and || must not evaluate the right side unless they have to
@@ -795,6 +1022,10 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | @ABYSS r = (gen_expr)[ c | n.as.bin_op.right ]
  | IF [ l == 0 || r == 0 ]
  |  | RET [ 0 ]
+ |  \_
+ |
+ | IF [ (is_float_ty)[ (LLVMTypeOf)[ l ] ] || (is_float_ty)[ (LLVMTypeOf)[ r ] ] ]
+ |  | RET [ (gen_float_binop)[ c | n | l | r ] ]
  |  \_
  |
  | I32 lk = (LLVMGetTypeKind)[ (LLVMTypeOf)[ l ] ]
@@ -954,38 +1185,6 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | RET [ 0 ]
  \_
 
-@ABYSS size_of_name: [ @CodegenContext c | @C1 tname ]
- | @CGType ut = (type_lookup)[ c | tname ]
- | IF [ ut != 0 ]
- |  | RET [ ut.type ]
- |  \_
- | IF [ (strcmp)[ tname | "B1" ] == 0 ]
- |  | RET [ (LLVMInt1TypeInContext)[ c.ctx ] ]
- |  \_
- | IF [ (strcmp)[ tname | "C1" ] == 0 || (strcmp)[ tname | "U8" ] == 0 || (strcmp)[ tname | "I8" ] == 0 ]
- |  | RET [ (LLVMInt8TypeInContext)[ c.ctx ] ]
- |  \_
- | IF [ (strcmp)[ tname | "U16" ] == 0 || (strcmp)[ tname | "I16" ] == 0 ]
- |  | RET [ (LLVMInt16TypeInContext)[ c.ctx ] ]
- |  \_
- | IF [ (strcmp)[ tname | "U32" ] == 0 || (strcmp)[ tname | "I32" ] == 0 ]
- |  | RET [ (LLVMInt32TypeInContext)[ c.ctx ] ]
- |  \_
- | IF [ (strcmp)[ tname | "U64" ] == 0 || (strcmp)[ tname | "I64" ] == 0 ]
- |  | RET [ (LLVMInt64TypeInContext)[ c.ctx ] ]
- |  \_
- | IF [ (strcmp)[ tname | "USIZE" ] == 0 || (strcmp)[ tname | "ISIZE" ] == 0 ]
- |  | RET [ (LLVMInt64TypeInContext)[ c.ctx ] ]
- |  \_
- | IF [ (strcmp)[ tname | "F32" ] == 0 ]
- |  | RET [ (LLVMFloatTypeInContext)[ c.ctx ] ]
- |  \_
- | IF [ (strcmp)[ tname | "F64" ] == 0 ]
- |  | RET [ (LLVMDoubleTypeInContext)[ c.ctx ] ]
- |  \_
- | RET [ 0 ]
- \_
-
 @ABYSS gen_expr: [ @CodegenContext c | @ASTNode e ]
  | @ASTNode n = (strip)[ e ]
  | IF [ n == 0 ]
@@ -999,6 +1198,9 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | IF [ n.kind == NT_IDENT ]
  |  | @CGSym s = (scope_lookup)[ c | n.as.ident ]
  |  | IF [ s != 0 ]
+ |  |  | IF [ (LLVMGetTypeKind)[ s.type ] == LLVMArrayTypeKind ]
+ |  |  |  | RET [ s.value ]
+ |  |  |  \_
  |  |  | RET [ (LLVMBuildLoad2)[ c.builder | s.type | s.value | n.as.ident ] ]
  |  |  \_
  |  | I64 ev = 0
@@ -1046,12 +1248,17 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  |  | @ABYSS zero = 0
  |  |  | IF [ (LLVMGetTypeKind)[ vt ] == LLVMPointerTypeKind ]
  |  |  |  | zero = (LLVMConstPointerNull)[ vt ]
+ |  |  | ELIF [ (is_float_ty)[ vt ] ]
+ |  |  |  | RET [ (LLVMBuildFCmp)[ c.builder | LLVMRealOEQ | v | (LLVMConstReal)[ vt | 0 ] | "not" ] ]
  |  |  | ELSE
  |  |  |  | zero = (LLVMConstInt)[ vt | 0 | 0 ]
  |  |  |  \_
  |  |  | RET [ (LLVMBuildICmp)[ c.builder | LLVMIntEQ | v | zero | "not" ] ]
  |  |  \_
  |  |
+ |  | IF [ (is_float_ty)[ (LLVMTypeOf)[ v ] ] ]
+ |  |  | RET [ (LLVMBuildFNeg)[ c.builder | v | "fneg" ] ]
+ |  |  \_
  |  | RET [ (LLVMBuildNeg)[ c.builder | v | "neg" ] ]
  |  \_
  |
@@ -1101,12 +1308,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  \_
  |
  | IF [ n.kind == NT_BUILTIN ]
- |  | @C1 tname = n.as.builtin.size.as.ident
- |  | @ABYSS t = (size_of_name)[ c | tname ]
- |  | IF [ t == 0 ]
- |  |  | (printf)[ "codegen: SIZE of unknown type `%s`\n" | tname ]
- |  |  | (exit)[ 1 ]
- |  |  \_
+ |  | @ABYSS t = (map_type)[ c | n.as.builtin.size ]
  |  | @ABYSS i64 = (LLVMInt64TypeInContext)[ c.ctx ]
  |  | RET [ (LLVMBuildIntCast2)[ c.builder | (LLVMSizeOf)[ t ] | i64 | 0 | "size" ] ]
  |  \_
@@ -1498,6 +1700,11 @@ ABYSS gen_global: [ @CodegenContext c | @ASTNode d ]
  |  | @ASTNode lit = (strip)[ d.as.var_decl.init ]
  |  | IF [ lit != 0 && lit.kind == NT_LITERAL ]
  |  |  | init = (gen_literal)[ c | lit ]
+ |  |  | IF [ (is_float_ty)[ ty ] && lit.as.literal.kind == LT_FLOAT ]
+ |  |  |  | init = (LLVMConstReal)[ ty | lit.as.literal.as.float_lit ]
+ |  |  | ELIF [ (is_float_ty)[ ty ] && lit.as.literal.kind == LT_INTEGER ]
+ |  |  |  | init = (LLVMConstReal)[ ty | lit.as.literal.as.int_lit AS F64 ]
+ |  |  |  \_
  |  |  | ; a constant initialiser may still need narrowing
  |  |  | IF [ (LLVMGetTypeKind)[ (LLVMTypeOf)[ init ] ] == LLVMIntegerTypeKind && (LLVMGetTypeKind)[ ty ] == LLVMIntegerTypeKind ]
  |  |  |  | IF [ (LLVMTypeOf)[ init ] != ty ]

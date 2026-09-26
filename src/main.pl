@@ -5,6 +5,7 @@
 
 !USES <preproc.pl>
 !USES <parser.pl>
+!USES <generic.pl>
 !USES <meta.pl>
 !USES <check.pl>
 !USES <codegen.pl>
@@ -103,6 +104,7 @@ I32 main: [ I32 argc | @@C1 argv ]
  | AST ast
  | (ast_init)[ @ast ]
  | (parse_unit)[ @ast | @src ]
+ | (generics_pass)[ @ast ]
  |
  | Meta meta
  | (meta_init)[ @meta ]

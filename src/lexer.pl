@@ -176,6 +176,14 @@ I32 lex_keyword_kind: [ @C1 s ]
  |  | RET [ TOK_TRUE ]
  | ELIF [ (strcmp)[ s | "FALSE" ] == 0 ]
  |  | RET [ TOK_FALSE ]
+ | ELIF [ (strcmp)[ s | "IFACE" ] == 0 ]
+ |  | RET [ TOK_IFACE ]
+ | ELIF [ (strcmp)[ s | "CLASS" ] == 0 ]
+ |  | RET [ TOK_CLASS ]
+ | ELIF [ (strcmp)[ s | "IMPL" ] == 0 ]
+ |  | RET [ TOK_IMPL ]
+ | ELIF [ (strcmp)[ s | "NULL" ] == 0 ]
+ |  | RET [ TOK_NULL ]
  | ELSE
  |  | RET [ -1 ]
  |  \_
@@ -268,6 +276,14 @@ Token lexer_next: [ @Lexer lx ]
  |  | IF [ c == ')' ]
  |  |  | (lex_nextc)[ lx ]
  |  |  | RET [ (make_tok)[ TOK_RPAREN | 0 | lx.line | lx.col - 1 | -1 ] ]
+ |  |  \_
+ |  | IF [ c == '{' ]
+ |  |  | (lex_nextc)[ lx ]
+ |  |  | RET [ (make_tok)[ TOK_LBRACE | 0 | lx.line | lx.col - 1 | -1 ] ]
+ |  |  \_
+ |  | IF [ c == '}' ]
+ |  |  | (lex_nextc)[ lx ]
+ |  |  | RET [ (make_tok)[ TOK_RBRACE | 0 | lx.line | lx.col - 1 | -1 ] ]
  |  |  \_
  |  |
  |  | IF [ c == '|' && (lex_look)[ lx | 1 ] == '|' ]

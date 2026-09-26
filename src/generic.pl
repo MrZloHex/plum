@@ -1,0 +1,780 @@
+; generic.pl -- generics, interfaces and classes, by instantiation
+;
+; Runs between the parser and meta. It takes every template out of the
+; unit and appends one concrete copy per distinct use, so every later pass
+; sees only ordinary TYPEs and functions:
+;
+;   TYPE Box<T>: ...            Box<I32> becomes a TYPE named "Box<I32>"
+;   IFACE Face<T>: [ @D<T> me ] methods written against @D<T>
+;   CLASS Cls<T>: D<T> IMPL [ Face<T> ]
+;                               a STRUCT "Cls<X>" laid out like D<X>, plus a
+;                               function "Cls<X>.method" for every method of
+;                               every IFACE, taking `@Cls<X> me` first
+;
+; A method call (obj.method)[ ... ] is left for check and codegen: they
+; know obj's type, and look up "<that type>.method" among the functions.
+
+!USES <ast.pl>
+!USES <../lib/vec.pl>
+!USES <../lib/map.pl>
+!USES <../lib/string.pl>
+!USES <../extern/stdio.pl>
+!USES <../extern/stdlib.pl>
+!USES <../extern/string.pl>
+
+TYPE Generics: STRUCT
+ | @AST       ast
+ | Map        type_tmpls   ; name -> NT_TYPE_DEF with gparams
+ | Map        iface_tmpls  ; name -> NT_IFACE
+ | Map        class_tmpls  ; name -> NT_CLASS with gparams
+ | Map        types        ; concrete name -> NT_TYPE_DEF, instances too
+ | Map        done         ; instances and methods already made
+ | Vec        work         ; @ASTNode instances still to be scanned
+ | @ASTNode   out_head     ; the instances, as NT_TU_STMTs
+ | @@ASTNode  out_tail
+ | I32        count
+ \_
+
+; Template parameters and the concrete types standing in for them.
+TYPE Subst: STRUCT
+ | @ASTNode params         ; NT_LIST of NT_IDENT
+ | @ASTNode args           ; NT_LIST of NT_TYPE
+ \_
+
+ABYSS gn_error: [ @ASTNode at | @C1 fmt | @C1 a | @C1 b ]
+ | @C1 buf = (malloc)[ 512 ] AS @C1
+ | (snprintf)[ buf | 512 | fmt | a | b ]
+ | IF [ at != 0 ]
+ |  | (printf)[ "%d:%d: %s\n" | at.loc.line | at.loc.col | buf ]
+ | ELSE
+ |  | (printf)[ "%s\n" | buf ]
+ |  \_
+ | (exit)[ 1 ]
+ | RET
+ \_
+
+@ASTNode gn_ident: [ @Generics g | @C1 name | @ASTNode at ]
+ | @ASTNode id = (ast_node_new)[ g.ast ]
+ | id.kind = NT_IDENT
+ | id.as.ident = name
+ | IF [ at != 0 ]
+ |  | id.loc = at.loc
+ |  \_
+ | RET [ id ]
+ \_
+
+B1 gn_has: [ @Map m | @C1 name ]
+ | @ABYSS d = 0
+ | RET [ (map_get)[ m | name | @d AS @@ABYSS ] == 1 ]
+ \_
+
+@ASTNode gn_find: [ @Map m | @C1 name ]
+ | @ABYSS d = 0
+ | IF [ (map_get)[ m | name | @d AS @@ABYSS ] == 1 ]
+ |  | RET [ d AS @ASTNode ]
+ |  \_
+ | RET [ 0 ]
+ \_
+
+I32 list_len: [ @ASTNode l ]
+ | I32 n = 0
+ | WHILE [ l != 0 ]
+ |  | n += 1
+ |  | l = l.as.list.next
+ |  \_
+ | RET [ n ]
+ \_
+
+; --- names ----------------------------------------------------------------
+
+@C1 base_type_name: [ I32 bt ]
+ | IF [ bt == BT_ABYSS ]
+ |  | RET [ "ABYSS" ]
+ | ELIF [ bt == BT_B1 ]
+ |  | RET [ "B1" ]
+ | ELIF [ bt == BT_C1 ]
+ |  | RET [ "C1" ]
+ | ELIF [ bt == BT_U8 ]
+ |  | RET [ "U8" ]
+ | ELIF [ bt == BT_U16 ]
+ |  | RET [ "U16" ]
+ | ELIF [ bt == BT_U32 ]
+ |  | RET [ "U32" ]
+ | ELIF [ bt == BT_U64 ]
+ |  | RET [ "U64" ]
+ | ELIF [ bt == BT_I8 ]
+ |  | RET [ "I8" ]
+ | ELIF [ bt == BT_I16 ]
+ |  | RET [ "I16" ]
+ | ELIF [ bt == BT_I32 ]
+ |  | RET [ "I32" ]
+ | ELIF [ bt == BT_I64 ]
+ |  | RET [ "I64" ]
+ | ELIF [ bt == BT_USIZE ]
+ |  | RET [ "USIZE" ]
+ | ELIF [ bt == BT_ISIZE ]
+ |  | RET [ "ISIZE" ]
+ | ELIF [ bt == BT_F32 ]
+ |  | RET [ "F32" ]
+ |  \_
+ | RET [ "F64" ]
+ \_
+
+; A concrete type's spelling: "@C1", "Vec<I32>". Arguments are resolved
+; first, so a nested instance already carries its full name.
+ABYSS append_type_name: [ @String s | @ASTNode tn ]
+ | U64 i = 0
+ | WHILE [ i < tn.as.type.ptrs ]
+ |  | (str_append)[ s | '@' ]
+ |  | i = i + 1
+ |  \_
+ | IF [ tn.as.type.kind == TT_BASE_TYPE ]
+ |  | (str_append_str)[ s | (base_type_name)[ tn.as.type.type.as.base_type ] ]
+ | ELSE
+ |  | (str_append_str)[ s | tn.as.type.type.as.ident ]
+ |  \_
+ | RET
+ \_
+
+@C1 instance_name: [ @C1 tmpl | @ASTNode args ]
+ | String s
+ | (str_init_cstr)[ @s | tmpl ]
+ | (str_append)[ @s | '<' ]
+ | @ASTNode a = args
+ | WHILE [ a != 0 ]
+ |  | (append_type_name)[ @s | a.as.list.item ]
+ |  | IF [ a.as.list.next != 0 ]
+ |  |  | (str_append_str)[ @s | ", " ]
+ |  |  \_
+ |  | a = a.as.list.next
+ |  \_
+ | (str_append)[ @s | '>' ]
+ | RET [ s.data ]
+ \_
+
+; --- copying a template ---------------------------------------------------
+
+@ASTNode subst_lookup: [ @Subst s | @C1 name ]
+ | IF [ s == 0 ]
+ |  | RET [ 0 ]
+ |  \_
+ | @ASTNode p = s.params
+ | @ASTNode a = s.args
+ | WHILE [ p != 0 && a != 0 ]
+ |  | IF [ (strcmp)[ p.as.list.item.as.ident | name ] == 0 ]
+ |  |  | RET [ a.as.list.item ]
+ |  |  \_
+ |  | p = p.as.list.next
+ |  | a = a.as.list.next
+ |  \_
+ | RET [ 0 ]
+ \_
+
+; A deep copy of a subtree, with every use of a template parameter
+; replaced by its argument. Names are shared; nodes never are.
+@ASTNode clone: [ @Generics g | @ASTNode n | @Subst s ]
+ | IF [ n == 0 ]
+ |  | RET [ 0 ]
+ |  \_
+ |
+ | @ASTNode c = (ast_node_new)[ g.ast ]
+ | (memcpy)[ c AS @ABYSS | n AS @ABYSS | SIZE [ ASTNode ] ]
+ | I32 k = n.kind
+ |
+ | IF [ k == NT_TYPE ]
+ |  | c.as.type.type = (clone)[ g | n.as.type.type | s ]
+ |  | c.as.type.args = (clone)[ g | n.as.type.args | s ]
+ |  | IF [ n.as.type.kind == TT_USER_TYPE && n.as.type.args == 0 ]
+ |  |  | @ASTNode a = (subst_lookup)[ s | n.as.type.type.as.ident ]
+ |  |  | IF [ a != 0 ]
+ |  |  |  | ; T with ptrs levels over it: @T where T = @C1 is @@C1
+ |  |  |  | c.as.type.kind = a.as.type.kind
+ |  |  |  | c.as.type.ptrs = n.as.type.ptrs + a.as.type.ptrs
+ |  |  |  | c.as.type.type = (clone)[ g | a.as.type.type | 0 ]
+ |  |  |  | c.as.type.args = (clone)[ g | a.as.type.args | 0 ]
+ |  |  |  \_
+ |  |  \_
+ |  | RET [ c ]
+ |  \_
+ |
+ | IF [ k == NT_FN_DECL ]
+ |  | c.as.fn_decl.ident = (clone)[ g | n.as.fn_decl.ident | s ]
+ |  | c.as.fn_decl.type = (clone)[ g | n.as.fn_decl.type | s ]
+ |  | c.as.fn_decl.params = (clone)[ g | n.as.fn_decl.params | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_FN_DEF ]
+ |  | c.as.fn_def.decl = (clone)[ g | n.as.fn_def.decl | s ]
+ |  | c.as.fn_def.block = (clone)[ g | n.as.fn_def.block | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_TYPE_DEF ]
+ |  | c.as.type_def.ident = (clone)[ g | n.as.type_def.ident | s ]
+ |  | c.as.type_def.tdef = (clone)[ g | n.as.type_def.tdef | s ]
+ |  | c.as.type_def.gparams = 0
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_PARAMETRE ]
+ |  | c.as.parametre.ident = (clone)[ g | n.as.parametre.ident | s ]
+ |  | c.as.parametre.type = (clone)[ g | n.as.parametre.type | s ]
+ |  | c.as.parametre.next_param = (clone)[ g | n.as.parametre.next_param | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_ENUM ]
+ |  | c.as.enumeration.fields = (clone)[ g | n.as.enumeration.fields | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_ENUM_FIELDS ]
+ |  | c.as.enum_flds.ident = (clone)[ g | n.as.enum_flds.ident | s ]
+ |  | c.as.enum_flds.next_field = (clone)[ g | n.as.enum_flds.next_field | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_RECORD ]
+ |  | c.as.record.fields = (clone)[ g | n.as.record.fields | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_FIELD ]
+ |  | c.as.rcrd_flds.type = (clone)[ g | n.as.rcrd_flds.type | s ]
+ |  | c.as.rcrd_flds.ident = (clone)[ g | n.as.rcrd_flds.ident | s ]
+ |  | c.as.rcrd_flds.next_field = (clone)[ g | n.as.rcrd_flds.next_field | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_BLOCK ]
+ |  | c.as.block.stmts = (clone)[ g | n.as.block.stmts | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_STMT ]
+ |  | c.as.stmt.stmt = (clone)[ g | n.as.stmt.stmt | s ]
+ |  | c.as.stmt.next_stmt = (clone)[ g | n.as.stmt.next_stmt | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_RET ]
+ |  | c.as.ret.expr = (clone)[ g | n.as.ret.expr | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_COND ]
+ |  | c.as.cond.if_part = (clone)[ g | n.as.cond.if_part | s ]
+ |  | c.as.cond.elif_part = (clone)[ g | n.as.cond.elif_part | s ]
+ |  | c.as.cond.else_part = (clone)[ g | n.as.cond.else_part | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_IF ]
+ |  | c.as.if_cond.expr = (clone)[ g | n.as.if_cond.expr | s ]
+ |  | c.as.if_cond.block = (clone)[ g | n.as.if_cond.block | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_ELIF ]
+ |  | c.as.elif_cond.expr = (clone)[ g | n.as.elif_cond.expr | s ]
+ |  | c.as.elif_cond.block = (clone)[ g | n.as.elif_cond.block | s ]
+ |  | c.as.elif_cond.next_elif = (clone)[ g | n.as.elif_cond.next_elif | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_ELSE ]
+ |  | c.as.else_cond.block = (clone)[ g | n.as.else_cond.block | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_LOOP ]
+ |  | c.as.loop.expr = (clone)[ g | n.as.loop.expr | s ]
+ |  | c.as.loop.block = (clone)[ g | n.as.loop.block | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_VAR_DECL ]
+ |  | c.as.var_decl.ident = (clone)[ g | n.as.var_decl.ident | s ]
+ |  | c.as.var_decl.type = (clone)[ g | n.as.var_decl.type | s ]
+ |  | c.as.var_decl.init = (clone)[ g | n.as.var_decl.init | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_EXPR ]
+ |  | c.as.expr.expr = (clone)[ g | n.as.expr.expr | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_BIN_OP ]
+ |  | c.as.bin_op.left = (clone)[ g | n.as.bin_op.left | s ]
+ |  | c.as.bin_op.right = (clone)[ g | n.as.bin_op.right | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_UNY_OP ]
+ |  | c.as.uny_op.operand = (clone)[ g | n.as.uny_op.operand | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_FN_CALL ]
+ |  | c.as.fn_call.ident = (clone)[ g | n.as.fn_call.ident | s ]
+ |  | c.as.fn_call.args = (clone)[ g | n.as.fn_call.args | s ]
+ |  | c.as.fn_call.recv = (clone)[ g | n.as.fn_call.recv | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_ARGUMENT ]
+ |  | c.as.argument.argument = (clone)[ g | n.as.argument.argument | s ]
+ |  | c.as.argument.next_arg = (clone)[ g | n.as.argument.next_arg | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_BUILTIN ]
+ |  | c.as.builtin.size = (clone)[ g | n.as.builtin.size | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_CAST ]
+ |  | c.as.cast.type = (clone)[ g | n.as.cast.type | s ]
+ |  | c.as.cast.expr = (clone)[ g | n.as.cast.expr | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_LIST ]
+ |  | c.as.list.item = (clone)[ g | n.as.list.item | s ]
+ |  | c.as.list.next = (clone)[ g | n.as.list.next | s ]
+ |  | RET [ c ]
+ |  \_
+ |
+ | ; NT_IDENT, NT_BASE_TYPE, NT_LITERAL: nothing below them
+ | RET [ c ]
+ \_
+
+; --- instantiating --------------------------------------------------------
+
+ABYSS resolve_type: [ @Generics g | @ASTNode tn ]
+
+ABYSS emit: [ @Generics g | I32 kind | @ASTNode node ]
+ | @ASTNode ts = (ast_node_new)[ g.ast ]
+ | ts.kind = NT_TU_STMT
+ | ts.loc = node.loc
+ | ts.as.tu_stmt.kind = kind
+ | ts.as.tu_stmt.tu_stmt = node
+ | ?(g.out_tail) = ts
+ | g.out_tail = @(ts.as.tu_stmt.next_tu_stmt)
+ | (vec_append)[ @(g.work) | @node AS @ABYSS ]
+ | RET
+ \_
+
+ABYSS check_arity: [ @ASTNode at | @C1 what | @ASTNode params | @ASTNode args ]
+ | I32 want = (list_len)[ params ]
+ | I32 got = (list_len)[ args ]
+ | IF [ want != got ]
+ |  | @C1 buf = (malloc)[ 64 ] AS @C1
+ |  | (snprintf)[ buf | 64 | "%d type argument(s), got %d" | want | got ]
+ |  | (gn_error)[ at | "`%s` takes %s" | what | buf ]
+ |  \_
+ | RET
+ \_
+
+; The STRUCT a CLASS stores its data in, through any aliases.
+@ASTNode class_base: [ @Generics g | @ASTNode at | @ASTNode base ]
+ | @ASTNode tn = base
+ | I32 hops = 0
+ | LOOP
+ |  | IF [ tn.as.type.kind != TT_USER_TYPE || tn.as.type.ptrs != 0 ]
+ |  |  | (gn_error)[ at | "a CLASS is built on a STRUCT, not on a pointer or a base type%s%s" | "" | "" ]
+ |  |  \_
+ |  | @C1 nm = tn.as.type.type.as.ident
+ |  | @ASTNode td = (gn_find)[ @(g.types) | nm ]
+ |  | IF [ td == 0 ]
+ |  |  | (gn_error)[ at | "unknown type `%s`%s" | nm | "" ]
+ |  |  \_
+ |  | IF [ td.as.type_def.kind == TD_RECORD ]
+ |  |  | IF [ td.as.type_def.tdef.as.record.kind != TDRT_STRUCTURE ]
+ |  |  |  | (gn_error)[ at | "a CLASS is built on a STRUCT, and `%s` is a UNION%s" | nm | "" ]
+ |  |  |  \_
+ |  |  | RET [ td ]
+ |  |  \_
+ |  | IF [ td.as.type_def.kind != TD_ALIAS || hops > 16 ]
+ |  |  | (gn_error)[ at | "a CLASS is built on a STRUCT, and `%s` is not one%s" | nm | "" ]
+ |  |  \_
+ |  | tn = td.as.type_def.tdef
+ |  | (resolve_type)[ g | tn ]
+ |  | hops += 1
+ |  \_
+ | RET [ 0 ]
+ \_
+
+ABYSS inst_type: [ @Generics g | @ASTNode at | @ASTNode tmpl | @C1 name | @ASTNode args ]
+ | (check_arity)[ at | tmpl.as.type_def.ident.as.ident | tmpl.as.type_def.gparams | args ]
+ | Subst s
+ | s.params = tmpl.as.type_def.gparams
+ | s.args = args
+ |
+ | @ASTNode td = (clone)[ g | tmpl | @s ]
+ | td.as.type_def.ident = (gn_ident)[ g | name | tmpl.as.type_def.ident ]
+ | (map_put)[ @(g.types) | name | td AS @ABYSS ]
+ | (emit)[ g | TUST_TYPE_DEF | td ]
+ | RET
+ \_
+
+; One IFACE's methods, attached to the class `cls`.
+ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref ]
+ | IF [ fref.as.type.kind != TT_USER_TYPE || fref.as.type.ptrs != 0 ]
+ |  | (gn_error)[ fref | "IMPL lists interfaces, and this is a type%s%s" | "" | "" ]
+ |  \_
+ | @C1 fname = fref.as.type.type.as.ident
+ | @ASTNode ifc = (gn_find)[ @(g.iface_tmpls) | fname ]
+ | IF [ ifc == 0 ]
+ |  | (gn_error)[ fref | "unknown interface `%s`%s" | fname | "" ]
+ |  \_
+ |
+ | @ASTNode a = fref.as.type.args
+ | WHILE [ a != 0 ]
+ |  | (resolve_type)[ g | a.as.list.item ]
+ |  | a = a.as.list.next
+ |  \_
+ | (check_arity)[ fref | fname | ifc.as.iface.gparams | fref.as.type.args ]
+ |
+ | Subst s
+ | s.params = ifc.as.iface.gparams
+ | s.args = fref.as.type.args
+ |
+ | ; the receiver the interface was written for must be what the class holds
+ | @ASTNode recv = ifc.as.iface.recv
+ | @ASTNode rt = (clone)[ g | recv.as.parametre.type | @s ]
+ | (resolve_type)[ g | rt ]
+ | @C1 base = base_td.as.type_def.ident.as.ident
+ | B1 fits = rt.as.type.kind == TT_USER_TYPE && rt.as.type.ptrs == 1
+ | IF [ fits ]
+ |  | @C1 rn = rt.as.type.type.as.ident
+ |  | fits = (strcmp)[ rn | base ] == 0 || (strcmp)[ rn | cls ] == 0
+ |  \_
+ | IF [ !fits ]
+ |  | String want
+ |  | (str_init_cstr)[ @want | "" ]
+ |  | (append_type_name)[ @want | rt ]
+ |  | (gn_error)[ fref | "`%s` works on `%s`, which this CLASS does not hold" | fname | want.data ]
+ |  \_
+ |
+ | @C1 me = recv.as.parametre.ident.as.ident
+ | @ASTNode m = ifc.as.iface.methods
+ | WHILE [ m != 0 ]
+ |  | @ASTNode def = (clone)[ g | m.as.method.def | @s ]
+ |  | @ASTNode decl = def.as.fn_def.decl
+ |  | @C1 mname = (method_name)[ cls | decl.as.fn_decl.ident.as.ident ]
+ |  | IF [ (gn_has)[ @(g.done) | mname ] ]
+ |  |  | (gn_error)[ decl | "`%s` is defined by two interfaces of `%s`" | decl.as.fn_decl.ident.as.ident | cls ]
+ |  |  \_
+ |  | (map_put)[ @(g.done) | mname | def AS @ABYSS ]
+ |  |
+ |  | decl.as.fn_decl.ident = (gn_ident)[ g | mname | decl.as.fn_decl.ident ]
+ |  | decl.as.fn_decl.owner = cls
+ |  | decl.as.fn_decl.is_private = m.as.method.is_private
+ |  |
+ |  | ; every method takes `@Cls me` ahead of its declared parameters
+ |  | @ASTNode ty = (ast_node_new)[ g.ast ]
+ |  | ty.kind = NT_TYPE
+ |  | ty.loc = recv.loc
+ |  | ty.as.type.kind = TT_USER_TYPE
+ |  | ty.as.type.ptrs = 1
+ |  | ty.as.type.type = (gn_ident)[ g | cls | recv ]
+ |  |
+ |  | @ASTNode self = (ast_node_new)[ g.ast ]
+ |  | self.kind = NT_PARAMETRE
+ |  | self.loc = recv.loc
+ |  | self.as.parametre.ident = (gn_ident)[ g | me | recv ]
+ |  | self.as.parametre.type = ty
+ |  | self.as.parametre.next_param = decl.as.fn_decl.params
+ |  | decl.as.fn_decl.params = self
+ |  |
+ |  | (emit)[ g | TUST_FN_DEF | def ]
+ |  | m = m.as.method.next
+ |  \_
+ | RET
+ \_
+
+ABYSS inst_class: [ @Generics g | @ASTNode at | @ASTNode cls | @C1 name | @ASTNode args ]
+ | (check_arity)[ at | cls.as.klass.ident.as.ident | cls.as.klass.gparams | args ]
+ | Subst s
+ | s.params = cls.as.klass.gparams
+ | s.args = args
+ |
+ | @ASTNode base = (clone)[ g | cls.as.klass.base | @s ]
+ | (resolve_type)[ g | base ]
+ | @ASTNode base_td = (class_base)[ g | cls | base ]
+ |
+ | ; a STRUCT of its own, with the base's fields
+ | @ASTNode td = (ast_node_new)[ g.ast ]
+ | td.kind = NT_TYPE_DEF
+ | td.loc = cls.loc
+ | td.as.type_def.kind = TD_RECORD
+ | td.as.type_def.ident = (gn_ident)[ g | name | cls.as.klass.ident ]
+ | td.as.type_def.tdef = (clone)[ g | base_td.as.type_def.tdef | 0 ]
+ | (map_put)[ @(g.types) | name | td AS @ABYSS ]
+ | (emit)[ g | TUST_TYPE_DEF | td ]
+ |
+ | @ASTNode it = cls.as.klass.ifaces
+ | WHILE [ it != 0 ]
+ |  | @ASTNode fref = (clone)[ g | it.as.list.item | @s ]
+ |  | (inst_iface)[ g | name | base_td | fref ]
+ |  | it = it.as.list.next
+ |  \_
+ | RET
+ \_
+
+ABYSS instantiate: [ @Generics g | @ASTNode at | @C1 tmpl | @C1 name | @ASTNode args ]
+ | g.count += 1
+ | IF [ g.count > 10000 ]
+ |  | (gn_error)[ at | "too many instances of `%s`; is it generic in itself, as in X<@T> inside X<T>?%s" | tmpl | "" ]
+ |  \_
+ | (map_put)[ @(g.done) | name | at AS @ABYSS ]
+ |
+ | @ASTNode d = (gn_find)[ @(g.type_tmpls) | tmpl ]
+ | IF [ d != 0 ]
+ |  | (inst_type)[ g | at | d | name | args ]
+ |  | RET
+ |  \_
+ | d = (gn_find)[ @(g.class_tmpls) | tmpl ]
+ | IF [ d != 0 ]
+ |  | (inst_class)[ g | at | d | name | args ]
+ |  | RET
+ |  \_
+ | IF [ (gn_has)[ @(g.iface_tmpls) | tmpl ] ]
+ |  | (gn_error)[ at | "`%s` is an interface, not a type%s" | tmpl | "" ]
+ |  \_
+ | (gn_error)[ at | "`%s` is not a generic type%s" | tmpl | "" ]
+ | RET
+ \_
+
+; Make a type reference concrete: Vec<I32> becomes a plain reference to
+; the TYPE named "Vec<I32>", instantiated on first sight.
+ABYSS resolve_type: [ @Generics g | @ASTNode tn ]
+ | IF [ tn.as.type.kind != TT_USER_TYPE ]
+ |  | RET
+ |  \_
+ | @C1 tmpl = tn.as.type.type.as.ident
+ |
+ | IF [ tn.as.type.args == 0 ]
+ |  | IF [ (gn_has)[ @(g.type_tmpls) | tmpl ] || (gn_has)[ @(g.class_tmpls) | tmpl ] ]
+ |  |  | (gn_error)[ tn | "`%s` is generic and needs type arguments, as in %s<I32>" | tmpl | tmpl ]
+ |  |  \_
+ |  | RET
+ |  \_
+ |
+ | ; innermost first, so the name is spelled from concrete arguments
+ | @ASTNode a = tn.as.type.args
+ | WHILE [ a != 0 ]
+ |  | (resolve_type)[ g | a.as.list.item ]
+ |  | a = a.as.list.next
+ |  \_
+ |
+ | @C1 name = (instance_name)[ tmpl | tn.as.type.args ]
+ | IF [ !(gn_has)[ @(g.done) | name ] ]
+ |  | (instantiate)[ g | tn | tmpl | name | tn.as.type.args ]
+ |  \_
+ |
+ | tn.as.type.type = (gn_ident)[ g | name | tn.as.type.type ]
+ | tn.as.type.args = 0
+ | RET
+ \_
+
+; Every type reference anywhere below n.
+ABYSS resolve: [ @Generics g | @ASTNode n ]
+ | IF [ n == 0 ]
+ |  | RET
+ |  \_
+ | I32 k = n.kind
+ |
+ | IF [ k == NT_TYPE ]
+ |  | (resolve_type)[ g | n ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_FN_DECL ]
+ |  | (resolve)[ g | n.as.fn_decl.type ]
+ |  | (resolve)[ g | n.as.fn_decl.params ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_FN_DEF ]
+ |  | (resolve)[ g | n.as.fn_def.decl ]
+ |  | (resolve)[ g | n.as.fn_def.block ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_TYPE_DEF ]
+ |  | (resolve)[ g | n.as.type_def.tdef ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_PARAMETRE ]
+ |  | @ASTNode p = n
+ |  | WHILE [ p != 0 ]
+ |  |  | (resolve)[ g | p.as.parametre.type ]
+ |  |  | p = p.as.parametre.next_param
+ |  |  \_
+ |  | RET
+ |  \_
+ | IF [ k == NT_RECORD ]
+ |  | @ASTNode f = n.as.record.fields
+ |  | WHILE [ f != 0 ]
+ |  |  | (resolve)[ g | f.as.rcrd_flds.type ]
+ |  |  | f = f.as.rcrd_flds.next_field
+ |  |  \_
+ |  | RET
+ |  \_
+ | IF [ k == NT_BLOCK ]
+ |  | @ASTNode st = n.as.block.stmts
+ |  | WHILE [ st != 0 ]
+ |  |  | (resolve)[ g | st.as.stmt.stmt ]
+ |  |  | st = st.as.stmt.next_stmt
+ |  |  \_
+ |  | RET
+ |  \_
+ | IF [ k == NT_RET ]
+ |  | (resolve)[ g | n.as.ret.expr ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_COND ]
+ |  | (resolve)[ g | n.as.cond.if_part ]
+ |  | (resolve)[ g | n.as.cond.elif_part ]
+ |  | (resolve)[ g | n.as.cond.else_part ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_IF ]
+ |  | (resolve)[ g | n.as.if_cond.expr ]
+ |  | (resolve)[ g | n.as.if_cond.block ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_ELIF ]
+ |  | (resolve)[ g | n.as.elif_cond.expr ]
+ |  | (resolve)[ g | n.as.elif_cond.block ]
+ |  | (resolve)[ g | n.as.elif_cond.next_elif ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_ELSE ]
+ |  | (resolve)[ g | n.as.else_cond.block ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_LOOP ]
+ |  | (resolve)[ g | n.as.loop.expr ]
+ |  | (resolve)[ g | n.as.loop.block ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_VAR_DECL ]
+ |  | (resolve)[ g | n.as.var_decl.type ]
+ |  | (resolve)[ g | n.as.var_decl.init ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_EXPR ]
+ |  | (resolve)[ g | n.as.expr.expr ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_BIN_OP ]
+ |  | (resolve)[ g | n.as.bin_op.left ]
+ |  | (resolve)[ g | n.as.bin_op.right ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_UNY_OP ]
+ |  | (resolve)[ g | n.as.uny_op.operand ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_FN_CALL ]
+ |  | (resolve)[ g | n.as.fn_call.recv ]
+ |  | @ASTNode a = n.as.fn_call.args
+ |  | WHILE [ a != 0 ]
+ |  |  | (resolve)[ g | a.as.argument.argument ]
+ |  |  | a = a.as.argument.next_arg
+ |  |  \_
+ |  | RET
+ |  \_
+ | IF [ k == NT_BUILTIN ]
+ |  | (resolve)[ g | n.as.builtin.size ]
+ |  | RET
+ |  \_
+ | IF [ k == NT_CAST ]
+ |  | (resolve)[ g | n.as.cast.type ]
+ |  | (resolve)[ g | n.as.cast.expr ]
+ |  | RET
+ |  \_
+ | RET
+ \_
+
+; --- entry point ----------------------------------------------------------
+
+; USES is textual and not include-once, so the same definition routinely
+; arrives several times. The first one wins, as it does in codegen.
+B1 gn_template: [ @Map m | @C1 name | @ASTNode node | @Generics g ]
+ | IF [ (gn_has)[ @(g.types) | name ] || (gn_has)[ @(g.type_tmpls) | name ] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | IF [ (gn_has)[ @(g.class_tmpls) | name ] || (gn_has)[ @(g.iface_tmpls) | name ] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | (map_put)[ m | name | node AS @ABYSS ]
+ | RET [ TRUE ]
+ \_
+
+ABYSS generics_pass: [ @AST ast ]
+ | Generics g
+ | g.ast = ast
+ | (map_init)[ @(g.type_tmpls) | 64 ]
+ | (map_init)[ @(g.iface_tmpls) | 64 ]
+ | (map_init)[ @(g.class_tmpls) | 64 ]
+ | (map_init)[ @(g.types) | 256 ]
+ | (map_init)[ @(g.done) | 256 ]
+ | (vec_init)[ @(g.work) | 8 | 64 ]
+ | g.out_head = 0
+ | g.out_tail = @(g.out_head)
+ | g.count = 0
+ |
+ | ; take the templates out of the unit; classes without parameters wait
+ | ; until every interface has been seen
+ | @ASTNode plain = 0
+ | @@ASTNode plain_tail = @plain
+ | @@ASTNode link = @(ast.root.as.tu.tu_stmt)
+ | WHILE [ ?(link) != 0 ]
+ |  | @ASTNode ts = ?(link)
+ |  | I32 k = ts.as.tu_stmt.kind
+ |  | @ASTNode node = ts.as.tu_stmt.tu_stmt
+ |  | B1 drop = TRUE
+ |  |
+ |  | IF [ k == TUST_TYPE_DEF && node.as.type_def.gparams != 0 ]
+ |  |  | (gn_template)[ @(g.type_tmpls) | node.as.type_def.ident.as.ident | node | @g ]
+ |  | ELIF [ k == TUST_TYPE_DEF ]
+ |  |  | (gn_template)[ @(g.types) | node.as.type_def.ident.as.ident | node | @g ]
+ |  |  | drop = FALSE
+ |  | ELIF [ k == TUST_IFACE ]
+ |  |  | (gn_template)[ @(g.iface_tmpls) | node.as.iface.ident.as.ident | node | @g ]
+ |  | ELIF [ k == TUST_CLASS && node.as.klass.gparams != 0 ]
+ |  |  | (gn_template)[ @(g.class_tmpls) | node.as.klass.ident.as.ident | node | @g ]
+ |  | ELIF [ k == TUST_CLASS ]
+ |  |  | @ASTNode item = (ast_node_new)[ ast ]
+ |  |  | item.kind = NT_LIST
+ |  |  | item.as.list.item = node
+ |  |  | ?(plain_tail) = item
+ |  |  | plain_tail = @(item.as.list.next)
+ |  | ELSE
+ |  |  | drop = FALSE
+ |  |  \_
+ |  |
+ |  | IF [ drop ]
+ |  |  | ?(link) = ts.as.tu_stmt.next_tu_stmt
+ |  | ELSE
+ |  |  | link = @(ts.as.tu_stmt.next_tu_stmt)
+ |  |  \_
+ |  \_
+ |
+ | @ASTNode pc = plain
+ | WHILE [ pc != 0 ]
+ |  | @ASTNode cls = pc.as.list.item
+ |  | @C1 nm = cls.as.klass.ident.as.ident
+ |  | IF [ (gn_has)[ @(g.types) | nm ] && !(gn_has)[ @(g.done) | nm ] ]
+ |  |  | (gn_error)[ cls | "CLASS `%s` has the name of an existing TYPE%s" | nm | "" ]
+ |  |  \_
+ |  | IF [ (gn_template)[ @(g.done) | nm | cls | @g ] ]
+ |  |  | (inst_class)[ @g | cls | cls | nm | 0 ]
+ |  |  \_
+ |  | pc = pc.as.list.next
+ |  \_
+ |
+ | ; whatever is left is concrete; its uses pull in the instances, whose
+ | ; own uses pull in more
+ | @ASTNode ts = ast.root.as.tu.tu_stmt
+ | WHILE [ ts != 0 ]
+ |  | (resolve)[ @g | ts.as.tu_stmt.tu_stmt ]
+ |  | ts = ts.as.tu_stmt.next_tu_stmt
+ |  \_
+ |
+ | U64 i = 0
+ | WHILE [ i < (vec_size)[ @(g.work) ] ]
+ |  | @ASTNode n = ?((vec_at)[ @(g.work) | i ] AS @@ASTNode)
+ |  | (resolve)[ @g | n ]
+ |  | i = i + 1
+ |  \_
+ |
+ | ?(link) = g.out_head
+ |
+ | (vec_deinit)[ @(g.work) ]
+ | (map_deinit)[ @(g.type_tmpls) ]
+ | (map_deinit)[ @(g.iface_tmpls) ]
+ | (map_deinit)[ @(g.class_tmpls) ]
+ | (map_deinit)[ @(g.types) ]
+ | (map_deinit)[ @(g.done) ]
+ | RET
+ \_

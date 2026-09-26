@@ -23,9 +23,11 @@ syntax keyword plumRepeat      LOOP WHILE
 syntax keyword plumStructure   STRUCT UNION ENUM
 " The name after TYPE is a type, not a function, so claim it via nextgroup.
 syntax keyword plumStructure   TYPE nextgroup=plumTypeName skipwhite
+syntax keyword plumStructure   IFACE CLASS nextgroup=plumTypeName skipwhite
+syntax keyword plumStructure   IMPL PUBLIC PRIVATE
 syntax match   plumTypeName    contained "\w\+"
 syntax keyword plumOperatorKw  SIZE AS
-syntax keyword plumBoolean     TRUE FALSE
+syntax keyword plumBoolean     TRUE FALSE NULL
 
 " --- Types ---------------------------------------------------------------
 syntax keyword plumType ABYSS B1 C1 C2 C4
@@ -53,13 +55,14 @@ syntax match plumOperator "?\|\.\.\.\|\."
 " Bitwise-or. plumBar is defined later and so wins for a leading bar run.
 syntax match plumOperator "|"
 syntax match plumPointer  "@"
-syntax match plumDelimiter "[][()]"
+syntax match plumDelimiter "[][(){}]"
 
 " --- Declarations and calls ----------------------------------------------
 " `I32 main: [ ... ]` -- the name before the colon.
 syntax match plumFunction "\<\w\+\ze\s*:"
 " `(printf)[ ... ]` -- PLUM's call form.
 syntax match plumCall "(\@<=\w\+\ze)\s*\["
+syntax match plumCall "\.\@<=\w\+\ze)\s*\["
 
 " --- Block structure -----------------------------------------------------
 " Nesting is a run of `| `, closed by `\_`. Matched after the operators so

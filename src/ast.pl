@@ -41,6 +41,10 @@ TYPE ASTNodeType: ENUM
  | NT_LITERAL
  | NT_BUILTIN
  | NT_CAST
+ | NT_LIST
+ | NT_IFACE
+ | NT_CLASS
+ | NT_METHOD
  \_
 
 TYPE TUStmtKind: ENUM
@@ -48,6 +52,8 @@ TYPE TUStmtKind: ENUM
  | TUST_FN_DECL
  | TUST_TYPE_DEF
  | TUST_VAR_DECL
+ | TUST_IFACE
+ | TUST_CLASS
  \_
 
 TYPE TypeDefKind: ENUM
@@ -127,6 +133,7 @@ TYPE BinOpKind: ENUM
  | BOT_SHL
  | BOT_SHR
  | BOT_MEMBER
+ | BOT_INDEX
  \_
 
 TYPE UnyOpKind: ENUM
@@ -166,6 +173,8 @@ TYPE N_FnDecl: STRUCT
  | @ASTNode ident
  | @ASTNode type
  | @ASTNode params
+ | @C1      owner       ; the class a method belongs to, 0 for a function
+ | B1       is_private
  \_
 
 TYPE N_Parametre: STRUCT
@@ -184,6 +193,7 @@ TYPE N_TypeDef: STRUCT
  | I32      kind
  | @ASTNode ident
  | @ASTNode tdef
+ | @ASTNode gparams     ; NT_LIST of NT_IDENT, 0 unless generic
  \_
 
 TYPE N_Enum: STRUCT
@@ -210,6 +220,8 @@ TYPE N_Type: STRUCT
  | I32      kind
  | U64      ptrs
  | @ASTNode type
+ | @ASTNode args        ; NT_LIST of NT_TYPE, 0 unless generic
+ | U64      arr         ; element count of `T name{N}`, 0 unless an array
  \_
 
 TYPE N_Block: STRUCT
@@ -277,6 +289,7 @@ TYPE N_UnyOp: STRUCT
 TYPE N_FnCall: STRUCT
  | @ASTNode ident
  | @ASTNode args
+ | @ASTNode recv        ; the object of a method call, 0 for a function
  \_
 
 TYPE N_Argument: STRUCT
@@ -286,7 +299,7 @@ TYPE N_Argument: STRUCT
 
 TYPE LiteralValue: UNION
  | I32 int_lit
- | F32 float_lit
+ | F64 float_lit
  | C1  char_lit
  | @C1 str_lit
  | B1  bool_lit
@@ -305,6 +318,32 @@ TYPE N_BuiltIn: STRUCT
 TYPE N_Cast: STRUCT
  | @ASTNode type
  | @ASTNode expr
+ \_
+
+; A plain singly linked list: generic parameters, type arguments, IMPL.
+TYPE N_List: STRUCT
+ | @ASTNode item
+ | @ASTNode next
+ \_
+
+TYPE N_Iface: STRUCT
+ | @ASTNode ident
+ | @ASTNode gparams
+ | @ASTNode recv        ; NT_PARAMETRE: the `me` every method receives
+ | @ASTNode methods     ; NT_METHOD chain
+ \_
+
+TYPE N_Class: STRUCT
+ | @ASTNode ident
+ | @ASTNode gparams
+ | @ASTNode base        ; NT_TYPE: the struct that holds the data
+ | @ASTNode ifaces      ; NT_LIST of NT_TYPE
+ \_
+
+TYPE N_Method: STRUCT
+ | B1       is_private
+ | @ASTNode def         ; NT_FN_DEF
+ | @ASTNode next
  \_
 
 ; The union of every payload. N_Ident is a bare @C1 and N_BaseType a bare
@@ -340,6 +379,10 @@ TYPE NodeAs: UNION
  | N_Literal   literal
  | N_BuiltIn   builtin
  | N_Cast      cast
+ | N_List      list
+ | N_Iface     iface
+ | N_Class     klass
+ | N_Method    method
  \_
 
 TYPE ASTNode: STRUCT
@@ -362,6 +405,14 @@ TYPE AST: STRUCT
  | ; arena memory is not zeroed, and every consumer assumes NULL children
  | (memset)[ n AS @ABYSS | 0 | SIZE [ ASTNode ] ]
  | RET [ n ]
+ \_
+
+; "Cls<X>" and "push" -> "Cls<X>.push", the function a method becomes.
+@C1 method_name: [ @C1 cls | @C1 method ]
+ | U64 n = (strlen)[ cls ] + (strlen)[ method ] + 2
+ | @C1 buf = (malloc)[ n ] AS @C1
+ | (snprintf)[ buf | n | "%s.%s" | cls | method ]
+ | RET [ buf ]
  \_
 
 ABYSS ast_init: [ @AST ast ]

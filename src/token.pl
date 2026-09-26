@@ -38,6 +38,12 @@ TYPE TokenType: ENUM
  | TOK_CONTINUE
  | TOK_RET
  | TOK_SIZE
+ | TOK_IFACE
+ | TOK_CLASS
+ | TOK_IMPL
+ | TOK_NULL
+ | TOK_LBRACE
+ | TOK_RBRACE
  \_
 
 TYPE Location: STRUCT
@@ -123,6 +129,18 @@ TYPE Token: STRUCT
  |  | RET [ "CONTINUE" ]
  | ELIF [ t == TOK_RET ]
  |  | RET [ "RET" ]
+ | ELIF [ t == TOK_IFACE ]
+ |  | RET [ "IFACE" ]
+ | ELIF [ t == TOK_CLASS ]
+ |  | RET [ "CLASS" ]
+ | ELIF [ t == TOK_IMPL ]
+ |  | RET [ "IMPL" ]
+ | ELIF [ t == TOK_NULL ]
+ |  | RET [ "NULL" ]
+ | ELIF [ t == TOK_LBRACE ]
+ |  | RET [ "LBRACE" ]
+ | ELIF [ t == TOK_RBRACE ]
+ |  | RET [ "RBRACE" ]
  | ELSE
  |  | RET [ "SIZE" ]
  |  \_

@@ -13,6 +13,7 @@ TESTS=(
     string containers llvm trace preproc lexer
     ast parser meta printf aryph_logic cli_args
     arrays struct include std
+    generics vector floats indexing
 )
 
 pass=0; fail=0; failed=()
