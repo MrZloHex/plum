@@ -1,0 +1,8 @@
+pair: 7 seven, 16 bytes
+list: 42
+ref: 6
+counter: 6 (step 3)
+stack depth 4: 3 2 1 0
+fresh stack empty: 1
+hello world
+[exit 0]

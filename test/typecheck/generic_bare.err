@@ -1,0 +1,1 @@
+7:4: `Box` is generic and needs type arguments, as in Box<I32>

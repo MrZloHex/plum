@@ -1,0 +1,17 @@
+vec esz=16
+vec len=20 cap=32
+vec[7] kind=7 line=70 name=sym
+after remove len=19 vec[0].kind=1
+stack size=3 peek=gamma
+  pop gamma
+  pop beta
+  pop alpha
+map size=3
+get printf hit=1 val=2
+get absent hit=0
+after replace size=3 val=99
+after remove size=2 hit=0
+arena p1=A p2=B distinct=1 aligned=1
+arena big=C
+arena survived 100 allocs
+[exit 0]

@@ -2,16 +2,50 @@
 ;
 ; Textual pass over the whole source: expands the USES directive in place,
 ; resolving each path against the including file's directory. Runs before
-; the lexer ever sees the text, and is deliberately not comment-aware -- a
-; commented-out directive really does still include, as in the C version.
-; (Which is why this comment spells none of it out literally.)
+; the lexer ever sees the text. Comments and string literals are skipped.
+;
+; Each file is included once: a directive naming a file already pulled in
+; -- by any path that resolves to the same file -- expands to nothing.
+; PLUM declarations do not depend on order, so the first copy serves all.
 
 !USES <../lib/string.pl>
 !USES <../extern/string.pl>
 !USES <../extern/stdio.pl>
 !USES <../extern/stdlib.pl>
+!USES <../extern/unistd.pl>
 
 I32 MAX_INCLUDE_DEPTH = 32
+
+; canonical paths of every file included so far
+@@C1 pp_seen
+U64  pp_nseen
+U64  pp_cap
+
+; TRUE the first time `path` is seen, FALSE ever after. A path that does
+; not resolve is left for fopen to report.
+B1 pp_first_visit: [ @C1 path ]
+ | @C1 canon = (realpath)[ path | 0 ]
+ | IF [ canon == 0 ]
+ |  | RET [ TRUE ]
+ |  \_
+ |
+ | U64 i = 0
+ | WHILE [ i < pp_nseen ]
+ |  | IF [ (strcmp)[ ?(pp_seen + i) | canon ] == 0 ]
+ |  |  | (free)[ canon AS @ABYSS ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | i = i + 1
+ |  \_
+ |
+ | IF [ pp_nseen == pp_cap ]
+ |  | pp_cap = pp_cap * 2 + 16
+ |  | pp_seen = (realloc)[ pp_seen AS @ABYSS | pp_cap * 8 ] AS @@C1
+ |  \_
+ | ?(pp_seen + pp_nseen) = canon
+ | pp_nseen = pp_nseen + 1
+ | RET [ TRUE ]
+ \_
 
 ; Directory part of a path, or "." -- caller owns the result.
 @C1 dir_of: [ @C1 path ]
@@ -54,6 +88,11 @@ I32 insert_file: [ @String dst | U64 at | @C1 path | I32 depth | @C1 dir ]
  |  \_
  | IF [ full == 0 ]
  |  | RET [ -1 ]
+ |  \_
+ |
+ | IF [ !(pp_first_visit)[ full ] ]
+ |  | (free)[ full AS @ABYSS ]
+ |  | RET [ 0 ]
  |  \_
  |
  | @ABYSS f = (fopen)[ full | "r" ]
@@ -183,6 +222,11 @@ I32 preprocess: [ @String src | @C1 path ]
  | IF [ dir == 0 ]
  |  | RET [ -1 ]
  |  \_
+ |
+ | ; a fresh run: the root file counts as included, so it cannot pull
+ | ; itself in again
+ | pp_nseen = 0
+ | (pp_first_visit)[ path ]
  |
  | I32 rc = (preproc_internal)[ src | 0 | dir ]
  | (free)[ dir AS @ABYSS ]

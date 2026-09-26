@@ -65,7 +65,7 @@ C_LDFLAGS = $(shell llvm-config --ldflags --libs core --system-libs) -lfl
 C_SOURCES = $(shell find $(C_SRC_DIR) -type f -name '*.c')
 C_OBJECTS = $(patsubst $(C_SRC_DIR)/%.c, $(OBJ)/%.o, $(C_SOURCES))
 
-.PHONY: all plc bootstrap selfhost test typecheck seed-verify seed-refresh clean help
+.PHONY: all plc bootstrap selfhost test typecheck fuzz seed-verify seed-refresh clean help
 
 all: plc
 
@@ -75,6 +75,7 @@ help:
 	@echo "  make selfhost   stage 1 -> 2 -> 3, and check the fixed point"
 	@echo "  make test       run the test suite"
 	@echo "  make typecheck  run the programs that must be rejected"
+	@echo "  make fuzz       feed mutated programs to plc; it must never crash"
 	@echo "  make seed-verify   check the seed against the C compiler"
 	@echo "  make seed-refresh  advance the seed (see BOOTSTRAP.md)"
 	@echo "  make clean"
@@ -121,6 +122,10 @@ seed-refresh:
 
 test: $(PLC)
 	$(Q) cd test && ./run.sh
+	$(Q) ./test/cli/run.sh
+
+fuzz: $(PLC)
+	$(Q) ./test/fuzz.py
 
 typecheck: $(PLC)
 	$(Q) ./test/typecheck/run.sh

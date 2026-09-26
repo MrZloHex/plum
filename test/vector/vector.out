@@ -1,0 +1,6 @@
+SIZE 5 CAPACITY 8
+vec[3].smth = 30
+vec[9] is out of range
+nums: 100 1 9 16  sum 126
+grid[0][0] = 100
+[exit 0]

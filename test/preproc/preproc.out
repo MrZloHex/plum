@@ -1,0 +1,22 @@
+before: 225 bytes
+preprocess rc=0
+after: 227 bytes
+---
+TOP_BEFORE
+LINE_FROM_A_BEFORE
+LINE_FROM_B
+
+LINE_FROM_A_AFTER
+
+; a commented directive must NOT expand: ;!USES <inc/b.pl>
+; b.pl came in through a.pl, so neither spelling includes it again
+
+
+LINE_FROM_SELF
+
+
+SELF_END
+
+TOP_AFTER
+---
+[exit 0]

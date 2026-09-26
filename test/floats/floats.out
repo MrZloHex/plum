@@ -1,0 +1,10 @@
+9.50 5.50 15.00 3.75 1.50
+neg -7.50, mixed 16.00, unsigned 4000000000.5
+f32 5.500000, widened 17.279
+dot 25.0, |u| 5.0
+area(2) 12.5664, sqrt(2) 1.4142135624
+comparisons ok
+NaN compares as in C
+truthiness ok
+to int: 75 -7
+[exit 0]

@@ -1,0 +1,1 @@
+3:4: too many instances of `Bad`; is it generic in itself, as in X<@T> inside X<T>?

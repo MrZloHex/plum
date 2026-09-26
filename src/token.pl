@@ -44,6 +44,7 @@ TYPE TokenType: ENUM
  | TOK_NULL
  | TOK_LBRACE
  | TOK_RBRACE
+ | TOK_FN
  \_
 
 TYPE Location: STRUCT
@@ -141,6 +142,8 @@ TYPE Token: STRUCT
  |  | RET [ "LBRACE" ]
  | ELIF [ t == TOK_RBRACE ]
  |  | RET [ "RBRACE" ]
+ | ELIF [ t == TOK_FN ]
+ |  | RET [ "FN" ]
  | ELSE
  |  | RET [ "SIZE" ]
  |  \_

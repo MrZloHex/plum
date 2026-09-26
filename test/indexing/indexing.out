@@ -1,0 +1,8 @@
+sum of squares 285, squares{9} 81
+abcde
+@buf == buf: 1, ?buf = a, (buf + 2){1} = d
+pts{3}.y 30, p.x 2, 32 bytes
+name plum (4), text{1} l
+weights{2} 0.75
+heap{3} 42
+[exit 0]

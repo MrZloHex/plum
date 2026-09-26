@@ -77,6 +77,9 @@ I32 main: [ I32 argc | @@C1 argv ]
  | IF [ emit != 0 ]
  |  | IF [ (strcmp)[ emit | "AST" ] == 0 ]
  |  |  | emit_ir = FALSE
+ |  | ELIF [ (strcmp)[ emit | "IR" ] != 0 ]
+ |  |  | (printf)[ "Error: --emit takes AST or IR, not `%s'.\n" | emit ]
+ |  |  | RET [ 1 ]
  |  |  \_
  |  \_
  |
@@ -126,7 +129,9 @@ I32 main: [ I32 argc | @@C1 argv ]
  |  | IF [ out_file != 0 ]
  |  |  | dest = out_file
  |  |  \_
- |  | (codegen_deinit)[ @cg | dest ]
+ |  | IF [ !(codegen_deinit)[ @cg | dest ] ]
+ |  |  | RET [ 1 ]
+ |  |  \_
  | ELSE
  |  | ; the AST dump lives in the C driver; here we report the shape
  |  | I32 n = 0

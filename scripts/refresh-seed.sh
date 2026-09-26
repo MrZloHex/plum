@@ -18,11 +18,11 @@ cd "$(dirname "$0")/.."
 LLVM_LIBS=$(llvm-config --ldflags --libs core analysis target)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 
-echo "1/4  assembling the current seed"
+echo "1/5  assembling the current seed"
 llvm-as seed/plc.ll -o "$T/seed.bc"
 clang "$T/seed.bc" -o "$T/seed" $LLVM_LIBS 2>/dev/null
 
-echo "2/4  compiling src/ with it"
+echo "2/5  compiling src/ with it"
 if ! "$T/seed" src/main.pl -o "$T/next.ll" --emit=IR; then
     echo >&2
     echo "The current seed cannot compile src/." >&2
@@ -33,15 +33,24 @@ fi
 llvm-as "$T/next.ll" -o "$T/next.bc"
 clang "$T/next.bc" -o "$T/next" $LLVM_LIBS 2>/dev/null
 
-echo "3/4  checking the result reaches a fixed point"
+# The old seed and the new compiler need not emit the same IR -- they
+# differ whenever codegen changed, which is often the point. What must hold
+# is that the new compiler, built by itself, reproduces itself exactly.
+echo "3/5  compiling src/ with the result"
 "$T/next" src/main.pl -o "$T/next2.ll" --emit=IR
-if ! cmp -s "$T/next.ll" "$T/next2.ll"; then
+llvm-as "$T/next2.ll" -o "$T/next2.bc"
+clang "$T/next2.bc" -o "$T/next2" $LLVM_LIBS 2>/dev/null
+
+echo "4/5  checking the self-built compiler reproduces itself"
+"$T/next2" src/main.pl -o "$T/next3.ll" --emit=IR
+if ! cmp -s "$T/next2.ll" "$T/next3.ll"; then
     echo "no fixed point -- refusing to adopt this seed" >&2
+    diff <(head -c 200000 "$T/next2.ll") <(head -c 200000 "$T/next3.ll") | head -10 >&2
     exit 1
 fi
 
-echo "4/4  adopting"
-cp "$T/next2.ll" seed/plc.ll
+echo "5/5  adopting"
+cp "$T/next3.ll" seed/plc.ll
 echo
 echo "seed refreshed ($(wc -c < seed/plc.ll) bytes)"
 echo "commit seed/plc.ll together with the src/ change that needed it"

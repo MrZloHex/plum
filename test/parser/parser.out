@@ -1,0 +1,6 @@
+TYPEDEF  Node
+FNDECL   printf params=2
+FNDEF    add params=2 stmts=1
+FNDEF    main params=1 stmts=3
+-- 4 top-level statements --
+[exit 0]

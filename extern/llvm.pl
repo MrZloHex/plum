@@ -91,6 +91,7 @@ ABYSS  LLVMGetParamTypes: [ @ABYSS fnty | @@ABYSS out ]
 ; --- constants ------------------------------------------------------------
 @ABYSS LLVMConstInt: [ @ABYSS ty | U64 v | I32 sign_extend ]
 @ABYSS LLVMConstReal: [ @ABYSS ty | F64 v ]
+I32    LLVMIsConstant: [ @ABYSS v ]
 @ABYSS LLVMConstNull: [ @ABYSS ty ]
 @ABYSS LLVMConstPointerNull: [ @ABYSS ty ]
 @ABYSS LLVMConstStringInContext: [ @ABYSS ctx | @C1 s | I32 len | I32 dont_null_terminate ]

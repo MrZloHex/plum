@@ -1,0 +1,6 @@
+and=8
+xor=6
+shl=48
+shr=3
+not=-13
+[exit 0]

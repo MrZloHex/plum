@@ -64,18 +64,30 @@ ABYSS arena_init: [ @Arena a | U64 block_size ]
  |  \_
  |
  | IF [ need_block ]
- |  | U64 bs = a.block_size
- |  | IF [ size > bs ]
- |  |  | bs = size
+ |  | ; after arena_reset the blocks past current are empty: reuse the
+ |  | ; next one when it fits, and never drop the chain behind it
+ |  | @ArenaBlock nb = 0
+ |  | IF [ a.current != 0 && a.current.next != 0 ]
+ |  |  | IF [ size <= a.current.next.size ]
+ |  |  |  | nb = a.current.next
+ |  |  |  | nb.used = 0
+ |  |  |  \_
  |  |  \_
- |  | @ArenaBlock nb = (arena_new_block)[ bs ]
  |  | IF [ nb == 0 ]
- |  |  | RET [ 0 ]
- |  |  \_
- |  | IF [ a.first == 0 ]
- |  |  | a.first = nb
- |  | ELSE
- |  |  | a.current.next = nb
+ |  |  | U64 bs = a.block_size
+ |  |  | IF [ size > bs ]
+ |  |  |  | bs = size
+ |  |  |  \_
+ |  |  | nb = (arena_new_block)[ bs ]
+ |  |  | IF [ nb == 0 ]
+ |  |  |  | RET [ 0 ]
+ |  |  |  \_
+ |  |  | IF [ a.first == 0 ]
+ |  |  |  | a.first = nb
+ |  |  | ELSE
+ |  |  |  | nb.next = a.current.next
+ |  |  |  | a.current.next = nb
+ |  |  |  \_
  |  |  \_
  |  | a.current = nb
  |  | offset = 0

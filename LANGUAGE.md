@@ -161,7 +161,9 @@ everything after it sees only ordinary types and functions.
 ```plum
 I32 puts: [ @C1 str ]                 ; declaration only = extern C function
 I32 printf: [ @C1 fmt | ... ]         ; varargs
-I32 counter = 0                       ; global, constant initialiser only
+I32 counter = 0                       ; global; initialised by a constant
+I32 MASK = (1 << 4) - 1               ;   expression: literals, enum constants,
+FN I32 [ I32 | I32 ] OP = add         ;   SIZE, function names, arithmetic
 
 I32 add: [ I32 a | I32 b ]            ; declaration + block = definition
  | RET [ a + b ]
@@ -171,6 +173,34 @@ I32 add: [ I32 a | I32 b ]            ; declaration + block = definition
 Structs pass and return **by value**. Recursion works. Everything lives at
 the top level — no nested functions and no modules. Methods live in an
 `IFACE`, described below.
+
+### Function pointers
+
+```plum
+TYPE BinOp: FN I32 [ I32 | I32 ]      ; FN <return> [ <params> ]
+
+I32 fold: [ @I32 xs | I32 n | I32 acc | BinOp f ]
+ | ...
+ |  | acc = (f)[ acc | xs{i} ]        ; called like a function
+ \_
+
+ | FN I32 [ I32 | I32 ] op = add       ; a function's name is its address
+ | BinOp table{3}                      ; arrays of them
+ | (table{1})[ 6 | 3 ]                 ; call any expression that yields one
+ | ((pick)[ '+' ])[ 40 | 2 ]
+ | (shape.area)[ @shape ]              ; a field: a vtable by hand
+```
+
+`FN R [ P | Q ]` is a pointer to a function taking `P` and `Q` and
+returning `R`; parameter names may be written and are ignored, and `...`
+makes it variadic. It is one machine pointer, C-compatible, so C
+callbacks such as `qsort`'s comparator take PLUM functions directly.
+
+A function pointer accepts only a function of exactly its signature, or
+`NULL`; it compares with `==`, and is true when non-null. `(name)[ ... ]`
+calls a variable holding a function pointer if one is in scope, and the
+function of that name otherwise. `(obj.name)[ ... ]` calls a method if the
+class has one, and a function-pointer field otherwise.
 
 ---
 
@@ -211,7 +241,13 @@ not expressible in an LR grammar.
 ## Expressions
 
 **Literals** — `42`, `0xFF`, `0b1010`, `1_000`, `'a'`, `'\n'`, `'\x1b'`,
-`"text\n"`, `TRUE`, `FALSE`, `NULL`
+`"text\n"`, `TRUE`, `FALSE`, `NULL`, `1.5`, `1e3`, `2.5e-2`, `6.02E+23`.
+`_` separates digits in every kind of number. An integer literal is an `I32` when it
+fits and 64 bits otherwise, so `0xDEAD_BEEF_CAFE_F00D` keeps every bit.
+
+**Truth** — a condition, `!`, `&&`, `||` and conversion to `B1` all mean
+"not zero" (for pointers, "not NULL"). `TRUE` converts to the integer 1.
+Unsigned integers widen with zeros, signed ones with their sign.
 
 | Group | Operators |
 |---|---|
@@ -219,7 +255,7 @@ not expressible in an LR grammar.
 | Bitwise | `&` `\|` `^` `~` `<<` `>>` |
 | Comparison | `==` `!=` `<` `<=` `>` `>=` |
 | Logical | `&&` `\|\|` `!` — genuinely short-circuiting |
-| Pointers | `?p` dereference, `@x` address-of, `p + n` scaled by element size |
+| Pointers | `?p` dereference, `@x` address-of, `p + n` scaled by element size, `p - q` counts elements, `@ABYSS` moves by bytes |
 | Indexing | `a{i}`, on arrays and pointers |
 | Members | `s.field`, auto-dereferencing through pointers |
 | Calls | `(name)[ arg \| arg ]`, methods `(obj.name)[ arg ]` |
@@ -270,7 +306,9 @@ Two consequences worth memorising:
 **`!USES <path>`** includes a file textually, before lexing. Paths resolve
 relative to the including file, nesting is capped at 32, and comments and
 string literals are skipped so a file can mention the directive without
-triggering it.
+triggering it. Each file is included **once**: later directives naming the
+same file, by any path, expand to nothing. PLUM declarations do not depend
+on order, so no guards are needed.
 
 **C interop** needs no binding layer. Declare the function and call it.
 Opaque handles travel as `@ABYSS`, which is how the compiler's own backend
@@ -282,8 +320,7 @@ drives the entire LLVM-C API.
 
 `src/check.pl` runs between `meta` and `codegen`. It only ever
 rejects; it never changes what is emitted, so a program that passes
-compiles exactly as it did before the checker existed. The C and PLUM
-compilers still emit byte-identical IR for every valid program.
+compiles exactly as it did before the checker existed.
 
 It catches, with a line and column:
 
@@ -300,6 +337,19 @@ It catches, with a line and column:
 * a bitwise operator on a float, and a float used as an index
 * indexing something that is neither an array nor a pointer
 * assigning to, or initialising, a whole array
+* assigning to, or taking `@` of, something that is not stored anywhere:
+  a literal, a call's result, a function, an enum constant
+* using the result of an `ABYSS` call as a value
+* pointer arithmetic other than `p + n`, `n + p`, `p - n` and `p - q`
+  (which needs both pointers to the same type), and `-`/`~` on a pointer
+* dereferencing or indexing `@ABYSS` before casting it
+* casting a struct, and `SIZE [ ABYSS ]`
+* a value-returning function that can reach its end without `RET`
+  (`main` is exempt and returns 0, as in C)
+* `BREAK` or `CONTINUE` outside a loop
+* a TYPE, function or global defined twice, or a function declared
+  twice with different signatures
+* everything about `IFACE`, `CLASS` and generics listed in their section
 
 It deliberately does *not* flag mixing signed and unsigned, or narrowing
 an integer, since PLUM's implicit coercion already defines those.
@@ -317,7 +367,6 @@ once accepted silently.
 | Ternary `?:` | `IF` |
 | `for` | `WHILE` |
 | `++` / `--` | `+= 1` |
-| Function pointers | none |
 | `va_arg` (consuming varargs) | none — callers format first, as `src/trace.pl` does |
 | Generic functions | a method of a generic `CLASS` |
 | Interface-typed values, dynamic dispatch | none; an `IFACE` is compile time only |
@@ -366,6 +415,7 @@ the IR is unoptimised (see below).
   `mem2reg` alone would transform it.
 * Diagnostics carry a line and column but no source excerpt.
 * No incremental compilation, no debug info.
-* **Fold the differential test into `test/run.sh`.** The C and PLUM
-  compilers currently emit byte-identical IR on all 28 tests. That is a
-  strong invariant, and it should be enforced rather than spot-checked.
+* The C compiler is frozen, and PLUM has since diverged from it (literal
+  widths, truth values, generics and the rest), so the two no longer emit
+  the same IR. The evidence now is `test/*/*.out`: every test's output
+  and exit code, checked on every run.

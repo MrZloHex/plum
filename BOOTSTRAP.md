@@ -129,10 +129,11 @@ at which the seed was independently verifiable from C source.
 
 **Keep it in git; take it out of the build.** Two reasons.
 
-It is the only *independent* implementation. Right now both compilers emit
-byte-identical IR for all 28 tests, and that agreement is the strongest
-correctness evidence the project has. Delete the C compiler and the seed
-can only ever be checked against itself.
+It is the only *independent* implementation. For a long time both
+compilers emitted byte-identical IR for every test; the language has since
+moved on, so that holds only for programs written in the subset the C
+compiler knows. Delete the C compiler and the seed can only ever be
+checked against itself.
 
 It is also the way back. If the seed is ever lost, corrupted, or stranded
 on an LLVM version that no longer exists, `bootstrap/src/*.c` regenerates it from

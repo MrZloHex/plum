@@ -24,6 +24,7 @@ syntax keyword plumStructure   STRUCT UNION ENUM
 " The name after TYPE is a type, not a function, so claim it via nextgroup.
 syntax keyword plumStructure   TYPE nextgroup=plumTypeName skipwhite
 syntax keyword plumStructure   IFACE CLASS nextgroup=plumTypeName skipwhite
+syntax keyword plumType        FN
 syntax keyword plumStructure   IMPL PUBLIC PRIVATE
 syntax match   plumTypeName    contained "\w\+"
 syntax keyword plumOperatorKw  SIZE AS

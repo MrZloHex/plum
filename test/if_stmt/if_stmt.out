@@ -1,0 +1,4 @@
+outer if
+if inner if
+Hello from PLUM!
+[exit 0]

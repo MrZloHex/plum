@@ -222,6 +222,8 @@ B1 enum_const_get: [ @CodegenContext c | @C1 name | @I64 out ]
  |
  | IF [ tn.as.type.kind == TT_BASE_TYPE ]
  |  | base = (map_base_type)[ c | tn.as.type.type.as.base_type ]
+ | ELIF [ tn.as.type.kind == TT_FN_TYPE ]
+ |  | base = (LLVMPointerType)[ (LLVMInt8TypeInContext)[ c.ctx ] | 0 ]
  | ELSE
  |  | @CGType ut = (type_lookup)[ c | tn.as.type.type.as.ident ]
  |  | IF [ ut == 0 ]
@@ -267,6 +269,8 @@ B1 is_float_ty: [ @ABYSS ty ]
  | @ABYSS base = 0
  | IF [ ti.node.as.type.kind == TT_BASE_TYPE ]
  |  | base = (map_base_type)[ c | ti.node.as.type.type.as.base_type ]
+ | ELIF [ ti.node.as.type.kind == TT_FN_TYPE ]
+ |  | base = (LLVMPointerType)[ (LLVMInt8TypeInContext)[ c.ctx ] | 0 ]
  | ELSE
  |  | @CGType ut = (type_lookup)[ c | ti.node.as.type.type.as.ident ]
  |  | IF [ ut == 0 ]
@@ -409,23 +413,11 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
  |  \_
  |
  | IF [ n.kind == NT_FN_CALL ]
- |  | @C1 fname = n.as.fn_call.ident.as.ident
- |  | IF [ n.as.fn_call.recv != 0 ]
- |  |  | U64 rp = 0
- |  |  | fname = (method_fn)[ c | n | @rp ]
- |  |  | IF [ fname == 0 ]
- |  |  |  | RET [ none ]
- |  |  |  \_
+ |  | @ASTNode sig = (callee_sig)[ c | n ]
+ |  | IF [ sig == 0 ]
+ |  |  | RET [ none ]
  |  |  \_
- |  | @ABYSS d = 0
- |  | IF [ (map_get)[ @(c.meta.func_decls) | fname | @d AS @@ABYSS ] == 1 ]
- |  |  | @ASTNode decl = d AS @ASTNode
- |  |  | TypeInfo r
- |  |  | r.node = decl.as.fn_decl.type
- |  |  | r.ptrs = decl.as.fn_decl.type.as.type.ptrs
- |  |  | RET [ r ]
- |  |  \_
- |  | RET [ none ]
+ |  | RET [ (decl_info)[ (sig_ret)[ sig ] ] ]
  |  \_
  |
  | RET [ none ]
@@ -450,6 +442,14 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
  |  | IF [ fw == tw ]
  |  |  | RET [ v ]
  |  |  \_
+ |  | ; a truth value is `!= 0`, not the low bit
+ |  | IF [ tw == 1 ]
+ |  |  | RET [ (LLVMBuildICmp)[ c.builder | LLVMIntNE | v | (LLVMConstInt)[ from | 0 | 0 ] | "tobool" ] ]
+ |  |  \_
+ |  | ; TRUE widens to 1, not -1
+ |  | IF [ fw == 1 ]
+ |  |  | RET [ (LLVMBuildZExt)[ c.builder | v | to | "zext" ] ]
+ |  |  \_
  |  | IF [ fw < tw ]
  |  |  | RET [ (LLVMBuildSExt)[ c.builder | v | to | "sext" ] ]
  |  |  \_
@@ -460,6 +460,9 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
  |  | RET [ (LLVMBuildIntToPtr)[ c.builder | v | to | "itop" ] ]
  |  \_
  | IF [ fk == LLVMPointerTypeKind && tk == LLVMIntegerTypeKind ]
+ |  | IF [ (LLVMGetIntTypeWidth)[ to ] == 1 ]
+ |  |  | RET [ (LLVMBuildICmp)[ c.builder | LLVMIntNE | v | (LLVMConstPointerNull)[ from ] | "tobool" ] ]
+ |  |  \_
  |  | RET [ (LLVMBuildPtrToInt)[ c.builder | v | to | "ptoi" ] ]
  |  \_
  | IF [ fk == LLVMPointerTypeKind && tk == LLVMPointerTypeKind ]
@@ -486,6 +489,25 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
  |  | (cg_fatal)[ "cannot convert to or from an aggregate" ]
  |  \_
  | RET [ v ]
+ \_
+
+; coerce, knowing the expression v came from: an unsigned integer widens
+; with zeros rather than copies of its top bit.
+@ABYSS coerce_e: [ @CodegenContext c | @ABYSS v | @ABYSS to | @ASTNode e ]
+ | IF [ v == 0 || to == 0 ]
+ |  | RET [ v ]
+ |  \_
+ | @ABYSS from = (LLVMTypeOf)[ v ]
+ | IF [ (LLVMGetTypeKind)[ from ] == LLVMIntegerTypeKind && (LLVMGetTypeKind)[ to ] == LLVMIntegerTypeKind ]
+ |  | I32 fw = (LLVMGetIntTypeWidth)[ from ]
+ |  | IF [ fw > 1 && fw < (LLVMGetIntTypeWidth)[ to ] && (is_unsigned_expr)[ c | e ] ]
+ |  |  | RET [ (LLVMBuildZExt)[ c.builder | v | to | "zext" ] ]
+ |  |  \_
+ |  \_
+ | IF [ (LLVMGetTypeKind)[ from ] == LLVMIntegerTypeKind && (is_float_ty)[ to ] ]
+ |  | RET [ (to_float)[ c | v | e | to ] ]
+ |  \_
+ | RET [ (coerce)[ c | v | to ] ]
  \_
 
 ; --- string literals ------------------------------------------------------
@@ -779,23 +801,170 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | RET [ (method_name)[ ut.name | call.as.fn_call.ident.as.ident ] ]
  \_
 
-@ABYSS gen_call: [ @CodegenContext c | @ASTNode call ]
- | @C1 name = call.as.fn_call.ident.as.ident
- | U64 rptrs = 0
- | IF [ call.as.fn_call.recv != 0 ]
- |  | name = (method_fn)[ c | call | @rptrs ]
- |  | IF [ name == 0 ]
- |  |  | (printf)[ "codegen: cannot tell whose method `%s` is at %d:%d\n" | call.as.fn_call.ident.as.ident | call.loc.line | call.loc.col ]
- |  |  | (exit)[ 1 ]
+; A type written through aliases -- TYPE BinOp: FN I32 [ I32 ] -- as the
+; type they name. Only a bare alias is followed; @BinOp is a pointer.
+@ASTNode unalias: [ @CodegenContext c | @ASTNode tn ]
+ | I32 hops = 0
+ | WHILE [ tn != 0 && tn.as.type.kind == TT_USER_TYPE && tn.as.type.ptrs == 0 && hops < 16 ]
+ |  | @ABYSS d = 0
+ |  | IF [ (map_get)[ @(c.meta.types) | tn.as.type.type.as.ident | @d AS @@ABYSS ] != 1 ]
+ |  |  | RET [ tn ]
+ |  |  \_
+ |  | @ASTNode td = d AS @ASTNode
+ |  | IF [ td.as.type_def.kind != TD_ALIAS ]
+ |  |  | RET [ tn ]
+ |  |  \_
+ |  | tn = td.as.type_def.tdef
+ |  | hops += 1
+ |  \_
+ | RET [ tn ]
+ \_
+
+; The FN type an expression holds when it can be called, or 0. What
+; counts is the pointer depth left after any `?`: ?pp of an @FN is callable.
+@ASTNode fn_type_of: [ @CodegenContext c | @ASTNode e ]
+ | TypeInfo ti = (infer)[ c | e ]
+ | IF [ ti.node == 0 || ti.ptrs != 0 ]
+ |  | RET [ 0 ]
+ |  \_
+ | @ASTNode t = ti.node
+ | IF [ t.as.type.kind == TT_USER_TYPE ]
+ |  | ; the name's definition, whatever pointers were written around it
+ |  | I32 hops = 0
+ |  | @ABYSS d = 0
+ |  | WHILE [ t.as.type.kind == TT_USER_TYPE && hops < 16 && (map_get)[ @(c.meta.types) | t.as.type.type.as.ident | @d AS @@ABYSS ] == 1 ]
+ |  |  | @ASTNode td = d AS @ASTNode
+ |  |  | IF [ td.as.type_def.kind != TD_ALIAS ]
+ |  |  |  | RET [ 0 ]
+ |  |  |  \_
+ |  |  | t = td.as.type_def.tdef
+ |  |  | hops += 1
  |  |  \_
  |  \_
- | @ABYSS callee = (LLVMGetNamedFunction)[ c.mod | name ]
+ | IF [ t.as.type.kind != TT_FN_TYPE ]
+ |  | RET [ 0 ]
+ |  \_
+ | RET [ t ]
+ \_
+
+; A variable declared with an FN type, callable by its bare name.
+@CGSym fn_var: [ @CodegenContext c | @C1 name ]
+ | @CGSym s = (scope_lookup)[ c | name ]
+ | IF [ s == 0 || s.ntype == 0 ]
+ |  | RET [ 0 ]
+ |  \_
+ | IF [ s.ntype.as.type.arr != 0 ]
+ |  | RET [ 0 ]
+ |  \_
+ | @ASTNode t = (unalias)[ c | s.ntype ]
+ | IF [ t.as.type.kind != TT_FN_TYPE || t.as.type.ptrs != 0 ]
+ |  | RET [ 0 ]
+ |  \_
+ | RET [ s ]
+ \_
+
+; The signature a call goes through, as check.pl resolves it: a variable
+; holding a function pointer before a function of that name, and a method
+; before a pointer field of that name.
+@ASTNode callee_sig: [ @CodegenContext c | @ASTNode n ]
+ | IF [ n.as.fn_call.ident == 0 ]
+ |  | RET [ (fn_type_of)[ c | n.as.fn_call.target ] ]
+ |  \_
+ | @ABYSS d = 0
+ | IF [ n.as.fn_call.recv != 0 ]
+ |  | U64 rp = 0
+ |  | @C1 mname = (method_fn)[ c | n | @rp ]
+ |  | IF [ mname != 0 && (map_get)[ @(c.meta.func_decls) | mname | @d AS @@ABYSS ] == 1 ]
+ |  |  | RET [ d AS @ASTNode ]
+ |  |  \_
+ |  | RET [ (fn_type_of)[ c | n.as.fn_call.target ] ]
+ |  \_
+ | @CGSym s = (fn_var)[ c | n.as.fn_call.ident.as.ident ]
+ | IF [ s != 0 ]
+ |  | RET [ (unalias)[ c | s.ntype ] ]
+ |  \_
+ | IF [ (map_get)[ @(c.meta.func_decls) | n.as.fn_call.ident.as.ident | @d AS @@ABYSS ] == 1 ]
+ |  | RET [ d AS @ASTNode ]
+ |  \_
+ | RET [ 0 ]
+ \_
+
+; The LLVM function type behind an FN type.
+@ABYSS fn_llvm_type: [ @CodegenContext c | @ASTNode sig ]
+ | @@ABYSS ptypes = (malloc)[ 64 * 8 ] AS @@ABYSS
+ | I32 n = 0
+ | I32 va = 0
+ | @ASTNode p = (sig_params)[ sig ]
+ | WHILE [ p != 0 && n < 64 ]
+ |  | IF [ (sig_is_va)[ p ] ]
+ |  |  | va = 1
+ |  | ELSE
+ |  |  | ?(ptypes + n) = (map_type)[ c | (sig_ptype)[ p ] ]
+ |  |  | n = n + 1
+ |  |  \_
+ |  | p = (sig_next)[ p ]
+ |  \_
+ | @ABYSS fty = (LLVMFunctionType)[ (map_type)[ c | (sig_ret)[ sig ] ] | ptypes | n | va ]
+ | (free)[ ptypes AS @ABYSS ]
+ | RET [ fty ]
+ \_
+
+@ABYSS gen_call: [ @CodegenContext c | @ASTNode call ]
+ | @C1 name = "a function pointer"
+ | U64 rptrs = 0
+ | B1 is_method = FALSE
+ | @ABYSS callee = 0
+ | @ASTNode ftn = 0
+ |
+ | IF [ call.as.fn_call.ident == 0 ]
+ |  | ; (expr)[ ... ]
+ |  | ftn = (fn_type_of)[ c | call.as.fn_call.target ]
+ |  | IF [ ftn != 0 ]
+ |  |  | callee = (gen_expr)[ c | call.as.fn_call.target ]
+ |  |  \_
+ | ELIF [ call.as.fn_call.recv != 0 ]
+ |  | ; (obj.name)[ ... ]: a method, else a function pointer in a field
+ |  | name = call.as.fn_call.ident.as.ident
+ |  | @C1 mname = (method_fn)[ c | call | @rptrs ]
+ |  | IF [ mname != 0 ]
+ |  |  | callee = (LLVMGetNamedFunction)[ c.mod | mname ]
+ |  |  \_
+ |  | IF [ callee != 0 ]
+ |  |  | is_method = TRUE
+ |  |  | name = mname
+ |  | ELSE
+ |  |  | ftn = (fn_type_of)[ c | call.as.fn_call.target ]
+ |  |  | IF [ ftn != 0 ]
+ |  |  |  | callee = (gen_expr)[ c | call.as.fn_call.target ]
+ |  |  |  \_
+ |  |  \_
+ |  | IF [ callee == 0 ]
+ |  |  | (printf)[ "codegen: cannot tell what `%s` calls at %d:%d\n" | name | call.loc.line | call.loc.col ]
+ |  |  | (exit)[ 1 ]
+ |  |  \_
+ | ELSE
+ |  | ; (name)[ ... ]: a variable holding a function pointer, else a function
+ |  | name = call.as.fn_call.ident.as.ident
+ |  | @CGSym s = (fn_var)[ c | name ]
+ |  | IF [ s != 0 ]
+ |  |  | ftn = (unalias)[ c | s.ntype ]
+ |  |  | callee = (LLVMBuildLoad2)[ c.builder | s.type | s.value | name ]
+ |  |  | name = "a function pointer"
+ |  | ELSE
+ |  |  | callee = (LLVMGetNamedFunction)[ c.mod | name ]
+ |  |  \_
+ |  \_
  | IF [ callee == 0 ]
  |  | (printf)[ "codegen: call to undeclared function `%s`\n" | name ]
  |  | (exit)[ 1 ]
  |  \_
  |
- | @ABYSS fty = (LLVMGlobalGetValueType)[ callee ]
+ | @ABYSS fty = 0
+ | IF [ ftn != 0 ]
+ |  | fty = (fn_llvm_type)[ c | ftn ]
+ | ELSE
+ |  | fty = (LLVMGlobalGetValueType)[ callee ]
+ |  \_
  | I32 nparams = (LLVMCountParamTypes)[ fty ]
  |
  | @@ABYSS ptypes = (malloc)[ 64 * 8 ] AS @@ABYSS
@@ -805,7 +974,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | I32 n = 0
  |
  | ; a method's first argument is the address of its object
- | IF [ call.as.fn_call.recv != 0 ]
+ | IF [ is_method ]
  |  | @ASTNode recv = call.as.fn_call.recv
  |  | @ABYSS self = 0
  |  | IF [ rptrs > 0 ]
@@ -834,7 +1003,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  |  \_
  |  |
  |  | IF [ n < nparams ]
- |  |  | v = (coerce)[ c | v | ?(ptypes + n) ]
+ |  |  | v = (coerce_e)[ c | v | ?(ptypes + n) | a.as.argument.argument ]
  |  | ELSE
  |  |  | ; C variadic default promotion, respecting signedness
  |  |  | @ABYSS vt = (LLVMTypeOf)[ v ]
@@ -946,7 +1115,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  |  | (printf)[ "codegen: left side of `=` is not assignable at %d:%d\n" | n.loc.line | n.loc.col ]
  |  |  | (exit)[ 1 ]
  |  |  \_
- |  | @ABYSS v = (coerce)[ c | (gen_expr)[ c | n.as.bin_op.right ] | lv.type ]
+ |  | @ABYSS v = (coerce_e)[ c | (gen_expr)[ c | n.as.bin_op.right ] | lv.type | n.as.bin_op.right ]
  |  | IF [ v == 0 ]
  |  |  | (printf)[ "codegen: could not evaluate the right side of `=` at %d:%d\n" | n.loc.line | n.loc.col ]
  |  |  | (exit)[ 1 ]
@@ -1031,9 +1200,20 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | I32 lk = (LLVMGetTypeKind)[ (LLVMTypeOf)[ l ] ]
  | I32 rk = (LLVMGetTypeKind)[ (LLVMTypeOf)[ r ] ]
  |
- | ; pointer arithmetic, scaled by the pointee like C
+ | ; pointer arithmetic, scaled by the pointee like C. n + p is p + n.
+ | @ASTNode pe = n.as.bin_op.left
+ | @ASTNode ie = n.as.bin_op.right
+ | IF [ k == BOT_PLUS && rk == LLVMPointerTypeKind && lk == LLVMIntegerTypeKind ]
+ |  | @ABYSS tmp = l
+ |  | l = r
+ |  | r = tmp
+ |  | pe = n.as.bin_op.right
+ |  | ie = n.as.bin_op.left
+ |  | lk = LLVMPointerTypeKind
+ |  | rk = LLVMIntegerTypeKind
+ |  \_
  | IF [ (k == BOT_PLUS || k == BOT_MINUS) && lk == LLVMPointerTypeKind ]
- |  | TypeInfo ti = (infer)[ c | n.as.bin_op.left ]
+ |  | TypeInfo ti = (infer)[ c | pe ]
  |  | @ABYSS elem = 0
  |  | IF [ ti.node != 0 && ti.ptrs > 0 ]
  |  |  | TypeInfo inner
@@ -1041,11 +1221,22 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  |  | inner.ptrs = ti.ptrs - 1
  |  |  | elem = (llvm_of)[ c | inner ]
  |  |  \_
- |  | IF [ elem == 0 ]
+ |  | ; @ABYSS moves in bytes, as with GNU C's void *
+ |  | IF [ elem == 0 || (LLVMGetTypeKind)[ elem ] == LLVMVoidTypeKind ]
  |  |  | elem = (LLVMInt8TypeInContext)[ c.ctx ]
  |  |  \_
+ |  | @ABYSS i64 = (LLVMInt64TypeInContext)[ c.ctx ]
  |  |
- |  | @ABYSS off = (coerce)[ c | r | (LLVMInt64TypeInContext)[ c.ctx ] ]
+ |  | ; p - q: how many elements apart they are
+ |  | IF [ k == BOT_MINUS && rk == LLVMPointerTypeKind ]
+ |  |  | @ABYSS li = (LLVMBuildPtrToInt)[ c.builder | l | i64 | "pl" ]
+ |  |  | @ABYSS ri = (LLVMBuildPtrToInt)[ c.builder | r | i64 | "pr" ]
+ |  |  | @ABYSS bytes = (LLVMBuildSub)[ c.builder | li | ri | "pdiff" ]
+ |  |  | U64 esz = (LLVMABISizeOfType)[ (LLVMGetModuleDataLayout)[ c.mod ] | elem ]
+ |  |  | RET [ (LLVMBuildSDiv)[ c.builder | bytes | (LLVMConstInt)[ i64 | esz | 0 ] | "pcount" ] ]
+ |  |  \_
+ |  |
+ |  | @ABYSS off = (coerce_e)[ c | r | i64 | ie ]
  |  | IF [ k == BOT_MINUS ]
  |  |  | off = (LLVMBuildNeg)[ c.builder | off | "neg" ]
  |  |  \_
@@ -1065,9 +1256,9 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | @ABYSS rt = (LLVMTypeOf)[ r ]
  |  | IF [ lt != rt && (LLVMGetTypeKind)[ lt ] == LLVMIntegerTypeKind && (LLVMGetTypeKind)[ rt ] == LLVMIntegerTypeKind ]
  |  |  | IF [ (LLVMGetIntTypeWidth)[ lt ] < (LLVMGetIntTypeWidth)[ rt ] ]
- |  |  |  | l = (coerce)[ c | l | rt ]
+ |  |  |  | l = (coerce_e)[ c | l | rt | n.as.bin_op.left ]
  |  |  | ELSE
- |  |  |  | r = (coerce)[ c | r | lt ]
+ |  |  |  | r = (coerce_e)[ c | r | lt | n.as.bin_op.right ]
  |  |  |  \_
  |  |  \_
  |  \_
@@ -1162,7 +1353,12 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | I32 k = n.as.literal.kind
  |
  | IF [ k == LT_INTEGER ]
- |  | RET [ (LLVMConstInt)[ (LLVMInt32TypeInContext)[ c.ctx ] | n.as.literal.as.int_lit AS U64 | 1 ] ]
+ |  | ; an I32 when it fits, as it always was; otherwise all 64 bits
+ |  | I64 v = n.as.literal.as.int_lit
+ |  | IF [ v < -2147483648 || v > 2147483647 ]
+ |  |  | RET [ (LLVMConstInt)[ (LLVMInt64TypeInContext)[ c.ctx ] | v AS U64 | 1 ] ]
+ |  |  \_
+ |  | RET [ (LLVMConstInt)[ (LLVMInt32TypeInContext)[ c.ctx ] | v AS U64 | 1 ] ]
  |  \_
  | IF [ k == LT_BOOLEAN ]
  |  | U64 b = 0
@@ -1206,6 +1402,11 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | I64 ev = 0
  |  | IF [ (enum_const_get)[ c | n.as.ident | @ev ] ]
  |  |  | RET [ (LLVMConstInt)[ (LLVMInt32TypeInContext)[ c.ctx ] | ev AS U64 | 1 ] ]
+ |  |  \_
+ |  | ; a function's name is its address
+ |  | @ABYSS fn = (LLVMGetNamedFunction)[ c.mod | n.as.ident ]
+ |  | IF [ fn != 0 ]
+ |  |  | RET [ fn ]
  |  |  \_
  |  | (printf)[ "codegen: unknown identifier `%s` at %d:%d\n" | n.as.ident | n.loc.line | n.loc.col ]
  |  | (exit)[ 1 ]
@@ -1294,9 +1495,17 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  |  | RET [ v ]
  |  |  \_
  |  | IF [ fk == LLVMIntegerTypeKind && (tk == LLVMFloatTypeKind || tk == LLVMDoubleTypeKind) ]
- |  |  | RET [ (LLVMBuildSIToFP)[ c.builder | v | to | "cast" ] ]
+ |  |  | RET [ (to_float)[ c | v | n.as.cast.expr | to ] ]
  |  |  \_
  |  | IF [ (fk == LLVMFloatTypeKind || fk == LLVMDoubleTypeKind) && tk == LLVMIntegerTypeKind ]
+ |  |  | ; to an unsigned type, the whole unsigned range is reachable
+ |  |  | @ASTNode ct = n.as.cast.type
+ |  |  | IF [ ct.as.type.kind == TT_BASE_TYPE && ct.as.type.ptrs == 0 ]
+ |  |  |  | I32 bt = ct.as.type.type.as.base_type
+ |  |  |  | IF [ bt == BT_U8 || bt == BT_U16 || bt == BT_U32 || bt == BT_U64 || bt == BT_USIZE ]
+ |  |  |  |  | RET [ (LLVMBuildFPToUI)[ c.builder | v | to | "cast" ] ]
+ |  |  |  |  \_
+ |  |  |  \_
  |  |  | RET [ (LLVMBuildFPToSI)[ c.builder | v | to | "cast" ] ]
  |  |  \_
  |  | IF [ (fk == LLVMFloatTypeKind || fk == LLVMDoubleTypeKind) && (tk == LLVMFloatTypeKind || tk == LLVMDoubleTypeKind) ]
@@ -1308,9 +1517,10 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  \_
  |
  | IF [ n.kind == NT_BUILTIN ]
+ |  | ; a plain number from the data layout, so it folds anywhere
  |  | @ABYSS t = (map_type)[ c | n.as.builtin.size ]
- |  | @ABYSS i64 = (LLVMInt64TypeInContext)[ c.ctx ]
- |  | RET [ (LLVMBuildIntCast2)[ c.builder | (LLVMSizeOf)[ t ] | i64 | 0 | "size" ] ]
+ |  | U64 sz = (LLVMABISizeOfType)[ (LLVMGetModuleDataLayout)[ c.mod ] | t ]
+ |  | RET [ (LLVMConstInt)[ (LLVMInt64TypeInContext)[ c.ctx ] | sz | 0 ] ]
  |  \_
  |
  | (printf)[ "codegen: unhandled expression node %d at %d:%d\n" | n.kind | n.loc.line | n.loc.col ]
@@ -1446,7 +1656,7 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  |  | (scope_define)[ c | nm | slot | ty | d.as.var_decl.type ]
  |  |
  |  | IF [ d.as.var_decl.init != 0 ]
- |  |  | @ABYSS v = (coerce)[ c | (gen_expr)[ c | d.as.var_decl.init ] | ty ]
+ |  |  | @ABYSS v = (coerce_e)[ c | (gen_expr)[ c | d.as.var_decl.init ] | ty | d.as.var_decl.init ]
  |  |  | IF [ v == 0 ]
  |  |  |  | (printf)[ "codegen: could not evaluate the initialiser of `%s` at %d:%d\n" | nm | d.loc.line | d.loc.col ]
  |  |  |  | (exit)[ 1 ]
@@ -1460,7 +1670,7 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  |  | @ASTNode r = st.as.stmt.stmt
  |  | B1 has_val = r.as.ret.expr != 0
  |  | IF [ has_val && (LLVMGetTypeKind)[ c.ret_type ] != LLVMVoidTypeKind ]
- |  |  | @ABYSS v = (coerce)[ c | (gen_expr)[ c | r.as.ret.expr ] | c.ret_type ]
+ |  |  | @ABYSS v = (coerce_e)[ c | (gen_expr)[ c | r.as.ret.expr ] | c.ret_type | r.as.ret.expr ]
  |  |  | (LLVMBuildRet)[ c.builder | v ]
  |  | ELSE
  |  |  | (LLVMBuildRetVoid)[ c.builder ]
@@ -1690,6 +1900,42 @@ ABYSS gen_type_def: [ @CodegenContext c | @ASTNode td ]
  | RET
  \_
 
+; Built only from literals, enum constants, function names, SIZE and
+; arithmetic on those -- what a global may be initialised with.
+B1 is_const_expr: [ @CodegenContext c | @ASTNode e ]
+ | @ASTNode n = (strip)[ e ]
+ | IF [ n == 0 ]
+ |  | RET [ FALSE ]
+ |  \_
+ | I32 k = n.kind
+ | IF [ k == NT_LITERAL || k == NT_BUILTIN ]
+ |  | RET [ TRUE ]
+ |  \_
+ | IF [ k == NT_IDENT ]
+ |  | I64 ev = 0
+ |  | RET [ (enum_const_get)[ c | n.as.ident | @ev ] || (LLVMGetNamedFunction)[ c.mod | n.as.ident ] != 0 ]
+ |  \_
+ | IF [ k == NT_CAST ]
+ |  | RET [ (is_const_expr)[ c | n.as.cast.expr ] ]
+ |  \_
+ | IF [ k == NT_UNY_OP ]
+ |  | I32 uk = n.as.uny_op.kind
+ |  | IF [ uk == UOT_NEG || uk == UOT_BNOT || uk == UOT_NOT ]
+ |  |  | RET [ (is_const_expr)[ c | n.as.uny_op.operand ] ]
+ |  |  \_
+ |  | RET [ FALSE ]
+ |  \_
+ | IF [ k == NT_BIN_OP ]
+ |  | I32 bk = n.as.bin_op.kind
+ |  | ; && and || branch; the others build no control flow
+ |  | IF [ bk == BOT_ASSIGN || bk == BOT_MEMBER || bk == BOT_INDEX || bk == BOT_AND || bk == BOT_OR ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | RET [ (is_const_expr)[ c | n.as.bin_op.left ] && (is_const_expr)[ c | n.as.bin_op.right ] ]
+ |  \_
+ | RET [ FALSE ]
+ \_
+
 ABYSS gen_global: [ @CodegenContext c | @ASTNode d ]
  | @C1 nm = d.as.var_decl.ident.as.ident
  | @ABYSS ty = (map_type)[ c | d.as.var_decl.type ]
@@ -1700,6 +1946,10 @@ ABYSS gen_global: [ @CodegenContext c | @ASTNode d ]
  |  | @ASTNode lit = (strip)[ d.as.var_decl.init ]
  |  | IF [ lit != 0 && lit.kind == NT_LITERAL ]
  |  |  | init = (gen_literal)[ c | lit ]
+ |  |  | ; NULL, or any integer, into a pointer global
+ |  |  | IF [ (LLVMGetTypeKind)[ ty ] == LLVMPointerTypeKind && (LLVMGetTypeKind)[ (LLVMTypeOf)[ init ] ] == LLVMIntegerTypeKind ]
+ |  |  |  | init = (coerce)[ c | init | ty ]
+ |  |  |  \_
  |  |  | IF [ (is_float_ty)[ ty ] && lit.as.literal.kind == LT_FLOAT ]
  |  |  |  | init = (LLVMConstReal)[ ty | lit.as.literal.as.float_lit ]
  |  |  | ELIF [ (is_float_ty)[ ty ] && lit.as.literal.kind == LT_INTEGER ]
@@ -1710,6 +1960,13 @@ ABYSS gen_global: [ @CodegenContext c | @ASTNode d ]
  |  |  |  | IF [ (LLVMTypeOf)[ init ] != ty ]
  |  |  |  |  | init = (LLVMConstInt)[ ty | lit.as.literal.as.int_lit AS U64 | 1 ]
  |  |  |  |  \_
+ |  |  |  \_
+ |  | ELIF [ (is_const_expr)[ c | d.as.var_decl.init ] ]
+ |  |  | ; no function is open, so the builder folds all of it to a constant
+ |  |  | init = (coerce_e)[ c | (gen_expr)[ c | d.as.var_decl.init ] | ty | d.as.var_decl.init ]
+ |  |  | IF [ (LLVMIsConstant)[ init ] == 0 ]
+ |  |  |  | (printf)[ "codegen: global `%s` needs a constant initialiser at %d:%d\n" | nm | d.loc.line | d.loc.col ]
+ |  |  |  | (exit)[ 1 ]
  |  |  |  \_
  |  | ELSE
  |  |  | (printf)[ "codegen: global `%s` needs a constant initialiser at %d:%d\n" | nm | d.loc.line | d.loc.col ]
@@ -1813,17 +2070,24 @@ ABYSS codegen_generate: [ @ASTNode root | @CodegenContext c ]
  | RET
  \_
 
-ABYSS codegen_deinit: [ @CodegenContext c | @C1 filename ]
+; Writes the module and tears everything down. FALSE if the module is
+; invalid -- a compiler bug, since the checker passed it -- or could not be
+; written. Invalid IR is still written, to be looked at.
+B1 codegen_deinit: [ @CodegenContext c | @C1 filename ]
+ | B1 ok = TRUE
  | @C1 err = 0
  | IF [ (LLVMVerifyModule)[ c.mod | LLVMReturnStatusAction | @err AS @@C1 ] != 0 ]
+ |  | (printf)[ "internal error: plc produced invalid LLVM IR; please report it\n" ]
  |  | IF [ err != 0 ]
  |  |  | (printf)[ "LLVM verify: %s\n" | err ]
  |  |  \_
+ |  | ok = FALSE
  |  \_
  |
  | err = 0
  | IF [ (LLVMPrintModuleToFile)[ c.mod | filename | @err AS @@C1 ] != 0 ]
  |  | (printf)[ "failed to write %s\n" | filename ]
+ |  | ok = FALSE
  |  \_
  |
  | WHILE [ c.scope != 0 ]
@@ -1837,5 +2101,5 @@ ABYSS codegen_deinit: [ @CodegenContext c | @C1 filename ]
  | (LLVMDisposeBuilder)[ c.builder ]
  | (LLVMDisposeModule)[ c.mod ]
  | (LLVMContextDispose)[ c.ctx ]
- | RET
+ | RET [ ok ]
  \_

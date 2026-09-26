@@ -124,10 +124,29 @@ Token lex_number: [ @Lexer lx ]
  | I32 col  = lx.col
  | U64 start = lx.pos
  | B1  is_float = FALSE
+ | ; 0x.. and 0b.. have no exponent: in 0xE5 the E is a digit
+ | C1  second = (lex_look)[ lx | 1 ]
+ | B1  decimal = !((lex_peek)[ lx ] == '0' && (second == 'x' || second == 'X' || second == 'b' || second == 'B'))
  |
  | WHILE [ (isalnum)[ (lex_peek)[ lx ] AS I32 ] != 0 || (lex_peek)[ lx ] == '_' || (lex_peek)[ lx ] == '.' ]
- |  | IF [ (lex_peek)[ lx ] == '.' ]
+ |  | C1 ch = (lex_peek)[ lx ]
+ |  | IF [ ch == '.' ]
  |  |  | is_float = TRUE
+ |  |  \_
+ |  | ; 1e3, 2.5e-2: the sign after an exponent belongs to the number
+ |  | IF [ decimal && (ch == 'e' || ch == 'E') ]
+ |  |  | C1 n1 = (lex_look)[ lx | 1 ]
+ |  |  | C1 n2 = (lex_look)[ lx | 2 ]
+ |  |  | B1 digit1 = (isdigit)[ n1 AS I32 ] != 0
+ |  |  | B1 signed = (n1 == '+' || n1 == '-') && (isdigit)[ n2 AS I32 ] != 0
+ |  |  | IF [ digit1 || signed ]
+ |  |  |  | is_float = TRUE
+ |  |  |  | (lex_nextc)[ lx ]
+ |  |  |  | IF [ signed ]
+ |  |  |  |  | (lex_nextc)[ lx ]
+ |  |  |  |  \_
+ |  |  |  | CONTINUE
+ |  |  |  \_
  |  |  \_
  |  | (lex_nextc)[ lx ]
  |  \_
@@ -184,6 +203,8 @@ I32 lex_keyword_kind: [ @C1 s ]
  |  | RET [ TOK_IMPL ]
  | ELIF [ (strcmp)[ s | "NULL" ] == 0 ]
  |  | RET [ TOK_NULL ]
+ | ELIF [ (strcmp)[ s | "FN" ] == 0 ]
+ |  | RET [ TOK_FN ]
  | ELSE
  |  | RET [ -1 ]
  |  \_

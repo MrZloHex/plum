@@ -1,0 +1,6 @@
+union num=77
+union text=hello
+strlen=6 cmp=0
+walked=6
+read 16 bytes: ; The remaining 
+[exit 0]

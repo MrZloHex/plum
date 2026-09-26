@@ -1,0 +1,11 @@
+ [34mDEBUG[0m main:11: plain message
+ [32m INFO[0m lex_next:42: TOKEN: IDENT at 3:14
+ [31mERROR[0m expect:99: unexpected RBRACKET
+ [35mFATAL[0m gen:7: it died
+-- raising level to WARN --
+ [33m WARN[0m f:3: warn appears
+-- TP_ALL (adds file and time) --
+[TIME] [34mDEBUG[0m meta.pl:collect:55: everything on
+-- no params --
+ [34mDEBUG[0m bare
+[exit 0]

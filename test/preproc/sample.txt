@@ -1,0 +1,8 @@
+TOP_BEFORE
+!USES <inc/a.pl>
+; a commented directive must NOT expand: ;!USES <inc/b.pl>
+; b.pl came in through a.pl, so neither spelling includes it again
+!USES <inc/b.pl>
+!USES <inc/../inc/b.pl>
+!USES <inc/self.pl>
+TOP_AFTER

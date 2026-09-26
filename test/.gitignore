@@ -1,3 +1,12 @@
 */*
 !*/*.pl
+!*/*.out
+!*/*.err
 !build.sh
+!*/run.sh
+# fixtures the preproc test reads
+!preproc/sample.txt
+!preproc/inc/
+fuzz-found/
+!include_once/lib/
+!include_once/a/

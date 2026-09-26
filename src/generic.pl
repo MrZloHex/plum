@@ -130,6 +130,24 @@ ABYSS append_type_name: [ @String s | @ASTNode tn ]
  |  \_
  | IF [ tn.as.type.kind == TT_BASE_TYPE ]
  |  | (str_append_str)[ s | (base_type_name)[ tn.as.type.type.as.base_type ] ]
+ | ELIF [ tn.as.type.kind == TT_FN_TYPE ]
+ |  | (str_append_str)[ s | "FN " ]
+ |  | (append_type_name)[ s | tn.as.type.type ]
+ |  | (str_append_str)[ s | " [" ]
+ |  | @ASTNode p = tn.as.type.args
+ |  | WHILE [ p != 0 ]
+ |  |  | (str_append)[ s | ' ' ]
+ |  |  | IF [ p.as.list.item == 0 ]
+ |  |  |  | (str_append_str)[ s | "..." ]
+ |  |  | ELSE
+ |  |  |  | (append_type_name)[ s | p.as.list.item ]
+ |  |  |  \_
+ |  |  | IF [ p.as.list.next != 0 ]
+ |  |  |  | (str_append_str)[ s | " |" ]
+ |  |  |  \_
+ |  |  | p = p.as.list.next
+ |  |  \_
+ |  | (str_append_str)[ s | " ]" ]
  | ELSE
  |  | (str_append_str)[ s | tn.as.type.type.as.ident ]
  |  \_
@@ -301,6 +319,7 @@ ABYSS append_type_name: [ @String s | @ASTNode tn ]
  |  | c.as.fn_call.ident = (clone)[ g | n.as.fn_call.ident | s ]
  |  | c.as.fn_call.args = (clone)[ g | n.as.fn_call.args | s ]
  |  | c.as.fn_call.recv = (clone)[ g | n.as.fn_call.recv | s ]
+ |  | c.as.fn_call.target = (clone)[ g | n.as.fn_call.target | s ]
  |  | RET [ c ]
  |  \_
  | IF [ k == NT_ARGUMENT ]
@@ -528,6 +547,17 @@ ABYSS instantiate: [ @Generics g | @ASTNode at | @C1 tmpl | @C1 name | @ASTNode 
 ; Make a type reference concrete: Vec<I32> becomes a plain reference to
 ; the TYPE named "Vec<I32>", instantiated on first sight.
 ABYSS resolve_type: [ @Generics g | @ASTNode tn ]
+ | IF [ tn.as.type.kind == TT_FN_TYPE ]
+ |  | (resolve_type)[ g | tn.as.type.type ]
+ |  | @ASTNode p = tn.as.type.args
+ |  | WHILE [ p != 0 ]
+ |  |  | IF [ p.as.list.item != 0 ]
+ |  |  |  | (resolve_type)[ g | p.as.list.item ]
+ |  |  |  \_
+ |  |  | p = p.as.list.next
+ |  |  \_
+ |  | RET
+ |  \_
  | IF [ tn.as.type.kind != TT_USER_TYPE ]
  |  | RET
  |  \_
@@ -656,6 +686,7 @@ ABYSS resolve: [ @Generics g | @ASTNode n ]
  |  \_
  | IF [ k == NT_FN_CALL ]
  |  | (resolve)[ g | n.as.fn_call.recv ]
+ |  | (resolve)[ g | n.as.fn_call.target ]
  |  | @ASTNode a = n.as.fn_call.args
  |  | WHILE [ a != 0 ]
  |  |  | (resolve)[ g | a.as.argument.argument ]
@@ -715,6 +746,9 @@ ABYSS generics_pass: [ @AST ast ]
  |  | B1 drop = TRUE
  |  |
  |  | IF [ k == TUST_TYPE_DEF && node.as.type_def.gparams != 0 ]
+ |  |  | IF [ node.as.type_def.kind == TD_ENUM ]
+ |  |  |  | (gn_error)[ node | "ENUM `%s` cannot be generic: its constants do not depend on the parameters%s" | node.as.type_def.ident.as.ident | "" ]
+ |  |  |  \_
  |  |  | (gn_template)[ @(g.type_tmpls) | node.as.type_def.ident.as.ident | node | @g ]
  |  | ELIF [ k == TUST_TYPE_DEF ]
  |  |  | (gn_template)[ @(g.types) | node.as.type_def.ident.as.ident | node | @g ]

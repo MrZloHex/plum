@@ -1,11 +1,16 @@
 #!/bin/bash
-# Build and run every test. `-v` also prints each program's output.
+# Build and run every test, and compare what it prints with <name>/<name>.out.
 #
-# A test passes when it compiles, links and runs without crashing; there are
-# no expected-output files, so `-v` is how you check behaviour by eye.
+#   ./run.sh              run all tests
+#   ./run.sh -u [names]   rewrite the expected output from what runs now --
+#                         read the diff before committing it
+#   ./run.sh names...     run only these
+#
+# An .out file holds the program's stdout and stderr, then `[exit N]`.
+# Timestamps are masked, so trace output compares across runs.
 
-VERBOSE=false
-[[ "$1" == "-v" ]] && VERBOSE=true
+UPDATE=false
+[[ "$1" == "-u" ]] && { UPDATE=true; shift; }
 
 TESTS=(
     simplest c_call elif if_stmt logic loops
@@ -14,7 +19,15 @@ TESTS=(
     ast parser meta printf aryph_logic cli_args
     arrays struct include std
     generics vector floats indexing
+    semantics fnptr
+    generics_edge core order ptrmath numbers returns arena
+    fnptr_edge include_once
 )
+[[ $# -gt 0 ]] && TESTS=("$@")
+
+normalise() {
+    sed -E 's/\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\]/[TIME]/'
+}
 
 pass=0; fail=0; failed=()
 
@@ -22,20 +35,34 @@ for t in "${TESTS[@]}"; do
     printf '%-12s ' "$t"
 
     out=$(./build.sh -t "$t" 2>&1)
-    if echo "$out" | grep -qiE "error|FATAL|Segmentation"; then
+    if [[ $? -ne 0 ]] || echo "$out" | grep -qiE "error|FATAL|Segmentation"; then
         echo "BUILD FAIL"
-        echo "$out" | grep -iE "error|FATAL" | head -2 | sed 's/^/             /'
+        echo "$out" | grep -iE "error|FATAL|^[0-9]+:[0-9]+:" | head -3 | sed 's/^/             /'
         fail=$((fail+1)); failed+=("$t"); continue
     fi
 
-    run=$( cd "$t" && timeout 10 "./$t" 2>&1 ); rc=$?
-    if [[ $rc -ge 125 ]]; then
-        echo "RUN FAIL ($rc)"
+    got=$( cd "$t" && timeout 10 "./$t" 2>&1; echo "[exit $?]" )
+    got=$(echo "$got" | normalise)
+    want_file="$t/$t.out"
+
+    if $UPDATE; then
+        echo "$got" > "$want_file"
+        echo "updated"
+        pass=$((pass+1)); continue
+    fi
+
+    if [[ ! -f "$want_file" ]]; then
+        echo "NO EXPECTED OUTPUT (./run.sh -u $t, then check it)"
         fail=$((fail+1)); failed+=("$t"); continue
     fi
 
-    echo "ok (exit $rc)"
-    $VERBOSE && echo "$run" | sed 's/^/             /'
+    if [[ "$got" != "$(cat "$want_file")" ]]; then
+        echo "WRONG OUTPUT"
+        diff <(cat "$want_file") <(echo "$got") | head -10 | sed 's/^/             /'
+        fail=$((fail+1)); failed+=("$t"); continue
+    fi
+
+    echo "ok"
     pass=$((pass+1))
 done
 

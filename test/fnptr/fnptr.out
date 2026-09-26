@@ -1,0 +1,14 @@
+op(2, 3) = 5
+op(2, 3) = 6
+global: 6
+fold +: 15, fold *: 120
+call a returned pointer: 42
+NULL compares
+table{0}(6, 3) = 9
+table{1}(6, 3) = 3
+table{2}(6, 3) = 18
+rect 80, tri 10
+through a pointer: 10
+sorted: -3 0 7 7 19 42
+  say hello
+[exit 0]

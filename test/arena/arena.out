@@ -1,0 +1,5 @@
+after one fill: 3 blocks
+after five resets: 3 blocks, second block reused: 1
+with a 200-byte block: 5 blocks, z
+destroyed: 0 blocks
+[exit 0]

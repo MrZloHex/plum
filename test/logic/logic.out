@@ -1,0 +1,10 @@
+and: both true
+or: second true
+not: a is not less than b
+short-circuit &&: rhs must NOT run
+short-circuit ||: rhs must NOT run
+  taken
+&& with false rhs: rhs MUST run
+  <evaluated>
+chain: all three
+[exit 0]

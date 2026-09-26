@@ -1,0 +1,5 @@
+  kind=7 lex=ident at 3:14
+copy independent: a.kind=7 b.kind=9
+after bump: line=103
+field addr: col=99
+[exit 0]

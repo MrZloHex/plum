@@ -1,0 +1,7 @@
+root kind=0 (expect 0)
+sizeof ASTNode=56
+binop kind=3 at 3:14 left=6 right=7
+ident=hello
+list length=5 first line=4
+5000 nodes allocated
+[exit 0]

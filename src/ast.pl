@@ -70,6 +70,7 @@ TYPE RecordKind: ENUM
 TYPE TypeKind: ENUM
  | TT_BASE_TYPE
  | TT_USER_TYPE
+ | TT_FN_TYPE          ; FN R [ P | Q ]: type is R, args lists P and Q
  \_
 
 TYPE BaseType: ENUM
@@ -286,10 +287,12 @@ TYPE N_UnyOp: STRUCT
  | @ASTNode operand
  \_
 
+; With no ident, `target` is any expression yielding a function pointer.
 TYPE N_FnCall: STRUCT
  | @ASTNode ident
  | @ASTNode args
  | @ASTNode recv        ; the object of a method call, 0 for a function
+ | @ASTNode target      ; what is called, as an expression: recv.ident, or any
  \_
 
 TYPE N_Argument: STRUCT
@@ -298,7 +301,7 @@ TYPE N_Argument: STRUCT
  \_
 
 TYPE LiteralValue: UNION
- | I32 int_lit
+ | I64 int_lit
  | F64 float_lit
  | C1  char_lit
  | @C1 str_lit
@@ -405,6 +408,48 @@ TYPE AST: STRUCT
  | ; arena memory is not zeroed, and every consumer assumes NULL children
  | (memset)[ n AS @ABYSS | 0 | SIZE [ ASTNode ] ]
  | RET [ n ]
+ \_
+
+; --- signatures -----------------------------------------------------------
+;
+; What a call is checked and emitted against: an NT_FN_DECL for a named
+; function, or an FN type for a pointer. Their parameters differ in shape
+; (NT_PARAMETRE with a vaarg flag, or NT_LIST where a 0 item is `...`), so
+; these read either.
+
+@ASTNode sig_ret: [ @ASTNode s ]
+ | IF [ s.kind == NT_FN_DECL ]
+ |  | RET [ s.as.fn_decl.type ]
+ |  \_
+ | RET [ s.as.type.type ]
+ \_
+
+@ASTNode sig_params: [ @ASTNode s ]
+ | IF [ s.kind == NT_FN_DECL ]
+ |  | RET [ s.as.fn_decl.params ]
+ |  \_
+ | RET [ s.as.type.args ]
+ \_
+
+B1 sig_is_va: [ @ASTNode p ]
+ | IF [ p.kind == NT_PARAMETRE ]
+ |  | RET [ p.as.parametre.vaarg ]
+ |  \_
+ | RET [ p.as.list.item == 0 ]
+ \_
+
+@ASTNode sig_ptype: [ @ASTNode p ]
+ | IF [ p.kind == NT_PARAMETRE ]
+ |  | RET [ p.as.parametre.type ]
+ |  \_
+ | RET [ p.as.list.item ]
+ \_
+
+@ASTNode sig_next: [ @ASTNode p ]
+ | IF [ p.kind == NT_PARAMETRE ]
+ |  | RET [ p.as.parametre.next_param ]
+ |  \_
+ | RET [ p.as.list.next ]
  \_
 
 ; "Cls<X>" and "push" -> "Cls<X>.push", the function a method becomes.

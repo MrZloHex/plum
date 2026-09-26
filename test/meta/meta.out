@@ -1,0 +1,7 @@
+func_decls=3 types=1 str_lits=3
+lookup add   hit=1
+lookup main  hit=1
+lookup Node  hit=1
+lookup nope  hit=0
+lookup "one\n"  hit=1
+[exit 0]
