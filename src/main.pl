@@ -1,19 +1,26 @@
 ; main.pl -- the PLUM counterpart of src/main.c
 ;
 ; The driver: read, preprocess, parse, collect metadata, emit.
-; This is plc, written in PLUM.
+; This is plc, written in PLUM. `--lsp` makes it a language server instead
+; (lsp.pl), which runs plc again with --emit=INDEX for every analysis.
 
 !USES <preproc.pl>
 !USES <parser.pl>
 !USES <generic.pl>
 !USES <meta.pl>
 !USES <check.pl>
+!USES <index.pl>
 !USES <codegen.pl>
+!USES <lsp.pl>
 !USES <../extern/unistd.pl>
 
 ABYSS usage: [ @C1 progname ]
- | (printf)[ "Usage: %s [--emit=<AST|IR>] [-o output] file1 [file2 ...]\n" | progname ]
- | (printf)[ "  --emit=<AST|IR>   Specify the output type to emit (AST or IR)\n" ]
+ | (printf)[ "Usage: %s [--emit=<AST|IR|INDEX>] [--target=triple] [--stdin] [-o output] file1 [file2 ...]\n" | progname ]
+ | (printf)[ "       %s --lsp\n" | progname ]
+ | (printf)[ "  --emit=<AST|IR|INDEX>  Specify the output type to emit (AST, IR, or the index for --lsp)\n" ]
+ | (printf)[ "  --target=triple  Generate code for another machine, as thumbv6m-none-eabi\n" ]
+ | (printf)[ "  --stdin          Read the file's text from stdin; its name still resolves USES\n" ]
+ | (printf)[ "  --lsp            Serve the Language Server Protocol on stdin and stdout\n" ]
  | (printf)[ "  -o output        Specify the output filename\n" ]
  | (printf)[ "  file1 ...        One or more source files to compile\n" ]
  | RET
@@ -48,6 +55,7 @@ I32 main: [ I32 argc | @@C1 argv ]
  | @C1 out_file = 0
  | @C1 emit     = 0
  | @C1 source   = 0
+ | B1  stdin_src = FALSE
  |
  | I32 i = 1
  | WHILE [ i < argc ]
@@ -55,6 +63,12 @@ I32 main: [ I32 argc | @@C1 argv ]
  |  |
  |  | IF [ (strncmp)[ a | "--emit=" | 7 ] == 0 ]
  |  |  | emit = a + 7
+ |  | ELIF [ (strncmp)[ a | "--target=" | 9 ] == 0 ]
+ |  |  | cg_triple = a + 9
+ |  | ELIF [ (strcmp)[ a | "--lsp" ] == 0 ]
+ |  |  | RET [ (lsp_main)[] ]
+ |  | ELIF [ (strcmp)[ a | "--stdin" ] == 0 ]
+ |  |  | stdin_src = TRUE
  |  | ELIF [ (strcmp)[ a | "-o" ] == 0 ]
  |  |  | i += 1
  |  |  | IF [ i >= argc ]
@@ -82,30 +96,42 @@ I32 main: [ I32 argc | @@C1 argv ]
  |
  | ; IR is the default; the AST dump is a debugging aid
  | B1 emit_ir = TRUE
+ | B1 emit_index = FALSE
  | IF [ emit != 0 ]
  |  | IF [ (strcmp)[ emit | "AST" ] == 0 ]
  |  |  | emit_ir = FALSE
+ |  | ELIF [ (strcmp)[ emit | "INDEX" ] == 0 ]
+ |  |  | emit_ir = FALSE
+ |  |  | emit_index = TRUE
+ |  |  | diag_machine = TRUE
  |  | ELIF [ (strcmp)[ emit | "IR" ] != 0 ]
- |  |  | (diag_at2)[ (no_loc)[] | "--emit takes AST or IR, not `%s`%s" | emit | "" ]
+ |  |  | (diag_at2)[ (no_loc)[] | "--emit takes AST, IR or INDEX, not `%s`%s" | emit | "" ]
  |  |  | RET [ 1 ]
  |  |  \_
  |  \_
  |
+ | ; from stdin, the file is an editor's buffer and need not be saved yet
  | @C1 full = (realpath)[ source | 0 ]
+ | IF [ full == 0 && stdin_src ]
+ |  | full = source
+ |  \_
  | IF [ full == 0 ]
  |  | (diag_at2)[ (no_loc)[] | "cannot find `%s`%s" | source | "" ]
  |  | RET [ 1 ]
  |  \_
  |
- | @ABYSS f = (fopen)[ full | "r" ]
- | IF [ f == 0 ]
- |  | (diag_at2)[ (no_loc)[] | "cannot open `%s`%s" | source | "" ]
- |  | RET [ 1 ]
- |  \_
- |
  | String src
- | (str_init_file)[ @src | f ]
- | (fclose)[ f ]
+ | IF [ stdin_src ]
+ |  | (str_init_fd)[ @src | 0 ]
+ | ELSE
+ |  | @ABYSS f = (fopen)[ full | "r" ]
+ |  | IF [ f == 0 ]
+ |  |  | (diag_at2)[ (no_loc)[] | "cannot open `%s`%s" | source | "" ]
+ |  |  | RET [ 1 ]
+ |  |  \_
+ |  | (str_init_file)[ @src | f ]
+ |  | (fclose)[ f ]
+ |  \_
  |
  | ; the preprocessor has said what went wrong
  | IF [ (preprocess_named)[ @src | full | source ] != 0 ]
@@ -123,6 +149,22 @@ I32 main: [ I32 argc | @@C1 argv ]
  |
  | Checker ck
  | (check_init)[ @ck | @meta ]
+ |
+ | ; the index is wanted most when there are errors: keep going past them
+ | IF [ emit_index ]
+ |  | Index ix
+ |  | (ix.refs.init)[ 1024 ]
+ |  | ck.ix = @ix
+ |  | B1 clean = (check_unit)[ @ck | ast.root ]
+ |  | (ix_walk)[ @ix | @meta | ast.root ]
+ |  | (ix_dump)[ @ix | ast.root ]
+ |  | (check_deinit)[ @ck ]
+ |  | IF [ !clean ]
+ |  |  | RET [ 1 ]
+ |  |  \_
+ |  | RET [ 0 ]
+ |  \_
+ |
  | IF [ !(check_unit)[ @ck | ast.root ] ]
  |  | (check_deinit)[ @ck ]
  |  | RET [ 1 ]

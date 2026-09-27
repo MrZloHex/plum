@@ -217,12 +217,14 @@ TYPE N_Field: STRUCT
  | @ASTNode next_field
  \_
 
+; arr sits beside kind so that `written` costs no space: ASTNode stays 64
 TYPE N_Type: STRUCT
  | I32      kind
+ | U32      arr         ; element count of `T name{N}`, 0 unless an array
  | U64      ptrs
  | @ASTNode type
  | @ASTNode args        ; NT_LIST of NT_TYPE, 0 unless generic
- | U64      arr         ; element count of `T name{N}`, 0 unless an array
+ | @ASTNode written     ; the args as written, kept once generics resolves them
  \_
 
 TYPE N_Block: STRUCT

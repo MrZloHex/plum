@@ -9,6 +9,7 @@
 !USES <../extern/stdlib.pl>
 !USES <../extern/string.pl>
 !USES <../extern/stdio.pl>
+!USES <../extern/unistd.pl>
 
 TYPE String: STRUCT
  | @C1 data
@@ -90,6 +91,26 @@ I32 str_init_file: [ @String s | @ABYSS f ]
  | U64 got = (fread)[ s.data AS @ABYSS | 1 | n | f ]
  | s.size = got
  | ?(s.data + got) = '\0'
+ | RET [ 0 ]
+ \_
+
+; Everything a file descriptor has to give, up to end of file: a pipe,
+; which str_init_file cannot measure first.
+I32 str_init_fd: [ @String s | I32 fd ]
+ | IF [ (str_init_cap)[ s | 4096 ] != 0 ]
+ |  | RET [ -1 ]
+ |  \_
+ | LOOP
+ |  | IF [ (str_reserve)[ s | s.size + 4097 ] != 0 ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | I64 got = (read)[ fd | (s.data + s.size) AS @ABYSS | 4096 ]
+ |  | IF [ got <= 0 ]
+ |  |  | BREAK
+ |  |  \_
+ |  | s.size = s.size + (got AS U64)
+ |  \_
+ | ?(s.data + s.size) = '\0'
  | RET [ 0 ]
  \_
 

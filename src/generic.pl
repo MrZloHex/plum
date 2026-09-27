@@ -15,6 +15,7 @@
 ; know obj's type, and look up "<that type>.method" among the functions.
 
 !USES <ast.pl>
+!USES <diag.pl>
 !USES <../lib/vector.pl>
 !USES <../lib/map.pl>
 !USES <../lib/string.pl>
@@ -586,6 +587,7 @@ ABYSS resolve_type: [ @Generics g | @ASTNode tn ]
  |  \_
  |
  | tn.as.type.type = (gn_ident)[ g | name | tn.as.type.type ]
+ | tn.as.type.written = tn.as.type.args
  | tn.as.type.args = 0
  | RET
  \_

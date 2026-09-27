@@ -16,6 +16,9 @@
 
 !USES <ast.pl>
 !USES <meta.pl>
+!USES <diag.pl>
+!USES <generic.pl>
+!USES <../lib/string.pl>
 !USES <../lib/vector.pl>
 !USES <../extern/stdio.pl>
 !USES <../extern/stdlib.pl>
@@ -43,8 +46,9 @@ TYPE Type: STRUCT
  \_
 
 TYPE CkSym: STRUCT
- | @C1  name
- | Type ty
+ | @C1      name
+ | Type     ty
+ | @ASTNode decl       ; where it is declared, for the index
  \_
 
 TYPE CkScope: STRUCT
@@ -60,6 +64,39 @@ TYPE Checker: STRUCT
  | @C1       owner        ; the class whose method is being checked, or 0
  | I32       loops        ; how many loops enclose the statement being checked
  | I32       errors
+ | @Index    ix           ; where resolved names are noted, or 0
+ \_
+
+; --- the index ------------------------------------------------------------
+;
+; For the language server: every name the checker resolves, and the
+; declaration it resolved to. Only filled when Checker.ix is set.
+
+TYPE IxRef: STRUCT
+ | @ASTNode use          ; the NT_IDENT as written
+ | @ASTNode decl         ; NT_VAR_DECL, NT_PARAMETRE, NT_FIELD, NT_FN_DECL, NT_TYPE_DEF or NT_ENUM_FIELDS
+ | @ASTNode owner        ; the NT_TYPE_DEF a field or an enum constant is in, or 0
+ \_
+
+TYPE Index: STRUCT
+ | Vector<IxRef> refs
+ \_
+
+ABYSS ix_add: [ @Index ix | @ASTNode use | @ASTNode decl | @ASTNode owner ]
+ | IF [ ix == 0 || use == 0 || decl == 0 ]
+ |  | RET
+ |  \_
+ | IxRef r
+ | r.use = use
+ | r.decl = decl
+ | r.owner = owner
+ | (ix.refs.push)[ r ]
+ | RET
+ \_
+
+ABYSS ck_ref: [ @Checker c | @ASTNode use | @ASTNode decl | @ASTNode owner ]
+ | (ix_add)[ c.ix | use | decl | owner ]
+ | RET
  \_
 
 ; --- constructing types ---------------------------------------------------
@@ -360,15 +397,17 @@ B1 ck_declared_here: [ @Checker c | @C1 name ]
  | RET [ FALSE ]
  \_
 
-ABYSS ck_define: [ @Checker c | @C1 name | Type t ]
+ABYSS ck_define: [ @Checker c | @C1 name | Type t | @ASTNode decl ]
  | CkSym s
  | s.name = name
  | s.ty = t
+ | s.decl = decl
  | (c.scope.syms.push)[ s ]
  | RET
  \_
 
-B1 ck_lookup: [ @Checker c | @C1 name | @Type out ]
+; The innermost variable of that name, or 0. Valid until the next define.
+@CkSym ck_find: [ @Checker c | @C1 name ]
  | @CkScope s = c.scope
  | WHILE [ s != 0 ]
  |  | U64 n = (s.syms.size)[]
@@ -377,13 +416,21 @@ B1 ck_lookup: [ @Checker c | @C1 name | @Type out ]
  |  |  | i = i - 1
  |  |  | @CkSym sym = (s.syms.at)[ i ]
  |  |  | IF [ (strcmp)[ sym.name | name ] == 0 ]
- |  |  |  | ?(out) = sym.ty
- |  |  |  | RET [ TRUE ]
+ |  |  |  | RET [ sym ]
  |  |  |  \_
  |  |  \_
  |  | s = s.parent
  |  \_
- | RET [ FALSE ]
+ | RET [ NULL ]
+ \_
+
+B1 ck_lookup: [ @Checker c | @C1 name | @Type out ]
+ | @CkSym sym = (ck_find)[ c | name ]
+ | IF [ sym == NULL ]
+ |  | RET [ FALSE ]
+ |  \_
+ | ?(out) = sym.ty
+ | RET [ TRUE ]
  \_
 
 ; --- assignability --------------------------------------------------------
@@ -524,20 +571,31 @@ B1 ck_is_place: [ @Checker c | @ASTNode e ]
  | RET [ FALSE ]
  \_
 
-B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode at ]
+; The NT_FIELD named `field` in a record type, or 0.
+@ASTNode ck_field_decl: [ Type base | @C1 field ]
  | IF [ base.decl == 0 ]
- |  | RET [ FALSE ]
+ |  | RET [ NULL ]
  |  \_
  | @ASTNode rec = base.decl.as.type_def.tdef
  | @ASTNode f = rec.as.record.fields
  | WHILE [ f != 0 ]
  |  | IF [ (strcmp)[ f.as.rcrd_flds.ident.as.ident | field ] == 0 ]
- |  |  | ?(out) = (ty_decl)[ c | f.as.rcrd_flds.type ]
- |  |  | RET [ TRUE ]
+ |  |  | RET [ f ]
  |  |  \_
  |  | f = f.as.rcrd_flds.next_field
  |  \_
- | RET [ FALSE ]
+ | RET [ NULL ]
+ \_
+
+; `use` is the field's name as written, noted in the index.
+B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode use ]
+ | @ASTNode f = (ck_field_decl)[ base | field ]
+ | IF [ f == NULL ]
+ |  | RET [ FALSE ]
+ |  \_
+ | (ck_ref)[ c | use | f | base.decl ]
+ | ?(out) = (ty_decl)[ c | f.as.rcrd_flds.type ]
+ | RET [ TRUE ]
  \_
 
 ; The signature behind a function-pointer value, or 0 with an error.
@@ -570,15 +628,17 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode at ]
  | @C1 m = n.as.fn_call.ident.as.ident
  |
  | IF [ n.as.fn_call.recv == 0 ]
- |  | Type vt = (ty_unknown)[]
- |  | IF [ (ck_lookup)[ c | m | @vt ] && vt.kind == TY_FN && vt.ptrs == 0 ]
- |  |  | RET [ vt.decl ]
+ |  | @CkSym vs = (ck_find)[ c | m ]
+ |  | IF [ vs != NULL && vs.ty.kind == TY_FN && vs.ty.ptrs == 0 ]
+ |  |  | (ck_ref)[ c | n.as.fn_call.ident | vs.decl | 0 ]
+ |  |  | RET [ vs.ty.decl ]
  |  |  \_
  |  | @ABYSS d = 0
  |  | IF [ (map_get)[ @(c.meta.func_decls) | m | @d AS @@ABYSS ] != 1 ]
  |  |  | (ck_error2)[ c | n | "call to undeclared function `%s`%s" | m | "" ]
  |  |  | RET [ 0 ]
  |  |  \_
+ |  | (ck_ref)[ c | n.as.fn_call.ident | d AS @ASTNode | 0 ]
  |  | RET [ d AS @ASTNode ]
  |  \_
  |
@@ -601,6 +661,7 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode at ]
  |  |  |  | (ck_error2)[ c | n | "`%s` is PRIVATE to `%s`" | m | decl.as.fn_decl.owner ]
  |  |  |  \_
  |  |  \_
+ |  | (ck_ref)[ c | n.as.fn_call.ident | decl | 0 ]
  |  | ?(skip_me) = TRUE
  |  | RET [ decl ]
  |  \_
@@ -608,7 +669,7 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode at ]
  | Type obj = rt
  | obj.ptrs = 0
  | Type ft = (ty_unknown)[]
- | IF [ (ck_field)[ c | obj | m | @ft | n ] ]
+ | IF [ (ck_field)[ c | obj | m | @ft | n.as.fn_call.ident ] ]
  |  | RET [ (ck_fn_value)[ c | n | ft ] ]
  |  \_
  | (ck_error2)[ c | n | "`%s` has no method or field `%s`" | rt.name | m ]
@@ -719,7 +780,7 @@ Type ck_binop: [ @Checker c | @ASTNode n ]
  |  |  \_
  |  |
  |  | Type ft = (ty_unknown)[]
- |  | IF [ !(ck_field)[ c | obj | fn.as.ident | @ft | n ] ]
+ |  | IF [ !(ck_field)[ c | obj | fn.as.ident | @ft | fn ] ]
  |  |  | (ck_error2)[ c | n | "no field `%s` in `%s`" | fn.as.ident | obj.name ]
  |  |  | RET [ (ty_unknown)[] ]
  |  |  \_
@@ -887,17 +948,22 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  |  \_
  |
  | IF [ n.kind == NT_IDENT ]
- |  | Type t = (ty_unknown)[]
- |  | IF [ (ck_lookup)[ c | n.as.ident | @t ] ]
- |  |  | RET [ t ]
+ |  | @CkSym sym = (ck_find)[ c | n.as.ident ]
+ |  | IF [ sym != NULL ]
+ |  |  | (ck_ref)[ c | n | sym.decl | 0 ]
+ |  |  | RET [ sym.ty ]
  |  |  \_
  |  | ; an enum constant is an I32; meta has the type table
- |  | IF [ (ck_is_enum_const)[ c | n.as.ident ] ]
+ |  | @ASTNode en = 0
+ |  | @ASTNode ec = (ck_enum_const)[ c | n.as.ident | @en ]
+ |  | IF [ ec != NULL ]
+ |  |  | (ck_ref)[ c | n | ec | en ]
  |  |  | RET [ (ty_int)[ 32 | TRUE ] ]
  |  |  \_
  |  | ; a function's name is a pointer to it
  |  | @ABYSS fd = 0
  |  | IF [ (map_get)[ @(c.meta.func_decls) | n.as.ident | @fd AS @@ABYSS ] == 1 ]
+ |  |  | (ck_ref)[ c | n | fd AS @ASTNode | 0 ]
  |  |  | Type ft = (ty_make)[ TY_FN | 0 | 64 | FALSE ]
  |  |  | ft.decl = fd AS @ASTNode
  |  |  | RET [ ft ]
@@ -1001,7 +1067,9 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  | RET [ (ty_unknown)[] ]
  \_
 
-B1 ck_is_enum_const: [ @Checker c | @C1 name ]
+; The NT_ENUM_FIELDS of the constant `name`, with its enum put in `owner`;
+; 0 when there is none.
+@ASTNode ck_enum_const: [ @Checker c | @C1 name | @@ASTNode owner ]
  | ; enum constants are not in meta by name, so scan the type definitions
  | @ASTNode ts = c.tu.as.tu.tu_stmt
  | WHILE [ ts != 0 ]
@@ -1011,7 +1079,8 @@ B1 ck_is_enum_const: [ @Checker c | @C1 name ]
  |  |  |  | @ASTNode f = td.as.type_def.tdef.as.enumeration.fields
  |  |  |  | WHILE [ f != 0 ]
  |  |  |  |  | IF [ (strcmp)[ f.as.enum_flds.ident.as.ident | name ] == 0 ]
- |  |  |  |  |  | RET [ TRUE ]
+ |  |  |  |  |  | ?(owner) = td
+ |  |  |  |  |  | RET [ f ]
  |  |  |  |  |  \_
  |  |  |  |  | f = f.as.enum_flds.next_field
  |  |  |  |  \_
@@ -1019,7 +1088,7 @@ B1 ck_is_enum_const: [ @Checker c | @C1 name ]
  |  |  \_
  |  | ts = ts.as.tu_stmt.next_tu_stmt
  |  \_
- | RET [ FALSE ]
+ | RET [ NULL ]
  \_
 
 ; --- statements -----------------------------------------------------------
@@ -1051,7 +1120,7 @@ ABYSS ck_stmt: [ @Checker c | @ASTNode st ]
  |  |
  |  | IF [ d.as.var_decl.init != 0 && dt.arr > 0 ]
  |  |  | (ck_error2)[ c | d | "array `%s` cannot have an initialiser; assign its elements%s" | nm | "" ]
- |  |  | (ck_define)[ c | nm | dt ]
+ |  |  | (ck_define)[ c | nm | dt | d ]
  |  |  | RET
  |  |  \_
  |  |
@@ -1066,7 +1135,7 @@ ABYSS ck_stmt: [ @Checker c | @ASTNode st ]
  |  |  |  \_
  |  |  \_
  |  |
- |  | (ck_define)[ c | nm | dt ]
+ |  | (ck_define)[ c | nm | dt | d ]
  |  | RET
  |  \_
  |
@@ -1266,7 +1335,7 @@ ABYSS ck_fn: [ @Checker c | @ASTNode def ]
  | WHILE [ p != 0 ]
  |  | IF [ !(p.as.parametre.vaarg) ]
  |  |  | @C1 pn = p.as.parametre.ident.as.ident
- |  |  | (ck_define)[ c | pn | (ty_resolve)[ c | p.as.parametre.type ] ]
+ |  |  | (ck_define)[ c | pn | (ty_resolve)[ c | p.as.parametre.type ] | p ]
  |  |  \_
  |  | p = p.as.parametre.next_param
  |  \_
@@ -1293,6 +1362,7 @@ ABYSS check_init: [ @Checker c | @Meta m ]
  | c.tu = 0
  | c.owner = 0
  | c.loops = 0
+ | c.ix = 0
  | c.ret_type = (ty_void)[]
  | RET
  \_
@@ -1377,7 +1447,7 @@ B1 check_unit: [ @Checker c | @ASTNode root ]
  |  |  | IF [ gt.kind == TY_VOID && gt.ptrs == 0 ]
  |  |  |  | (ck_error2)[ c | d | "`%s` cannot have type ABYSS%s" | nm | "" ]
  |  |  |  \_
- |  |  | (ck_define)[ c | nm | gt ]
+ |  |  | (ck_define)[ c | nm | gt | d ]
  |  |  \_
  |  | ts = ts.as.tu_stmt.next_tu_stmt
  |  \_

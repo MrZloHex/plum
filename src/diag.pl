@@ -8,7 +8,9 @@
 ;
 ; Locations are in the files the user wrote: the preprocessor marks where
 ; each included file begins and ends, and the lexer follows those marks.
-; Everything goes to stderr, in colour only when that is a terminal.
+; Everything goes to stderr, in colour only when that is a terminal --
+; except under --emit=INDEX, where each diagnostic is one line on stdout
+; for the language server:  E <tab> file <tab> line <tab> col <tab> message
 
 !USES <token.pl>
 !USES <../lib/string.pl>
@@ -18,6 +20,7 @@
 !USES <../extern/unistd.pl>
 
 I32 diag_count
+B1  diag_machine     ; one tab-separated line per diagnostic, on stdout
 
 ; the last file an excerpt came from, kept for the next error
 @C1    diag_file
@@ -80,6 +83,10 @@ I32 diag_digits: [ I32 n ]
 ; The header alone, for problems that have no place in the source.
 ABYSS diag_plain: [ @C1 msg ]
  | diag_count += 1
+ | IF [ diag_machine ]
+ |  | (dprintf)[ 1 | "E\t\t0\t0\t%s\n" | msg ]
+ |  | RET
+ |  \_
  | IF [ (diag_color)[] ]
  |  | (dprintf)[ 2 | "\x1b[1;31merror\x1b[0m\x1b[1m: %s\x1b[0m\n" | msg ]
  | ELSE
@@ -88,6 +95,11 @@ ABYSS diag_plain: [ @C1 msg ]
  \_
 
 ABYSS diag_at: [ Location loc | @C1 msg ]
+ | IF [ diag_machine && loc.file != NULL ]
+ |  | diag_count += 1
+ |  | (dprintf)[ 1 | "E\t%s\t%d\t%d\t%s\n" | loc.file | loc.line | loc.col | msg ]
+ |  | RET
+ |  \_
  | (diag_plain)[ msg ]
  | IF [ loc.file == NULL ]
  |  | RET
@@ -130,6 +142,9 @@ ABYSS diag_fatal: [ Location loc | @C1 fmt | @C1 a | @C1 b ]
 
 ; After a stage that keeps going past errors: how many there were.
 ABYSS diag_summary: []
+ | IF [ diag_machine ]
+ |  | RET
+ |  \_
  | IF [ diag_count == 1 ]
  |  | (dprintf)[ 2 | "1 error\n" ]
  | ELIF [ diag_count > 1 ]
@@ -139,6 +154,12 @@ ABYSS diag_summary: []
 
 ; A compiler bug, not the program's fault.
 ABYSS diag_internal: [ @C1 fmt | @C1 a ]
+ | IF [ diag_machine ]
+ |  | (dprintf)[ 1 | "E\t\t0\t0\tinternal compiler error: " ]
+ |  | (dprintf)[ 1 | fmt | a ]
+ |  | (dprintf)[ 1 | "\n" ]
+ |  | (exit)[ 2 ]
+ |  \_
  | (dprintf)[ 2 | "internal compiler error: " ]
  | (dprintf)[ 2 | fmt | a ]
  | (dprintf)[ 2 | "\n" ]

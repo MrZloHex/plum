@@ -9,6 +9,8 @@
 
 !USES <ast.pl>
 !USES <meta.pl>
+!USES <diag.pl>
+!USES <parser.pl>
 !USES <../extern/llvm.pl>
 !USES <../lib/vector.pl>
 !USES <../extern/stdio.pl>
@@ -46,6 +48,9 @@ TYPE CGStr: STRUCT
  | @C1    text
  | @ABYSS global
  \_
+
+; The target, from --target=; 0 for the machine plc runs on.
+@C1 cg_triple
 
 TYPE CodegenContext: STRUCT
  | @ABYSS   ctx
@@ -1975,18 +1980,37 @@ ABYSS codegen_init: [ @CodegenContext c | @C1 module_name | @Meta meta ]
  | (c.strs.init)[ 16 ]
  |
  | ; Without a data layout every ABI size query is meaningless, which is
- | ; what union layout and SIZE [ T ] are built on.
+ | ; what union layout and SIZE [ T ] are built on. Microcontrollers too:
+ | ; ARM for STM32, RISC-V for the newer ESP32s, AVR for Arduino.
  | (LLVMInitializeX86TargetInfo)[]
  | (LLVMInitializeX86Target)[]
  | (LLVMInitializeX86TargetMC)[]
  | (LLVMInitializeX86AsmPrinter)[]
+ | (LLVMInitializeARMTargetInfo)[]
+ | (LLVMInitializeARMTarget)[]
+ | (LLVMInitializeARMTargetMC)[]
+ | (LLVMInitializeRISCVTargetInfo)[]
+ | (LLVMInitializeRISCVTarget)[]
+ | (LLVMInitializeRISCVTargetMC)[]
+ | (LLVMInitializeAVRTargetInfo)[]
+ | (LLVMInitializeAVRTarget)[]
+ | (LLVMInitializeAVRTargetMC)[]
  |
- | @C1 triple = (LLVMGetDefaultTargetTriple)[]
+ | @C1 triple = cg_triple
+ | IF [ triple == NULL ]
+ |  | triple = (LLVMGetDefaultTargetTriple)[]
+ |  \_
  | (LLVMSetTarget)[ c.mod | triple ]
  |
  | @ABYSS target = 0
  | @C1 terr = 0
- | IF [ (LLVMGetTargetFromTriple)[ triple | @target AS @@ABYSS | @terr AS @@C1 ] == 0 ]
+ | IF [ (LLVMGetTargetFromTriple)[ triple | @target AS @@ABYSS | @terr AS @@C1 ] != 0 ]
+ |  | Location none
+ |  | none.file = NULL
+ |  | none.line = 0
+ |  | none.col = 0
+ |  | (diag_fatal)[ none | "plc cannot generate code for `%s`: %s" | triple | terr ]
+ | ELSE
  |  | @ABYSS tm = (LLVMCreateTargetMachine)[ target | triple | "generic" | "" | LLVMCodeGenLevelDefault | LLVMRelocDefault | LLVMCodeModelDefault ]
  |  | @ABYSS tdl = (LLVMCreateTargetDataLayout)[ tm ]
  |  | @C1 dl = (LLVMCopyStringRepOfTargetData)[ tdl ]
@@ -1995,7 +2019,9 @@ ABYSS codegen_init: [ @CodegenContext c | @C1 module_name | @Meta meta ]
  |  | (LLVMDisposeTargetData)[ tdl ]
  |  | (LLVMDisposeTargetMachine)[ tm ]
  |  \_
- | (LLVMDisposeMessage)[ triple ]
+ | IF [ cg_triple == NULL ]
+ |  | (LLVMDisposeMessage)[ triple ]
+ |  \_
  | RET
  \_
 

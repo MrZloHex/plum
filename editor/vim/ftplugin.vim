@@ -17,5 +17,10 @@ setlocal softtabstop=1
 " `\_` closes a block; don't let it be treated as a word boundary oddity
 setlocal iskeyword+=_
 
+" With YouCompleteMe and `plc --lsp` registered (see README.md), the hover
+" popup asks the server; a custom server calls it GetHover, not GetDoc.
+let b:ycm_hover = { 'command': 'GetHover', 'syntax': 'plum' }
+
 let b:undo_ftplugin = "setlocal commentstring< comments< expandtab< "
       \ . "shiftwidth< tabstop< softtabstop< iskeyword<"
+      \ . " | unlet! b:ycm_hover"

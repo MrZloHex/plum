@@ -338,7 +338,10 @@ ABYSS parse_array_len: [ @Parser pr | @ASTNode type ]
  | IF [ len <= 0 ]
  |  | (diag_fatal)[ n.loc | "an array needs a positive length%s%s" | "" | "" ]
  |  \_
- | type.as.type.arr = len AS U64
+ | IF [ len > 4294967295 ]
+ |  | (diag_fatal)[ n.loc | "an array can have at most 4294967295 elements%s%s" | "" | "" ]
+ |  \_
+ | type.as.type.arr = len AS U32
  | (expect)[ pr | TOK_RBRACE ]
  | RET
  \_

@@ -2,6 +2,9 @@
 ;
 ; The enum order must match inc/token.h exactly.
 
+!USES <../extern/stdio.pl>
+!USES <../extern/stdlib.pl>
+
 TYPE TokenType: ENUM
  | TOK_EOF
  | TOK_NEWLINE

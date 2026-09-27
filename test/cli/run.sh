@@ -46,7 +46,7 @@ src crlf.pl 'I32 main: []\r\n | RET [ 0 ]\r\n \\_\r\n'
 expect no-input          1 "no input file"            -- 
 expect missing-file      1 "cannot find"         -- "$TMP/nope.pl"
 expect o-without-arg     1 "-o needs a file name"      -- -o
-expect bad-emit          1 "--emit takes AST or IR"    -- "$TMP/ok.pl" --emit=BOGUS
+expect bad-emit          1 "--emit takes AST, IR or INDEX" -- "$TMP/ok.pl" --emit=BOGUS
 expect unwritable        1 "cannot write"           -- "$TMP/ok.pl" -o "$TMP/no/such/dir.ll"
 expect help              0 "Usage:"                    -- -h
 expect emit-ast          0 "1 top-level statements"    -- "$TMP/ok.pl" --emit=AST
@@ -88,6 +88,53 @@ if [ "$got" = "$want" ]; then
 else
     echo "*** got:"; echo "$got" | sed 's/^/                     /'; fail=$((fail+1))
 fi
+
+# --emit=INDEX, what --lsp runs: diagnostics as E lines and names as R
+# lines, all on stdout, tab-separated; with --stdin the text comes from
+# stdin, and the file named need not exist.
+T=$'\t'
+src idx.pl '!USES <inc.pl>\nI32 main: []\n | RET [ fine ]\n \\_\n'
+
+expect index-error       1 "E${T}$TMP/located.pl${T}4${T}10${T}unknown identifier \`y\`" -- "$TMP/located.pl" --emit=INDEX
+expect index-use         0 "R${T}$TMP/idx.pl${T}3${T}10${T}$TMP/inc.pl${T}1${T}5${T}I32 fine" -- "$TMP/idx.pl" --emit=INDEX
+expect index-decl        0 "R${T}$TMP/idx.pl${T}2${T}5${T}$TMP/idx.pl${T}2${T}5${T}I32 main: [ ]" -- "$TMP/idx.pl" --emit=INDEX
+
+printf '%-20s ' "index-stdin"
+got=$(printf 'I32 main: []\n | RET [ z ]\n \\_\n' | "$PLC" --emit=INDEX --stdin "$TMP/unsaved.pl" 2>&1)
+if grep -qxF "E${T}$TMP/unsaved.pl${T}2${T}10${T}unknown identifier \`z\`" <<<"$got"; then
+    echo ok; pass=$((pass+1))
+else
+    echo "*** got:"; echo "$got" | sed 's/^/                     /'; fail=$((fail+1))
+fi
+
+# --lsp: one scripted session. The file uses `fine` from inc.pl and an
+# unknown `h`; the server must report `h`, and resolve and describe `fine`.
+# The URI is spelled file:/path, as YouCompleteMe does, so USES must still
+# resolve against the right directory.
+frame() { printf 'Content-Length: %d\r\n\r\n%s' "$(LC_ALL=C; echo ${#1})" "$1"; }
+U="file:$TMP/lsp.pl"
+session() {
+    frame '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}'
+    frame '{"jsonrpc":"2.0","method":"initialized","params":{}}'
+    frame '{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"'"$U"'","languageId":"plum","version":1,"text":"!USES <inc.pl>\nI32 main: []\n | RET [ fine + h ]\n \\_\n"}}}'
+    frame '{"jsonrpc":"2.0","id":2,"method":"textDocument/definition","params":{"textDocument":{"uri":"'"$U"'"},"position":{"line":2,"character":9}}}'
+    frame '{"jsonrpc":"2.0","id":"h","method":"textDocument/hover","params":{"textDocument":{"uri":"'"$U"'"},"position":{"line":2,"character":9}}}'
+    frame '{"jsonrpc":"2.0","id":3,"method":"shutdown"}'
+    frame '{"jsonrpc":"2.0","method":"exit"}'
+}
+out=$(session | "$PLC" --lsp); rc=$?
+lsp_check() {
+    printf '%-20s ' "$1"
+    if [ $rc -eq 0 ] && grep -qF -- "$2" <<<"$out"; then
+        echo ok; pass=$((pass+1))
+    else
+        echo "*** exit $rc, output lacks: $2"; fail=$((fail+1))
+    fi
+}
+lsp_check lsp-diagnostic '"diagnostics":[{"range":{"start":{"line":2,"character":16},"end":{"line":2,"character":17}},"message":"unknown identifier `h`"'
+lsp_check lsp-definition '"id":2,"result":{"uri":"file://'"$TMP"'/inc.pl","range":{"start":{"line":0,"character":4},"end":{"line":0,"character":8}}}'
+lsp_check lsp-hover      '"id":"h","result":{"contents":{"kind":"plaintext","value":"I32 fine"}'
+lsp_check lsp-shutdown   '"id":3,"result":null'
 
 echo
 echo "passed $pass, failed $fail"

@@ -15,7 +15,7 @@
 !USES <../extern/string.pl>
 !USES <../extern/stdio.pl>
 
-TYPE VectorData<T>:
+TYPE VectorData<T>: STRUCT
  | @T    data
  | USIZE len
  | USIZE cap
