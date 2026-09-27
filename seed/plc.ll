@@ -4,18 +4,19 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:
 target triple = "x86_64-pc-linux-gnu"
 
 %String = type { ptr, i64, i64 }
+%Token = type { i32, ptr, i32, %Location }
+%Location = type { i32, i32, ptr }
 %Arena = type { ptr, ptr, i64 }
 %ArenaBlock = type { i64, i64, ptr, ptr }
 %AST = type { %Arena, ptr }
 %ASTNode = type { i32, %Location, %NodeAs }
-%Location = type { i32, i32 }
 %NodeAs = type { %N_FnDecl }
 %N_FnDecl = type { ptr, ptr, ptr, ptr, i1 }
 %N_Type = type { i32, i64, ptr, ptr, i64 }
 %N_List = type { ptr, ptr }
 %N_Parametre = type { i1, ptr, ptr, ptr }
-%Lexer = type { ptr, i64, i32, i32 }
-%Token = type { i32, ptr, i32, %Location }
+%Lexer = type { ptr, i64, i32, i32, ptr }
+%SrcFrame = type { ptr, i32, ptr }
 %Parser = type { %Lexer, %Token, ptr, i32, i1 }
 %N_Field = type { ptr, ptr, ptr }
 %N_Record = type { i32, ptr }
@@ -68,6 +69,10 @@ target triple = "x86_64-pc-linux-gnu"
 %LValue = type { ptr, ptr }
 %CGStr = type { ptr, ptr }
 
+@diag_count = global i32 0
+@diag_file = global ptr null
+@diag_text = global %String zeroinitializer
+@diag_loaded = global i1 false
 @MAX_INCLUDE_DEPTH = global i32 32
 @pp_seen = global ptr null
 @pp_nseen = global i64 0
@@ -100,317 +105,347 @@ target triple = "x86_64-pc-linux-gnu"
 @LLVMCodeGenLevelDefault = global i32 2
 @LLVMRelocDefault = global i32 0
 @LLVMCodeModelDefault = global i32 0
-@.str.0 = private unnamed_addr constant [2 x i8] c".\00"
-@.str.1 = private unnamed_addr constant [38 x i8] c"preproc: include depth exceeded (%s)\0A\00"
-@.str.2 = private unnamed_addr constant [6 x i8] c"%s/%s\00"
-@.str.3 = private unnamed_addr constant [2 x i8] c"r\00"
-@.str.4 = private unnamed_addr constant [27 x i8] c"preproc: cannot open \22%s\22\0A\00"
-@.str.5 = private unnamed_addr constant [35 x i8] c"preproc: expected '<' after !USES\0A\00"
-@.str.6 = private unnamed_addr constant [32 x i8] c"preproc: missing '>' for !USES\0A\00"
-@.str.7 = private unnamed_addr constant [6 x i8] c"!USES\00"
-@.str.8 = private unnamed_addr constant [4 x i8] c"EOF\00"
-@.str.9 = private unnamed_addr constant [8 x i8] c"NEWLINE\00"
-@.str.10 = private unnamed_addr constant [6 x i8] c"COLON\00"
-@.str.11 = private unnamed_addr constant [9 x i8] c"LBRACKET\00"
-@.str.12 = private unnamed_addr constant [9 x i8] c"RBRACKET\00"
-@.str.13 = private unnamed_addr constant [7 x i8] c"LPAREN\00"
-@.str.14 = private unnamed_addr constant [7 x i8] c"RPAREN\00"
-@.str.15 = private unnamed_addr constant [5 x i8] c"VBAR\00"
-@.str.16 = private unnamed_addr constant [4 x i8] c"DOT\00"
-@.str.17 = private unnamed_addr constant [3 x i8] c"AT\00"
-@.str.18 = private unnamed_addr constant [6 x i8] c"QMARK\00"
-@.str.19 = private unnamed_addr constant [9 x i8] c"ELLIPSIS\00"
-@.str.20 = private unnamed_addr constant [9 x i8] c"OPERATOR\00"
-@.str.21 = private unnamed_addr constant [3 x i8] c"AS\00"
-@.str.22 = private unnamed_addr constant [10 x i8] c"END BLOCK\00"
-@.str.23 = private unnamed_addr constant [11 x i8] c"IDENTIFIER\00"
-@.str.24 = private unnamed_addr constant [6 x i8] c"FLOAT\00"
-@.str.25 = private unnamed_addr constant [8 x i8] c"INTEGER\00"
-@.str.26 = private unnamed_addr constant [10 x i8] c"CHARACTER\00"
-@.str.27 = private unnamed_addr constant [7 x i8] c"STRING\00"
-@.str.28 = private unnamed_addr constant [5 x i8] c"TRUE\00"
-@.str.29 = private unnamed_addr constant [6 x i8] c"FALSE\00"
-@.str.30 = private unnamed_addr constant [5 x i8] c"TYPE\00"
-@.str.31 = private unnamed_addr constant [10 x i8] c"STRUCTURE\00"
-@.str.32 = private unnamed_addr constant [6 x i8] c"UNION\00"
-@.str.33 = private unnamed_addr constant [12 x i8] c"ENUMERATION\00"
-@.str.34 = private unnamed_addr constant [3 x i8] c"IF\00"
-@.str.35 = private unnamed_addr constant [5 x i8] c"ELIF\00"
-@.str.36 = private unnamed_addr constant [5 x i8] c"ELSE\00"
-@.str.37 = private unnamed_addr constant [5 x i8] c"LOOP\00"
-@.str.38 = private unnamed_addr constant [6 x i8] c"WHILE\00"
-@.str.39 = private unnamed_addr constant [6 x i8] c"BREAK\00"
-@.str.40 = private unnamed_addr constant [9 x i8] c"CONTINUE\00"
-@.str.41 = private unnamed_addr constant [4 x i8] c"RET\00"
-@.str.42 = private unnamed_addr constant [6 x i8] c"IFACE\00"
-@.str.43 = private unnamed_addr constant [6 x i8] c"CLASS\00"
-@.str.44 = private unnamed_addr constant [5 x i8] c"IMPL\00"
-@.str.45 = private unnamed_addr constant [5 x i8] c"NULL\00"
-@.str.46 = private unnamed_addr constant [7 x i8] c"LBRACE\00"
-@.str.47 = private unnamed_addr constant [7 x i8] c"RBRACE\00"
-@.str.48 = private unnamed_addr constant [3 x i8] c"FN\00"
-@.str.49 = private unnamed_addr constant [5 x i8] c"SIZE\00"
-@.str.50 = private unnamed_addr constant [19 x i8] c"ast: out of memory\00"
-@.str.51 = private unnamed_addr constant [6 x i8] c"%s.%s\00"
-@.str.52 = private unnamed_addr constant [41 x i8] c"UNTERMINATED SYMBOLIC LITERAL! At %d:%d\0A\00"
-@.str.53 = private unnamed_addr constant [7 x i8] c"STRUCT\00"
-@.str.54 = private unnamed_addr constant [5 x i8] c"ENUM\00"
-@.str.55 = private unnamed_addr constant [35 x i8] c"TABS ARE RESTRICTED! Tab at %d:%d\0A\00"
-@.str.56 = private unnamed_addr constant [43 x i8] c"UNKNOWN CHARACTER ENCOUNTER!!! %d:%d:`%c`\0A\00"
-@.str.57 = private unnamed_addr constant [22 x i8] c"%d:%d: Unexpected %s\0A\00"
-@.str.58 = private unnamed_addr constant [35 x i8] c"%d:%d: Unexpected %s, expected %s\0A\00"
-@.str.59 = private unnamed_addr constant [40 x i8] c"%d:%d: Wrong indentation %d, needed %d\0A\00"
-@.str.60 = private unnamed_addr constant [6 x i8] c"ABYSS\00"
-@.str.61 = private unnamed_addr constant [3 x i8] c"B1\00"
-@.str.62 = private unnamed_addr constant [3 x i8] c"C1\00"
-@.str.63 = private unnamed_addr constant [3 x i8] c"U8\00"
-@.str.64 = private unnamed_addr constant [4 x i8] c"U16\00"
-@.str.65 = private unnamed_addr constant [4 x i8] c"U32\00"
-@.str.66 = private unnamed_addr constant [4 x i8] c"U64\00"
-@.str.67 = private unnamed_addr constant [3 x i8] c"I8\00"
-@.str.68 = private unnamed_addr constant [4 x i8] c"I16\00"
-@.str.69 = private unnamed_addr constant [4 x i8] c"I32\00"
-@.str.70 = private unnamed_addr constant [4 x i8] c"I64\00"
-@.str.71 = private unnamed_addr constant [6 x i8] c"USIZE\00"
-@.str.72 = private unnamed_addr constant [6 x i8] c"ISIZE\00"
-@.str.73 = private unnamed_addr constant [4 x i8] c"F32\00"
-@.str.74 = private unnamed_addr constant [4 x i8] c"F64\00"
-@.str.75 = private unnamed_addr constant [2 x i8] c"<\00"
-@.str.76 = private unnamed_addr constant [2 x i8] c">\00"
-@.str.77 = private unnamed_addr constant [3 x i8] c">>\00"
-@.str.78 = private unnamed_addr constant [36 x i8] c"%d:%d: Unexpected %s, expected `>`\0A\00"
-@.str.79 = private unnamed_addr constant [37 x i8] c"%d:%d: `%s` takes no type arguments\0A\00"
-@.str.80 = private unnamed_addr constant [41 x i8] c"%d:%d: an array needs a positive length\0A\00"
-@.str.81 = private unnamed_addr constant [2 x i8] c"-\00"
-@.str.82 = private unnamed_addr constant [2 x i8] c"!\00"
-@.str.83 = private unnamed_addr constant [2 x i8] c"~\00"
-@.str.84 = private unnamed_addr constant [2 x i8] c"*\00"
-@.str.85 = private unnamed_addr constant [2 x i8] c"/\00"
-@.str.86 = private unnamed_addr constant [2 x i8] c"%\00"
-@.str.87 = private unnamed_addr constant [2 x i8] c"+\00"
-@.str.88 = private unnamed_addr constant [3 x i8] c"<<\00"
-@.str.89 = private unnamed_addr constant [3 x i8] c"<=\00"
-@.str.90 = private unnamed_addr constant [3 x i8] c">=\00"
-@.str.91 = private unnamed_addr constant [3 x i8] c"==\00"
-@.str.92 = private unnamed_addr constant [3 x i8] c"!=\00"
-@.str.93 = private unnamed_addr constant [2 x i8] c"&\00"
-@.str.94 = private unnamed_addr constant [2 x i8] c"^\00"
-@.str.95 = private unnamed_addr constant [3 x i8] c"&&\00"
-@.str.96 = private unnamed_addr constant [3 x i8] c"||\00"
-@.str.97 = private unnamed_addr constant [2 x i8] c"=\00"
-@.str.98 = private unnamed_addr constant [37 x i8] c"parse_expr: unexpected node kind %d\0A\00"
-@.str.99 = private unnamed_addr constant [64 x i8] c"%d:%d: an IFACE takes exactly one receiver, as in [ @Data me ]\0A\00"
-@.str.100 = private unnamed_addr constant [39 x i8] c"%d:%d: Wrong indentation %d, needed 1\0A\00"
-@.str.101 = private unnamed_addr constant [7 x i8] c"PUBLIC\00"
-@.str.102 = private unnamed_addr constant [8 x i8] c"PRIVATE\00"
-@.str.103 = private unnamed_addr constant [45 x i8] c"%d:%d: expected PUBLIC or PRIVATE, got `%s`\0A\00"
-@.str.104 = private unnamed_addr constant [33 x i8] c"%d:%d: method `%s` needs a body\0A\00"
-@.str.105 = private unnamed_addr constant [80 x i8] c"%d:%d: a statement outside any block; top-level declarations start in column 1\0A\00"
-@.str.106 = private unnamed_addr constant [11 x i8] c"%d:%d: %s\0A\00"
-@.str.107 = private unnamed_addr constant [4 x i8] c"%s\0A\00"
-@.str.108 = private unnamed_addr constant [4 x i8] c"FN \00"
-@.str.109 = private unnamed_addr constant [3 x i8] c" [\00"
-@.str.110 = private unnamed_addr constant [4 x i8] c"...\00"
-@.str.111 = private unnamed_addr constant [3 x i8] c" |\00"
-@.str.112 = private unnamed_addr constant [3 x i8] c" ]\00"
-@.str.113 = private unnamed_addr constant [3 x i8] c", \00"
-@.str.114 = private unnamed_addr constant [28 x i8] c"%d type argument(s), got %d\00"
-@.str.115 = private unnamed_addr constant [14 x i8] c"`%s` takes %s\00"
-@.str.116 = private unnamed_addr constant [66 x i8] c"a CLASS is built on a STRUCT, not on a pointer or a base type%s%s\00"
-@.str.117 = private unnamed_addr constant [1 x i8] zeroinitializer
-@.str.118 = private unnamed_addr constant [20 x i8] c"unknown type `%s`%s\00"
-@.str.119 = private unnamed_addr constant [52 x i8] c"a CLASS is built on a STRUCT, and `%s` is a UNION%s\00"
-@.str.120 = private unnamed_addr constant [52 x i8] c"a CLASS is built on a STRUCT, and `%s` is not one%s\00"
-@.str.121 = private unnamed_addr constant [46 x i8] c"IMPL lists interfaces, and this is a type%s%s\00"
-@.str.122 = private unnamed_addr constant [25 x i8] c"unknown interface `%s`%s\00"
-@.str.123 = private unnamed_addr constant [51 x i8] c"`%s` works on `%s`, which this CLASS does not hold\00"
-@.str.124 = private unnamed_addr constant [42 x i8] c"`%s` is defined by two interfaces of `%s`\00"
-@.str.125 = private unnamed_addr constant [80 x i8] c"too many instances of `%s`; is it generic in itself, as in X<@T> inside X<T>?%s\00"
-@.str.126 = private unnamed_addr constant [35 x i8] c"`%s` is an interface, not a type%s\00"
-@.str.127 = private unnamed_addr constant [29 x i8] c"`%s` is not a generic type%s\00"
-@.str.128 = private unnamed_addr constant [56 x i8] c"`%s` is generic and needs type arguments, as in %s<I32>\00"
-@.str.129 = private unnamed_addr constant [77 x i8] c"ENUM `%s` cannot be generic: its constants do not depend on the parameters%s\00"
-@.str.130 = private unnamed_addr constant [46 x i8] c"CLASS `%s` has the name of an existing TYPE%s\00"
-@.str.131 = private unnamed_addr constant [2 x i8] c"?\00"
-@.str.132 = private unnamed_addr constant [10 x i8] c"<unknown>\00"
-@.str.133 = private unnamed_addr constant [2 x i8] c"@\00"
-@.str.134 = private unnamed_addr constant [3 x i8] c"@@\00"
-@.str.135 = private unnamed_addr constant [4 x i8] c"@@@\00"
-@.str.136 = private unnamed_addr constant [5 x i8] c"%s%s\00"
-@.str.137 = private unnamed_addr constant [39 x i8] c"an ABYSS call has no value to use here\00"
-@.str.138 = private unnamed_addr constant [47 x i8] c"%s is not a function, so it cannot be called%s\00"
-@.str.139 = private unnamed_addr constant [35 x i8] c"call to undeclared function `%s`%s\00"
-@.str.140 = private unnamed_addr constant [30 x i8] c"%s has no methods, so no `%s`\00"
-@.str.141 = private unnamed_addr constant [24 x i8] c"`%s` is PRIVATE to `%s`\00"
-@.str.142 = private unnamed_addr constant [33 x i8] c"`%s` has no method or field `%s`\00"
-@.str.143 = private unnamed_addr constant [22 x i8] c"this function pointer\00"
-@.str.144 = private unnamed_addr constant [28 x i8] c"argument expects %s, got %s\00"
-@.str.145 = private unnamed_addr constant [28 x i8] c"too few arguments to `%s`%s\00"
-@.str.146 = private unnamed_addr constant [29 x i8] c"too many arguments to `%s`%s\00"
-@.str.147 = private unnamed_addr constant [58 x i8] c"`.` applied to an array; index it first, as in a{0}.field\00"
-@.str.148 = private unnamed_addr constant [41 x i8] c"`.` applied to %s, which has no fields%s\00"
-@.str.149 = private unnamed_addr constant [36 x i8] c"`.` needs a field name on the right\00"
-@.str.150 = private unnamed_addr constant [22 x i8] c"no field `%s` in `%s`\00"
-@.str.151 = private unnamed_addr constant [38 x i8] c"an index must be an integer, not %s%s\00"
-@.str.152 = private unnamed_addr constant [56 x i8] c"cannot index %s: it is neither an array nor a pointer%s\00"
-@.str.153 = private unnamed_addr constant [54 x i8] c"cannot index @ABYSS; cast it to a typed pointer first\00"
-@.str.154 = private unnamed_addr constant [72 x i8] c"the left side of `=` is not a variable, a field, an element or ?pointer\00"
-@.str.155 = private unnamed_addr constant [52 x i8] c"cannot assign to a whole array; assign its elements\00"
-@.str.156 = private unnamed_addr constant [23 x i8] c"cannot assign %s to %s\00"
-@.str.157 = private unnamed_addr constant [28 x i8] c"a struct has no truth value\00"
-@.str.158 = private unnamed_addr constant [23 x i8] c"cannot compare structs\00"
-@.str.159 = private unnamed_addr constant [23 x i8] c"arithmetic on a struct\00"
-@.str.160 = private unnamed_addr constant [28 x i8] c"bitwise operator on a float\00"
-@.str.161 = private unnamed_addr constant [49 x i8] c"pointer arithmetic needs an integer, not a float\00"
-@.str.162 = private unnamed_addr constant [27 x i8] c"cannot subtract %s from %s\00"
-@.str.163 = private unnamed_addr constant [85 x i8] c"on pointers only p + n, n + p, p - n and p - q are defined; cast to U64 for the rest\00"
-@.str.164 = private unnamed_addr constant [26 x i8] c"unknown identifier `%s`%s\00"
-@.str.165 = private unnamed_addr constant [58 x i8] c"AS converts scalars and pointers; a struct cannot be cast\00"
-@.str.166 = private unnamed_addr constant [18 x i8] c"ABYSS has no size\00"
-@.str.167 = private unnamed_addr constant [45 x i8] c"cannot dereference %s, it is not a pointer%s\00"
-@.str.168 = private unnamed_addr constant [60 x i8] c"cannot dereference @ABYSS; cast it to a typed pointer first\00"
-@.str.169 = private unnamed_addr constant [63 x i8] c"cannot take the address of a value that is not stored anywhere\00"
-@.str.170 = private unnamed_addr constant [56 x i8] c"`@%s`: a function's name alone is already its address%s\00"
-@.str.171 = private unnamed_addr constant [37 x i8] c"`-` and `~` do not apply to pointers\00"
-@.str.172 = private unnamed_addr constant [44 x i8] c"%s needs a scalar condition, got a struct%s\00"
-@.str.173 = private unnamed_addr constant [30 x i8] c"`%s` cannot have type ABYSS%s\00"
-@.str.174 = private unnamed_addr constant [41 x i8] c"`%s` is already declared in this scope%s\00"
-@.str.175 = private unnamed_addr constant [61 x i8] c"array `%s` cannot have an initialiser; assign its elements%s\00"
-@.str.176 = private unnamed_addr constant [29 x i8] c"cannot initialise %s from %s\00"
-@.str.177 = private unnamed_addr constant [31 x i8] c"this function must return %s%s\00"
-@.str.178 = private unnamed_addr constant [40 x i8] c"an ABYSS function cannot return a value\00"
-@.str.179 = private unnamed_addr constant [41 x i8] c"returning %s from a function declared %s\00"
-@.str.180 = private unnamed_addr constant [23 x i8] c"%s outside of a loop%s\00"
-@.str.181 = private unnamed_addr constant [5 x i8] c"exit\00"
-@.str.182 = private unnamed_addr constant [6 x i8] c"abort\00"
-@.str.183 = private unnamed_addr constant [6 x i8] c"_exit\00"
-@.str.184 = private unnamed_addr constant [5 x i8] c"main\00"
-@.str.185 = private unnamed_addr constant [37 x i8] c"`%s` can reach its end without RET%s\00"
-@.str.186 = private unnamed_addr constant [29 x i8] c"TYPE `%s` is defined twice%s\00"
-@.str.187 = private unnamed_addr constant [31 x i8] c"global `%s` is defined twice%s\00"
-@.str.188 = private unnamed_addr constant [33 x i8] c"function `%s` is defined twice%s\00"
-@.str.189 = private unnamed_addr constant [52 x i8] c"`%s` is declared again with a different signature%s\00"
-@.str.190 = private unnamed_addr constant [18 x i8] c"%d type error(s)\0A\00"
-@.str.191 = private unnamed_addr constant [13 x i8] c"codegen: %s\0A\00"
-@.str.192 = private unnamed_addr constant [19 x i8] c"unmapped base type\00"
-@.str.193 = private unnamed_addr constant [37 x i8] c"codegen: unknown type `%s` at %d:%d\0A\00"
-@.str.194 = private unnamed_addr constant [7 x i8] c"tobool\00"
-@.str.195 = private unnamed_addr constant [5 x i8] c"zext\00"
-@.str.196 = private unnamed_addr constant [5 x i8] c"sext\00"
-@.str.197 = private unnamed_addr constant [6 x i8] c"trunc\00"
-@.str.198 = private unnamed_addr constant [5 x i8] c"itop\00"
-@.str.199 = private unnamed_addr constant [5 x i8] c"ptoi\00"
-@.str.200 = private unnamed_addr constant [7 x i8] c"sitofp\00"
-@.str.201 = private unnamed_addr constant [6 x i8] c"fpext\00"
-@.str.202 = private unnamed_addr constant [8 x i8] c"fptrunc\00"
-@.str.203 = private unnamed_addr constant [7 x i8] c"fptosi\00"
-@.str.204 = private unnamed_addr constant [39 x i8] c"cannot convert to or from an aggregate\00"
-@.str.205 = private unnamed_addr constant [8 x i8] c".str.%d\00"
-@.str.206 = private unnamed_addr constant [4 x i8] c"idx\00"
-@.str.207 = private unnamed_addr constant [5 x i8] c"elem\00"
-@.str.208 = private unnamed_addr constant [4 x i8] c"tmp\00"
-@.str.209 = private unnamed_addr constant [7 x i8] c"objptr\00"
-@.str.210 = private unnamed_addr constant [50 x i8] c"codegen: `.` applied to a non-aggregate at %d:%d\0A\00"
-@.str.211 = private unnamed_addr constant [32 x i8] c"codegen: no field `%s` in `%s`\0A\00"
-@.str.212 = private unnamed_addr constant [4 x i8] c"fld\00"
-@.str.213 = private unnamed_addr constant [19 x i8] c"a function pointer\00"
-@.str.214 = private unnamed_addr constant [47 x i8] c"codegen: cannot tell what `%s` calls at %d:%d\0A\00"
-@.str.215 = private unnamed_addr constant [43 x i8] c"codegen: call to undeclared function `%s`\0A\00"
-@.str.216 = private unnamed_addr constant [5 x i8] c"recv\00"
-@.str.217 = private unnamed_addr constant [49 x i8] c"codegen: could not evaluate argument %d to `%s`\0A\00"
-@.str.218 = private unnamed_addr constant [8 x i8] c"vapromo\00"
-@.str.219 = private unnamed_addr constant [5 x i8] c"call\00"
-@.str.220 = private unnamed_addr constant [7 x i8] c"uitofp\00"
-@.str.221 = private unnamed_addr constant [5 x i8] c"fadd\00"
-@.str.222 = private unnamed_addr constant [5 x i8] c"fsub\00"
-@.str.223 = private unnamed_addr constant [5 x i8] c"fmul\00"
-@.str.224 = private unnamed_addr constant [5 x i8] c"fdiv\00"
-@.str.225 = private unnamed_addr constant [5 x i8] c"frem\00"
-@.str.226 = private unnamed_addr constant [50 x i8] c"codegen: operator not defined on floats at %d:%d\0A\00"
-@.str.227 = private unnamed_addr constant [5 x i8] c"fcmp\00"
-@.str.228 = private unnamed_addr constant [54 x i8] c"codegen: left side of `=` is not assignable at %d:%d\0A\00"
-@.str.229 = private unnamed_addr constant [60 x i8] c"codegen: could not evaluate the right side of `=` at %d:%d\0A\00"
-@.str.230 = private unnamed_addr constant [48 x i8] c"codegen: cannot resolve member access at %d:%d\0A\00"
-@.str.231 = private unnamed_addr constant [7 x i8] c"fldval\00"
-@.str.232 = private unnamed_addr constant [37 x i8] c"codegen: cannot index this at %d:%d\0A\00"
-@.str.233 = private unnamed_addr constant [8 x i8] c"elemval\00"
-@.str.234 = private unnamed_addr constant [7 x i8] c"sc.rhs\00"
-@.str.235 = private unnamed_addr constant [7 x i8] c"sc.end\00"
-@.str.236 = private unnamed_addr constant [3 x i8] c"sc\00"
-@.str.237 = private unnamed_addr constant [3 x i8] c"pl\00"
-@.str.238 = private unnamed_addr constant [3 x i8] c"pr\00"
-@.str.239 = private unnamed_addr constant [6 x i8] c"pdiff\00"
-@.str.240 = private unnamed_addr constant [7 x i8] c"pcount\00"
-@.str.241 = private unnamed_addr constant [4 x i8] c"neg\00"
-@.str.242 = private unnamed_addr constant [5 x i8] c"padd\00"
-@.str.243 = private unnamed_addr constant [4 x i8] c"add\00"
-@.str.244 = private unnamed_addr constant [4 x i8] c"sub\00"
-@.str.245 = private unnamed_addr constant [4 x i8] c"mul\00"
-@.str.246 = private unnamed_addr constant [4 x i8] c"div\00"
-@.str.247 = private unnamed_addr constant [4 x i8] c"rem\00"
-@.str.248 = private unnamed_addr constant [5 x i8] c"band\00"
-@.str.249 = private unnamed_addr constant [4 x i8] c"bor\00"
-@.str.250 = private unnamed_addr constant [5 x i8] c"bxor\00"
-@.str.251 = private unnamed_addr constant [4 x i8] c"shl\00"
-@.str.252 = private unnamed_addr constant [4 x i8] c"shr\00"
-@.str.253 = private unnamed_addr constant [3 x i8] c"eq\00"
-@.str.254 = private unnamed_addr constant [3 x i8] c"ne\00"
-@.str.255 = private unnamed_addr constant [3 x i8] c"lt\00"
-@.str.256 = private unnamed_addr constant [3 x i8] c"le\00"
-@.str.257 = private unnamed_addr constant [3 x i8] c"gt\00"
-@.str.258 = private unnamed_addr constant [3 x i8] c"ge\00"
-@.str.259 = private unnamed_addr constant [26 x i8] c"unhandled binary operator\00"
-@.str.260 = private unnamed_addr constant [23 x i8] c"unhandled literal kind\00"
-@.str.261 = private unnamed_addr constant [43 x i8] c"codegen: unknown identifier `%s` at %d:%d\0A\00"
-@.str.262 = private unnamed_addr constant [62 x i8] c"codegen: cannot take the address of this expression at %d:%d\0A\00"
-@.str.263 = private unnamed_addr constant [6 x i8] c"deref\00"
-@.str.264 = private unnamed_addr constant [5 x i8] c"bnot\00"
-@.str.265 = private unnamed_addr constant [4 x i8] c"not\00"
-@.str.266 = private unnamed_addr constant [5 x i8] c"fneg\00"
-@.str.267 = private unnamed_addr constant [9 x i8] c"bad cast\00"
-@.str.268 = private unnamed_addr constant [5 x i8] c"cast\00"
-@.str.269 = private unnamed_addr constant [12 x i8] c"cannot cast\00"
-@.str.270 = private unnamed_addr constant [48 x i8] c"codegen: unhandled expression node %d at %d:%d\0A\00"
-@.str.271 = private unnamed_addr constant [7 x i8] c"if.end\00"
-@.str.272 = private unnamed_addr constant [8 x i8] c"if.then\00"
-@.str.273 = private unnamed_addr constant [8 x i8] c"if.else\00"
-@.str.274 = private unnamed_addr constant [10 x i8] c"elif.then\00"
-@.str.275 = private unnamed_addr constant [10 x i8] c"elif.else\00"
-@.str.276 = private unnamed_addr constant [10 x i8] c"loop.body\00"
-@.str.277 = private unnamed_addr constant [10 x i8] c"loop.cont\00"
-@.str.278 = private unnamed_addr constant [9 x i8] c"loop.end\00"
-@.str.279 = private unnamed_addr constant [11 x i8] c"while.body\00"
-@.str.280 = private unnamed_addr constant [62 x i8] c"codegen: could not evaluate the initialiser of `%s` at %d:%d\0A\00"
-@.str.281 = private unnamed_addr constant [43 x i8] c"codegen: BREAK outside of a loop at %d:%d\0A\00"
-@.str.282 = private unnamed_addr constant [46 x i8] c"codegen: CONTINUE outside of a loop at %d:%d\0A\00"
-@.str.283 = private unnamed_addr constant [25 x i8] c"unhandled statement kind\00"
-@.str.284 = private unnamed_addr constant [6 x i8] c"entry\00"
-@.str.285 = private unnamed_addr constant [24 x i8] c"type was never declared\00"
-@.str.286 = private unnamed_addr constant [60 x i8] c"codegen: global `%s` needs a constant initialiser at %d:%d\0A\00"
-@.str.287 = private unnamed_addr constant [8 x i8] c"generic\00"
-@.str.288 = private unnamed_addr constant [64 x i8] c"internal error: plc produced invalid LLVM IR; please report it\0A\00"
-@.str.289 = private unnamed_addr constant [17 x i8] c"LLVM verify: %s\0A\00"
-@.str.290 = private unnamed_addr constant [20 x i8] c"failed to write %s\0A\00"
-@.str.291 = private unnamed_addr constant [59 x i8] c"Usage: %s [--emit=<AST|IR>] [-o output] file1 [file2 ...]\0A\00"
-@.str.292 = private unnamed_addr constant [65 x i8] c"  --emit=<AST|IR>   Specify the output type to emit (AST or IR)\0A\00"
-@.str.293 = private unnamed_addr constant [48 x i8] c"  -o output        Specify the output filename\0A\00"
-@.str.294 = private unnamed_addr constant [56 x i8] c"  file1 ...        One or more source files to compile\0A\00"
-@.str.295 = private unnamed_addr constant [3 x i8] c"%s\00"
-@.str.296 = private unnamed_addr constant [8 x i8] c"--emit=\00"
-@.str.297 = private unnamed_addr constant [3 x i8] c"-o\00"
-@.str.298 = private unnamed_addr constant [30 x i8] c"Error: -o needs an argument.\0A\00"
-@.str.299 = private unnamed_addr constant [3 x i8] c"-h\00"
-@.str.300 = private unnamed_addr constant [7 x i8] c"--help\00"
-@.str.301 = private unnamed_addr constant [56 x i8] c"Warning: only `%s' is compiled; further input ignored.\0A\00"
-@.str.302 = private unnamed_addr constant [33 x i8] c"Error: No input files provided.\0A\00"
-@.str.303 = private unnamed_addr constant [4 x i8] c"AST\00"
-@.str.304 = private unnamed_addr constant [3 x i8] c"IR\00"
-@.str.305 = private unnamed_addr constant [42 x i8] c"Error: --emit takes AST or IR, not `%s'.\0A\00"
-@.str.306 = private unnamed_addr constant [35 x i8] c"Failed to resolve source file: %s\0A\00"
-@.str.307 = private unnamed_addr constant [32 x i8] c"Failed to open source file: %s\0A\00"
-@.str.308 = private unnamed_addr constant [26 x i8] c"Preprocessing failed: %s\0A\00"
-@.str.309 = private unnamed_addr constant [12 x i8] c"/dev/stdout\00"
-@.str.310 = private unnamed_addr constant [25 x i8] c"%d top-level statements\0A\00"
+@.str.0 = private unnamed_addr constant [4 x i8] c"EOF\00"
+@.str.1 = private unnamed_addr constant [8 x i8] c"NEWLINE\00"
+@.str.2 = private unnamed_addr constant [6 x i8] c"COLON\00"
+@.str.3 = private unnamed_addr constant [9 x i8] c"LBRACKET\00"
+@.str.4 = private unnamed_addr constant [9 x i8] c"RBRACKET\00"
+@.str.5 = private unnamed_addr constant [7 x i8] c"LPAREN\00"
+@.str.6 = private unnamed_addr constant [7 x i8] c"RPAREN\00"
+@.str.7 = private unnamed_addr constant [5 x i8] c"VBAR\00"
+@.str.8 = private unnamed_addr constant [4 x i8] c"DOT\00"
+@.str.9 = private unnamed_addr constant [3 x i8] c"AT\00"
+@.str.10 = private unnamed_addr constant [6 x i8] c"QMARK\00"
+@.str.11 = private unnamed_addr constant [9 x i8] c"ELLIPSIS\00"
+@.str.12 = private unnamed_addr constant [9 x i8] c"OPERATOR\00"
+@.str.13 = private unnamed_addr constant [3 x i8] c"AS\00"
+@.str.14 = private unnamed_addr constant [10 x i8] c"END BLOCK\00"
+@.str.15 = private unnamed_addr constant [11 x i8] c"IDENTIFIER\00"
+@.str.16 = private unnamed_addr constant [6 x i8] c"FLOAT\00"
+@.str.17 = private unnamed_addr constant [8 x i8] c"INTEGER\00"
+@.str.18 = private unnamed_addr constant [10 x i8] c"CHARACTER\00"
+@.str.19 = private unnamed_addr constant [7 x i8] c"STRING\00"
+@.str.20 = private unnamed_addr constant [5 x i8] c"TRUE\00"
+@.str.21 = private unnamed_addr constant [6 x i8] c"FALSE\00"
+@.str.22 = private unnamed_addr constant [5 x i8] c"TYPE\00"
+@.str.23 = private unnamed_addr constant [10 x i8] c"STRUCTURE\00"
+@.str.24 = private unnamed_addr constant [6 x i8] c"UNION\00"
+@.str.25 = private unnamed_addr constant [12 x i8] c"ENUMERATION\00"
+@.str.26 = private unnamed_addr constant [3 x i8] c"IF\00"
+@.str.27 = private unnamed_addr constant [5 x i8] c"ELIF\00"
+@.str.28 = private unnamed_addr constant [5 x i8] c"ELSE\00"
+@.str.29 = private unnamed_addr constant [5 x i8] c"LOOP\00"
+@.str.30 = private unnamed_addr constant [6 x i8] c"WHILE\00"
+@.str.31 = private unnamed_addr constant [6 x i8] c"BREAK\00"
+@.str.32 = private unnamed_addr constant [9 x i8] c"CONTINUE\00"
+@.str.33 = private unnamed_addr constant [4 x i8] c"RET\00"
+@.str.34 = private unnamed_addr constant [6 x i8] c"IFACE\00"
+@.str.35 = private unnamed_addr constant [6 x i8] c"CLASS\00"
+@.str.36 = private unnamed_addr constant [5 x i8] c"IMPL\00"
+@.str.37 = private unnamed_addr constant [5 x i8] c"NULL\00"
+@.str.38 = private unnamed_addr constant [7 x i8] c"LBRACE\00"
+@.str.39 = private unnamed_addr constant [7 x i8] c"RBRACE\00"
+@.str.40 = private unnamed_addr constant [3 x i8] c"FN\00"
+@.str.41 = private unnamed_addr constant [5 x i8] c"SIZE\00"
+@.str.42 = private unnamed_addr constant [20 x i8] c"the end of the file\00"
+@.str.43 = private unnamed_addr constant [20 x i8] c"the end of the line\00"
+@.str.44 = private unnamed_addr constant [4 x i8] c"`:`\00"
+@.str.45 = private unnamed_addr constant [4 x i8] c"`[`\00"
+@.str.46 = private unnamed_addr constant [4 x i8] c"`]`\00"
+@.str.47 = private unnamed_addr constant [4 x i8] c"`(`\00"
+@.str.48 = private unnamed_addr constant [4 x i8] c"`)`\00"
+@.str.49 = private unnamed_addr constant [4 x i8] c"`{`\00"
+@.str.50 = private unnamed_addr constant [4 x i8] c"`}`\00"
+@.str.51 = private unnamed_addr constant [4 x i8] c"`|`\00"
+@.str.52 = private unnamed_addr constant [4 x i8] c"`.`\00"
+@.str.53 = private unnamed_addr constant [4 x i8] c"`@`\00"
+@.str.54 = private unnamed_addr constant [4 x i8] c"`?`\00"
+@.str.55 = private unnamed_addr constant [6 x i8] c"`...`\00"
+@.str.56 = private unnamed_addr constant [12 x i8] c"an operator\00"
+@.str.57 = private unnamed_addr constant [24 x i8] c"the end of a block `\\_`\00"
+@.str.58 = private unnamed_addr constant [7 x i8] c"a name\00"
+@.str.59 = private unnamed_addr constant [9 x i8] c"a number\00"
+@.str.60 = private unnamed_addr constant [12 x i8] c"a character\00"
+@.str.61 = private unnamed_addr constant [9 x i8] c"a string\00"
+@.str.62 = private unnamed_addr constant [7 x i8] c"STRUCT\00"
+@.str.63 = private unnamed_addr constant [5 x i8] c"ENUM\00"
+@.str.64 = private unnamed_addr constant [14 x i8] c"the name `%s`\00"
+@.str.65 = private unnamed_addr constant [16 x i8] c"the number `%s`\00"
+@.str.66 = private unnamed_addr constant [5 x i8] c"`%s`\00"
+@.str.67 = private unnamed_addr constant [3 x i8] c"%s\00"
+@.str.68 = private unnamed_addr constant [2 x i8] c"r\00"
+@.str.69 = private unnamed_addr constant [30 x i8] c"\1B[1;31merror\1B[0m\1B[1m: %s\1B[0m\0A\00"
+@.str.70 = private unnamed_addr constant [11 x i8] c"error: %s\0A\00"
+@.str.71 = private unnamed_addr constant [17 x i8] c"%*s--> %s:%d:%d\0A\00"
+@.str.72 = private unnamed_addr constant [1 x i8] zeroinitializer
+@.str.73 = private unnamed_addr constant [7 x i8] c"%*s |\0A\00"
+@.str.74 = private unnamed_addr constant [9 x i8] c"%d | %s\0A\00"
+@.str.75 = private unnamed_addr constant [23 x i8] c"%*s | %*s\1B[1;31m^\1B[0m\0A\00"
+@.str.76 = private unnamed_addr constant [12 x i8] c"%*s | %*s^\0A\00"
+@.str.77 = private unnamed_addr constant [9 x i8] c"1 error\0A\00"
+@.str.78 = private unnamed_addr constant [11 x i8] c"%d errors\0A\00"
+@.str.79 = private unnamed_addr constant [26 x i8] c"internal compiler error: \00"
+@.str.80 = private unnamed_addr constant [2 x i8] c"\0A\00"
+@.str.81 = private unnamed_addr constant [2 x i8] c".\00"
+@.str.82 = private unnamed_addr constant [76 x i8] c"USES nested more than %s deep, including `%s`; do files include each other?\00"
+@.str.83 = private unnamed_addr constant [3 x i8] c"32\00"
+@.str.84 = private unnamed_addr constant [6 x i8] c"%s/%s\00"
+@.str.85 = private unnamed_addr constant [33 x i8] c"cannot open `%s` (looked for %s)\00"
+@.str.86 = private unnamed_addr constant [57 x i8] c"USES takes a file in angle brackets, as in !USES <io.pl>\00"
+@.str.87 = private unnamed_addr constant [35 x i8] c"this USES is never closed with `>`\00"
+@.str.88 = private unnamed_addr constant [6 x i8] c"!USES\00"
+@.str.89 = private unnamed_addr constant [19 x i8] c"ast: out of memory\00"
+@.str.90 = private unnamed_addr constant [6 x i8] c"%s.%s\00"
+@.str.91 = private unnamed_addr constant [41 x i8] c"this string is never closed with `\22`%s%s\00"
+@.str.92 = private unnamed_addr constant [44 x i8] c"this character is never closed with `'`%s%s\00"
+@.str.93 = private unnamed_addr constant [41 x i8] c"a tab; PLUM is indented with spaces only\00"
+@.str.94 = private unnamed_addr constant [27 x i8] c"`%s` is not part of PLUM%s\00"
+@.str.95 = private unnamed_addr constant [4 x i8] c"%ld\00"
+@.str.96 = private unnamed_addr constant [21 x i8] c"unexpected %s here%s\00"
+@.str.97 = private unnamed_addr constant [22 x i8] c"expected %s, found %s\00"
+@.str.98 = private unnamed_addr constant [58 x i8] c"this line is %s `|` deep, but the block it is in needs %s\00"
+@.str.99 = private unnamed_addr constant [6 x i8] c"ABYSS\00"
+@.str.100 = private unnamed_addr constant [3 x i8] c"B1\00"
+@.str.101 = private unnamed_addr constant [3 x i8] c"C1\00"
+@.str.102 = private unnamed_addr constant [3 x i8] c"U8\00"
+@.str.103 = private unnamed_addr constant [4 x i8] c"U16\00"
+@.str.104 = private unnamed_addr constant [4 x i8] c"U32\00"
+@.str.105 = private unnamed_addr constant [4 x i8] c"U64\00"
+@.str.106 = private unnamed_addr constant [3 x i8] c"I8\00"
+@.str.107 = private unnamed_addr constant [4 x i8] c"I16\00"
+@.str.108 = private unnamed_addr constant [4 x i8] c"I32\00"
+@.str.109 = private unnamed_addr constant [4 x i8] c"I64\00"
+@.str.110 = private unnamed_addr constant [6 x i8] c"USIZE\00"
+@.str.111 = private unnamed_addr constant [6 x i8] c"ISIZE\00"
+@.str.112 = private unnamed_addr constant [4 x i8] c"F32\00"
+@.str.113 = private unnamed_addr constant [4 x i8] c"F64\00"
+@.str.114 = private unnamed_addr constant [2 x i8] c"<\00"
+@.str.115 = private unnamed_addr constant [2 x i8] c">\00"
+@.str.116 = private unnamed_addr constant [3 x i8] c">>\00"
+@.str.117 = private unnamed_addr constant [53 x i8] c"expected `>` to close the type arguments, found %s%s\00"
+@.str.118 = private unnamed_addr constant [31 x i8] c"`%s` takes no type arguments%s\00"
+@.str.119 = private unnamed_addr constant [37 x i8] c"an array needs a positive length%s%s\00"
+@.str.120 = private unnamed_addr constant [2 x i8] c"-\00"
+@.str.121 = private unnamed_addr constant [2 x i8] c"!\00"
+@.str.122 = private unnamed_addr constant [2 x i8] c"~\00"
+@.str.123 = private unnamed_addr constant [2 x i8] c"*\00"
+@.str.124 = private unnamed_addr constant [2 x i8] c"/\00"
+@.str.125 = private unnamed_addr constant [2 x i8] c"%\00"
+@.str.126 = private unnamed_addr constant [2 x i8] c"+\00"
+@.str.127 = private unnamed_addr constant [3 x i8] c"<<\00"
+@.str.128 = private unnamed_addr constant [3 x i8] c"<=\00"
+@.str.129 = private unnamed_addr constant [3 x i8] c">=\00"
+@.str.130 = private unnamed_addr constant [3 x i8] c"==\00"
+@.str.131 = private unnamed_addr constant [3 x i8] c"!=\00"
+@.str.132 = private unnamed_addr constant [2 x i8] c"&\00"
+@.str.133 = private unnamed_addr constant [2 x i8] c"^\00"
+@.str.134 = private unnamed_addr constant [3 x i8] c"&&\00"
+@.str.135 = private unnamed_addr constant [3 x i8] c"||\00"
+@.str.136 = private unnamed_addr constant [2 x i8] c"=\00"
+@.str.137 = private unnamed_addr constant [36 x i8] c"parse_expr: unexpected node kind %s\00"
+@.str.138 = private unnamed_addr constant [60 x i8] c"an IFACE takes exactly one receiver, as in [ @Data me ]%s%s\00"
+@.str.139 = private unnamed_addr constant [55 x i8] c"this line is %s `|` deep, but a method starts at one%s\00"
+@.str.140 = private unnamed_addr constant [7 x i8] c"PUBLIC\00"
+@.str.141 = private unnamed_addr constant [8 x i8] c"PRIVATE\00"
+@.str.142 = private unnamed_addr constant [41 x i8] c"expected PUBLIC or PRIVATE, found `%s`%s\00"
+@.str.143 = private unnamed_addr constant [27 x i8] c"method `%s` needs a body%s\00"
+@.str.144 = private unnamed_addr constant [76 x i8] c"a statement outside any block; top-level declarations start in column 1%s%s\00"
+@.str.145 = private unnamed_addr constant [4 x i8] c"FN \00"
+@.str.146 = private unnamed_addr constant [3 x i8] c" [\00"
+@.str.147 = private unnamed_addr constant [4 x i8] c"...\00"
+@.str.148 = private unnamed_addr constant [3 x i8] c" |\00"
+@.str.149 = private unnamed_addr constant [3 x i8] c" ]\00"
+@.str.150 = private unnamed_addr constant [3 x i8] c", \00"
+@.str.151 = private unnamed_addr constant [2 x i8] c"s\00"
+@.str.152 = private unnamed_addr constant [27 x i8] c"%d type argument%s, got %d\00"
+@.str.153 = private unnamed_addr constant [14 x i8] c"`%s` takes %s\00"
+@.str.154 = private unnamed_addr constant [66 x i8] c"a CLASS is built on a STRUCT, not on a pointer or a base type%s%s\00"
+@.str.155 = private unnamed_addr constant [20 x i8] c"unknown type `%s`%s\00"
+@.str.156 = private unnamed_addr constant [52 x i8] c"a CLASS is built on a STRUCT, and `%s` is a UNION%s\00"
+@.str.157 = private unnamed_addr constant [52 x i8] c"a CLASS is built on a STRUCT, and `%s` is not one%s\00"
+@.str.158 = private unnamed_addr constant [46 x i8] c"IMPL lists interfaces, and this is a type%s%s\00"
+@.str.159 = private unnamed_addr constant [25 x i8] c"unknown interface `%s`%s\00"
+@.str.160 = private unnamed_addr constant [51 x i8] c"`%s` works on `%s`, which this CLASS does not hold\00"
+@.str.161 = private unnamed_addr constant [42 x i8] c"`%s` is defined by two interfaces of `%s`\00"
+@.str.162 = private unnamed_addr constant [80 x i8] c"too many instances of `%s`; is it generic in itself, as in X<@T> inside X<T>?%s\00"
+@.str.163 = private unnamed_addr constant [35 x i8] c"`%s` is an interface, not a type%s\00"
+@.str.164 = private unnamed_addr constant [29 x i8] c"`%s` is not a generic type%s\00"
+@.str.165 = private unnamed_addr constant [56 x i8] c"`%s` is generic and needs type arguments, as in %s<I32>\00"
+@.str.166 = private unnamed_addr constant [77 x i8] c"ENUM `%s` cannot be generic: its constants do not depend on the parameters%s\00"
+@.str.167 = private unnamed_addr constant [46 x i8] c"CLASS `%s` has the name of an existing TYPE%s\00"
+@.str.168 = private unnamed_addr constant [2 x i8] c"?\00"
+@.str.169 = private unnamed_addr constant [10 x i8] c"<unknown>\00"
+@.str.170 = private unnamed_addr constant [2 x i8] c"@\00"
+@.str.171 = private unnamed_addr constant [3 x i8] c"@@\00"
+@.str.172 = private unnamed_addr constant [4 x i8] c"@@@\00"
+@.str.173 = private unnamed_addr constant [5 x i8] c"%s%s\00"
+@.str.174 = private unnamed_addr constant [39 x i8] c"an ABYSS call has no value to use here\00"
+@.str.175 = private unnamed_addr constant [47 x i8] c"%s is not a function, so it cannot be called%s\00"
+@.str.176 = private unnamed_addr constant [35 x i8] c"call to undeclared function `%s`%s\00"
+@.str.177 = private unnamed_addr constant [30 x i8] c"%s has no methods, so no `%s`\00"
+@.str.178 = private unnamed_addr constant [24 x i8] c"`%s` is PRIVATE to `%s`\00"
+@.str.179 = private unnamed_addr constant [33 x i8] c"`%s` has no method or field `%s`\00"
+@.str.180 = private unnamed_addr constant [22 x i8] c"this function pointer\00"
+@.str.181 = private unnamed_addr constant [28 x i8] c"argument expects %s, got %s\00"
+@.str.182 = private unnamed_addr constant [28 x i8] c"too few arguments to `%s`%s\00"
+@.str.183 = private unnamed_addr constant [29 x i8] c"too many arguments to `%s`%s\00"
+@.str.184 = private unnamed_addr constant [58 x i8] c"`.` applied to an array; index it first, as in a{0}.field\00"
+@.str.185 = private unnamed_addr constant [41 x i8] c"`.` applied to %s, which has no fields%s\00"
+@.str.186 = private unnamed_addr constant [36 x i8] c"`.` needs a field name on the right\00"
+@.str.187 = private unnamed_addr constant [22 x i8] c"no field `%s` in `%s`\00"
+@.str.188 = private unnamed_addr constant [38 x i8] c"an index must be an integer, not %s%s\00"
+@.str.189 = private unnamed_addr constant [56 x i8] c"cannot index %s: it is neither an array nor a pointer%s\00"
+@.str.190 = private unnamed_addr constant [54 x i8] c"cannot index @ABYSS; cast it to a typed pointer first\00"
+@.str.191 = private unnamed_addr constant [72 x i8] c"the left side of `=` is not a variable, a field, an element or ?pointer\00"
+@.str.192 = private unnamed_addr constant [52 x i8] c"cannot assign to a whole array; assign its elements\00"
+@.str.193 = private unnamed_addr constant [23 x i8] c"cannot assign %s to %s\00"
+@.str.194 = private unnamed_addr constant [28 x i8] c"a struct has no truth value\00"
+@.str.195 = private unnamed_addr constant [23 x i8] c"cannot compare structs\00"
+@.str.196 = private unnamed_addr constant [23 x i8] c"arithmetic on a struct\00"
+@.str.197 = private unnamed_addr constant [28 x i8] c"bitwise operator on a float\00"
+@.str.198 = private unnamed_addr constant [49 x i8] c"pointer arithmetic needs an integer, not a float\00"
+@.str.199 = private unnamed_addr constant [27 x i8] c"cannot subtract %s from %s\00"
+@.str.200 = private unnamed_addr constant [85 x i8] c"on pointers only p + n, n + p, p - n and p - q are defined; cast to U64 for the rest\00"
+@.str.201 = private unnamed_addr constant [26 x i8] c"unknown identifier `%s`%s\00"
+@.str.202 = private unnamed_addr constant [58 x i8] c"AS converts scalars and pointers; a struct cannot be cast\00"
+@.str.203 = private unnamed_addr constant [18 x i8] c"ABYSS has no size\00"
+@.str.204 = private unnamed_addr constant [45 x i8] c"cannot dereference %s, it is not a pointer%s\00"
+@.str.205 = private unnamed_addr constant [60 x i8] c"cannot dereference @ABYSS; cast it to a typed pointer first\00"
+@.str.206 = private unnamed_addr constant [63 x i8] c"cannot take the address of a value that is not stored anywhere\00"
+@.str.207 = private unnamed_addr constant [56 x i8] c"`@%s`: a function's name alone is already its address%s\00"
+@.str.208 = private unnamed_addr constant [37 x i8] c"`-` and `~` do not apply to pointers\00"
+@.str.209 = private unnamed_addr constant [44 x i8] c"%s needs a scalar condition, got a struct%s\00"
+@.str.210 = private unnamed_addr constant [30 x i8] c"`%s` cannot have type ABYSS%s\00"
+@.str.211 = private unnamed_addr constant [41 x i8] c"`%s` is already declared in this scope%s\00"
+@.str.212 = private unnamed_addr constant [61 x i8] c"array `%s` cannot have an initialiser; assign its elements%s\00"
+@.str.213 = private unnamed_addr constant [29 x i8] c"cannot initialise %s from %s\00"
+@.str.214 = private unnamed_addr constant [31 x i8] c"this function must return %s%s\00"
+@.str.215 = private unnamed_addr constant [40 x i8] c"an ABYSS function cannot return a value\00"
+@.str.216 = private unnamed_addr constant [41 x i8] c"returning %s from a function declared %s\00"
+@.str.217 = private unnamed_addr constant [23 x i8] c"%s outside of a loop%s\00"
+@.str.218 = private unnamed_addr constant [5 x i8] c"exit\00"
+@.str.219 = private unnamed_addr constant [6 x i8] c"abort\00"
+@.str.220 = private unnamed_addr constant [6 x i8] c"_exit\00"
+@.str.221 = private unnamed_addr constant [5 x i8] c"main\00"
+@.str.222 = private unnamed_addr constant [37 x i8] c"`%s` can reach its end without RET%s\00"
+@.str.223 = private unnamed_addr constant [29 x i8] c"TYPE `%s` is defined twice%s\00"
+@.str.224 = private unnamed_addr constant [31 x i8] c"global `%s` is defined twice%s\00"
+@.str.225 = private unnamed_addr constant [33 x i8] c"function `%s` is defined twice%s\00"
+@.str.226 = private unnamed_addr constant [52 x i8] c"`%s` is declared again with a different signature%s\00"
+@.str.227 = private unnamed_addr constant [12 x i8] c"codegen: %s\00"
+@.str.228 = private unnamed_addr constant [19 x i8] c"unmapped base type\00"
+@.str.229 = private unnamed_addr constant [7 x i8] c"tobool\00"
+@.str.230 = private unnamed_addr constant [5 x i8] c"zext\00"
+@.str.231 = private unnamed_addr constant [5 x i8] c"sext\00"
+@.str.232 = private unnamed_addr constant [6 x i8] c"trunc\00"
+@.str.233 = private unnamed_addr constant [5 x i8] c"itop\00"
+@.str.234 = private unnamed_addr constant [5 x i8] c"ptoi\00"
+@.str.235 = private unnamed_addr constant [7 x i8] c"sitofp\00"
+@.str.236 = private unnamed_addr constant [6 x i8] c"fpext\00"
+@.str.237 = private unnamed_addr constant [8 x i8] c"fptrunc\00"
+@.str.238 = private unnamed_addr constant [7 x i8] c"fptosi\00"
+@.str.239 = private unnamed_addr constant [39 x i8] c"cannot convert to or from an aggregate\00"
+@.str.240 = private unnamed_addr constant [8 x i8] c".str.%d\00"
+@.str.241 = private unnamed_addr constant [4 x i8] c"idx\00"
+@.str.242 = private unnamed_addr constant [5 x i8] c"elem\00"
+@.str.243 = private unnamed_addr constant [4 x i8] c"tmp\00"
+@.str.244 = private unnamed_addr constant [7 x i8] c"objptr\00"
+@.str.245 = private unnamed_addr constant [35 x i8] c"`.` applied to a non-aggregate%s%s\00"
+@.str.246 = private unnamed_addr constant [4 x i8] c"fld\00"
+@.str.247 = private unnamed_addr constant [19 x i8] c"a function pointer\00"
+@.str.248 = private unnamed_addr constant [30 x i8] c"cannot tell what `%s` calls%s\00"
+@.str.249 = private unnamed_addr constant [5 x i8] c"recv\00"
+@.str.250 = private unnamed_addr constant [39 x i8] c"could not evaluate argument %s to `%s`\00"
+@.str.251 = private unnamed_addr constant [8 x i8] c"vapromo\00"
+@.str.252 = private unnamed_addr constant [5 x i8] c"call\00"
+@.str.253 = private unnamed_addr constant [7 x i8] c"uitofp\00"
+@.str.254 = private unnamed_addr constant [5 x i8] c"fadd\00"
+@.str.255 = private unnamed_addr constant [5 x i8] c"fsub\00"
+@.str.256 = private unnamed_addr constant [5 x i8] c"fmul\00"
+@.str.257 = private unnamed_addr constant [5 x i8] c"fdiv\00"
+@.str.258 = private unnamed_addr constant [5 x i8] c"frem\00"
+@.str.259 = private unnamed_addr constant [35 x i8] c"operator not defined on floats%s%s\00"
+@.str.260 = private unnamed_addr constant [5 x i8] c"fcmp\00"
+@.str.261 = private unnamed_addr constant [39 x i8] c"left side of `=` is not assignable%s%s\00"
+@.str.262 = private unnamed_addr constant [45 x i8] c"could not evaluate the right side of `=`%s%s\00"
+@.str.263 = private unnamed_addr constant [33 x i8] c"cannot resolve member access%s%s\00"
+@.str.264 = private unnamed_addr constant [7 x i8] c"fldval\00"
+@.str.265 = private unnamed_addr constant [22 x i8] c"cannot index this%s%s\00"
+@.str.266 = private unnamed_addr constant [8 x i8] c"elemval\00"
+@.str.267 = private unnamed_addr constant [7 x i8] c"sc.rhs\00"
+@.str.268 = private unnamed_addr constant [7 x i8] c"sc.end\00"
+@.str.269 = private unnamed_addr constant [3 x i8] c"sc\00"
+@.str.270 = private unnamed_addr constant [3 x i8] c"pl\00"
+@.str.271 = private unnamed_addr constant [3 x i8] c"pr\00"
+@.str.272 = private unnamed_addr constant [6 x i8] c"pdiff\00"
+@.str.273 = private unnamed_addr constant [7 x i8] c"pcount\00"
+@.str.274 = private unnamed_addr constant [4 x i8] c"neg\00"
+@.str.275 = private unnamed_addr constant [5 x i8] c"padd\00"
+@.str.276 = private unnamed_addr constant [4 x i8] c"add\00"
+@.str.277 = private unnamed_addr constant [4 x i8] c"sub\00"
+@.str.278 = private unnamed_addr constant [4 x i8] c"mul\00"
+@.str.279 = private unnamed_addr constant [4 x i8] c"div\00"
+@.str.280 = private unnamed_addr constant [4 x i8] c"rem\00"
+@.str.281 = private unnamed_addr constant [5 x i8] c"band\00"
+@.str.282 = private unnamed_addr constant [4 x i8] c"bor\00"
+@.str.283 = private unnamed_addr constant [5 x i8] c"bxor\00"
+@.str.284 = private unnamed_addr constant [4 x i8] c"shl\00"
+@.str.285 = private unnamed_addr constant [4 x i8] c"shr\00"
+@.str.286 = private unnamed_addr constant [3 x i8] c"eq\00"
+@.str.287 = private unnamed_addr constant [3 x i8] c"ne\00"
+@.str.288 = private unnamed_addr constant [3 x i8] c"lt\00"
+@.str.289 = private unnamed_addr constant [3 x i8] c"le\00"
+@.str.290 = private unnamed_addr constant [3 x i8] c"gt\00"
+@.str.291 = private unnamed_addr constant [3 x i8] c"ge\00"
+@.str.292 = private unnamed_addr constant [26 x i8] c"unhandled binary operator\00"
+@.str.293 = private unnamed_addr constant [23 x i8] c"unhandled literal kind\00"
+@.str.294 = private unnamed_addr constant [47 x i8] c"cannot take the address of this expression%s%s\00"
+@.str.295 = private unnamed_addr constant [6 x i8] c"deref\00"
+@.str.296 = private unnamed_addr constant [5 x i8] c"bnot\00"
+@.str.297 = private unnamed_addr constant [4 x i8] c"not\00"
+@.str.298 = private unnamed_addr constant [5 x i8] c"fneg\00"
+@.str.299 = private unnamed_addr constant [9 x i8] c"bad cast\00"
+@.str.300 = private unnamed_addr constant [5 x i8] c"cast\00"
+@.str.301 = private unnamed_addr constant [12 x i8] c"cannot cast\00"
+@.str.302 = private unnamed_addr constant [31 x i8] c"unhandled expression node %s%s\00"
+@.str.303 = private unnamed_addr constant [7 x i8] c"if.end\00"
+@.str.304 = private unnamed_addr constant [8 x i8] c"if.then\00"
+@.str.305 = private unnamed_addr constant [8 x i8] c"if.else\00"
+@.str.306 = private unnamed_addr constant [10 x i8] c"elif.then\00"
+@.str.307 = private unnamed_addr constant [10 x i8] c"elif.else\00"
+@.str.308 = private unnamed_addr constant [10 x i8] c"loop.body\00"
+@.str.309 = private unnamed_addr constant [10 x i8] c"loop.cont\00"
+@.str.310 = private unnamed_addr constant [9 x i8] c"loop.end\00"
+@.str.311 = private unnamed_addr constant [11 x i8] c"while.body\00"
+@.str.312 = private unnamed_addr constant [45 x i8] c"could not evaluate the initialiser of `%s`%s\00"
+@.str.313 = private unnamed_addr constant [28 x i8] c"BREAK outside of a loop%s%s\00"
+@.str.314 = private unnamed_addr constant [31 x i8] c"CONTINUE outside of a loop%s%s\00"
+@.str.315 = private unnamed_addr constant [25 x i8] c"unhandled statement kind\00"
+@.str.316 = private unnamed_addr constant [6 x i8] c"entry\00"
+@.str.317 = private unnamed_addr constant [24 x i8] c"type was never declared\00"
+@.str.318 = private unnamed_addr constant [43 x i8] c"global `%s` needs a constant initialiser%s\00"
+@.str.319 = private unnamed_addr constant [8 x i8] c"generic\00"
+@.str.320 = private unnamed_addr constant [73 x i8] c"internal compiler error: plc produced invalid LLVM IR; please report it\0A\00"
+@.str.321 = private unnamed_addr constant [4 x i8] c"%s\0A\00"
+@.str.322 = private unnamed_addr constant [26 x i8] c"error: cannot write `%s`\0A\00"
+@.str.323 = private unnamed_addr constant [59 x i8] c"Usage: %s [--emit=<AST|IR>] [-o output] file1 [file2 ...]\0A\00"
+@.str.324 = private unnamed_addr constant [65 x i8] c"  --emit=<AST|IR>   Specify the output type to emit (AST or IR)\0A\00"
+@.str.325 = private unnamed_addr constant [48 x i8] c"  -o output        Specify the output filename\0A\00"
+@.str.326 = private unnamed_addr constant [56 x i8] c"  file1 ...        One or more source files to compile\0A\00"
+@.str.327 = private unnamed_addr constant [8 x i8] c"--emit=\00"
+@.str.328 = private unnamed_addr constant [3 x i8] c"-o\00"
+@.str.329 = private unnamed_addr constant [30 x i8] c"-o needs a file name after it\00"
+@.str.330 = private unnamed_addr constant [3 x i8] c"-h\00"
+@.str.331 = private unnamed_addr constant [7 x i8] c"--help\00"
+@.str.332 = private unnamed_addr constant [49 x i8] c"warning: only `%s` is compiled; `%s` is ignored\0A\00"
+@.str.333 = private unnamed_addr constant [14 x i8] c"no input file\00"
+@.str.334 = private unnamed_addr constant [4 x i8] c"AST\00"
+@.str.335 = private unnamed_addr constant [3 x i8] c"IR\00"
+@.str.336 = private unnamed_addr constant [35 x i8] c"--emit takes AST or IR, not `%s`%s\00"
+@.str.337 = private unnamed_addr constant [19 x i8] c"cannot find `%s`%s\00"
+@.str.338 = private unnamed_addr constant [19 x i8] c"cannot open `%s`%s\00"
+@.str.339 = private unnamed_addr constant [12 x i8] c"/dev/stdout\00"
+@.str.340 = private unnamed_addr constant [25 x i8] c"%d top-level statements\0A\00"
 
 declare ptr @malloc(i64)
 
@@ -465,6 +500,8 @@ declare i64 @ftell(ptr)
 declare i32 @snprintf(ptr, i64, ptr, ...)
 
 declare i32 @fprintf(ptr, ptr, ...)
+
+declare i32 @dprintf(i32, ptr, ...)
 
 declare i32 @fflush(ptr)
 
@@ -1139,11 +1176,1361 @@ entry:
   ret i64 %fldval
 }
 
+define ptr @token_str(i32 %0) {
+entry:
+  %t = alloca i32, align 4
+  store i32 %0, ptr %t, align 4
+  %t1 = load i32, ptr %t, align 4
+  %eq = icmp eq i32 %t1, 0
+  br i1 %eq, label %if.then, label %if.else
+
+if.end:                                           ; No predecessors!
+  ret ptr null
+
+if.then:                                          ; preds = %entry
+  ret ptr @.str.0
+
+if.else:                                          ; preds = %entry
+  %t2 = load i32, ptr %t, align 4
+  %eq3 = icmp eq i32 %t2, 1
+  br i1 %eq3, label %elif.then, label %elif.else
+
+elif.then:                                        ; preds = %if.else
+  ret ptr @.str.1
+
+elif.else:                                        ; preds = %if.else
+  %t4 = load i32, ptr %t, align 4
+  %eq5 = icmp eq i32 %t4, 2
+  br i1 %eq5, label %elif.then6, label %elif.else7
+
+elif.then6:                                       ; preds = %elif.else
+  ret ptr @.str.2
+
+elif.else7:                                       ; preds = %elif.else
+  %t8 = load i32, ptr %t, align 4
+  %eq9 = icmp eq i32 %t8, 3
+  br i1 %eq9, label %elif.then10, label %elif.else11
+
+elif.then10:                                      ; preds = %elif.else7
+  ret ptr @.str.3
+
+elif.else11:                                      ; preds = %elif.else7
+  %t12 = load i32, ptr %t, align 4
+  %eq13 = icmp eq i32 %t12, 4
+  br i1 %eq13, label %elif.then14, label %elif.else15
+
+elif.then14:                                      ; preds = %elif.else11
+  ret ptr @.str.4
+
+elif.else15:                                      ; preds = %elif.else11
+  %t16 = load i32, ptr %t, align 4
+  %eq17 = icmp eq i32 %t16, 5
+  br i1 %eq17, label %elif.then18, label %elif.else19
+
+elif.then18:                                      ; preds = %elif.else15
+  ret ptr @.str.5
+
+elif.else19:                                      ; preds = %elif.else15
+  %t20 = load i32, ptr %t, align 4
+  %eq21 = icmp eq i32 %t20, 6
+  br i1 %eq21, label %elif.then22, label %elif.else23
+
+elif.then22:                                      ; preds = %elif.else19
+  ret ptr @.str.6
+
+elif.else23:                                      ; preds = %elif.else19
+  %t24 = load i32, ptr %t, align 4
+  %eq25 = icmp eq i32 %t24, 7
+  br i1 %eq25, label %elif.then26, label %elif.else27
+
+elif.then26:                                      ; preds = %elif.else23
+  ret ptr @.str.7
+
+elif.else27:                                      ; preds = %elif.else23
+  %t28 = load i32, ptr %t, align 4
+  %eq29 = icmp eq i32 %t28, 8
+  br i1 %eq29, label %elif.then30, label %elif.else31
+
+elif.then30:                                      ; preds = %elif.else27
+  ret ptr @.str.8
+
+elif.else31:                                      ; preds = %elif.else27
+  %t32 = load i32, ptr %t, align 4
+  %eq33 = icmp eq i32 %t32, 9
+  br i1 %eq33, label %elif.then34, label %elif.else35
+
+elif.then34:                                      ; preds = %elif.else31
+  ret ptr @.str.9
+
+elif.else35:                                      ; preds = %elif.else31
+  %t36 = load i32, ptr %t, align 4
+  %eq37 = icmp eq i32 %t36, 10
+  br i1 %eq37, label %elif.then38, label %elif.else39
+
+elif.then38:                                      ; preds = %elif.else35
+  ret ptr @.str.10
+
+elif.else39:                                      ; preds = %elif.else35
+  %t40 = load i32, ptr %t, align 4
+  %eq41 = icmp eq i32 %t40, 11
+  br i1 %eq41, label %elif.then42, label %elif.else43
+
+elif.then42:                                      ; preds = %elif.else39
+  ret ptr @.str.11
+
+elif.else43:                                      ; preds = %elif.else39
+  %t44 = load i32, ptr %t, align 4
+  %eq45 = icmp eq i32 %t44, 12
+  br i1 %eq45, label %elif.then46, label %elif.else47
+
+elif.then46:                                      ; preds = %elif.else43
+  ret ptr @.str.12
+
+elif.else47:                                      ; preds = %elif.else43
+  %t48 = load i32, ptr %t, align 4
+  %eq49 = icmp eq i32 %t48, 13
+  br i1 %eq49, label %elif.then50, label %elif.else51
+
+elif.then50:                                      ; preds = %elif.else47
+  ret ptr @.str.13
+
+elif.else51:                                      ; preds = %elif.else47
+  %t52 = load i32, ptr %t, align 4
+  %eq53 = icmp eq i32 %t52, 14
+  br i1 %eq53, label %elif.then54, label %elif.else55
+
+elif.then54:                                      ; preds = %elif.else51
+  ret ptr @.str.14
+
+elif.else55:                                      ; preds = %elif.else51
+  %t56 = load i32, ptr %t, align 4
+  %eq57 = icmp eq i32 %t56, 15
+  br i1 %eq57, label %elif.then58, label %elif.else59
+
+elif.then58:                                      ; preds = %elif.else55
+  ret ptr @.str.15
+
+elif.else59:                                      ; preds = %elif.else55
+  %t60 = load i32, ptr %t, align 4
+  %eq61 = icmp eq i32 %t60, 16
+  br i1 %eq61, label %elif.then62, label %elif.else63
+
+elif.then62:                                      ; preds = %elif.else59
+  ret ptr @.str.16
+
+elif.else63:                                      ; preds = %elif.else59
+  %t64 = load i32, ptr %t, align 4
+  %eq65 = icmp eq i32 %t64, 17
+  br i1 %eq65, label %elif.then66, label %elif.else67
+
+elif.then66:                                      ; preds = %elif.else63
+  ret ptr @.str.17
+
+elif.else67:                                      ; preds = %elif.else63
+  %t68 = load i32, ptr %t, align 4
+  %eq69 = icmp eq i32 %t68, 18
+  br i1 %eq69, label %elif.then70, label %elif.else71
+
+elif.then70:                                      ; preds = %elif.else67
+  ret ptr @.str.18
+
+elif.else71:                                      ; preds = %elif.else67
+  %t72 = load i32, ptr %t, align 4
+  %eq73 = icmp eq i32 %t72, 19
+  br i1 %eq73, label %elif.then74, label %elif.else75
+
+elif.then74:                                      ; preds = %elif.else71
+  ret ptr @.str.19
+
+elif.else75:                                      ; preds = %elif.else71
+  %t76 = load i32, ptr %t, align 4
+  %eq77 = icmp eq i32 %t76, 20
+  br i1 %eq77, label %elif.then78, label %elif.else79
+
+elif.then78:                                      ; preds = %elif.else75
+  ret ptr @.str.20
+
+elif.else79:                                      ; preds = %elif.else75
+  %t80 = load i32, ptr %t, align 4
+  %eq81 = icmp eq i32 %t80, 21
+  br i1 %eq81, label %elif.then82, label %elif.else83
+
+elif.then82:                                      ; preds = %elif.else79
+  ret ptr @.str.21
+
+elif.else83:                                      ; preds = %elif.else79
+  %t84 = load i32, ptr %t, align 4
+  %eq85 = icmp eq i32 %t84, 22
+  br i1 %eq85, label %elif.then86, label %elif.else87
+
+elif.then86:                                      ; preds = %elif.else83
+  ret ptr @.str.22
+
+elif.else87:                                      ; preds = %elif.else83
+  %t88 = load i32, ptr %t, align 4
+  %eq89 = icmp eq i32 %t88, 23
+  br i1 %eq89, label %elif.then90, label %elif.else91
+
+elif.then90:                                      ; preds = %elif.else87
+  ret ptr @.str.23
+
+elif.else91:                                      ; preds = %elif.else87
+  %t92 = load i32, ptr %t, align 4
+  %eq93 = icmp eq i32 %t92, 24
+  br i1 %eq93, label %elif.then94, label %elif.else95
+
+elif.then94:                                      ; preds = %elif.else91
+  ret ptr @.str.24
+
+elif.else95:                                      ; preds = %elif.else91
+  %t96 = load i32, ptr %t, align 4
+  %eq97 = icmp eq i32 %t96, 25
+  br i1 %eq97, label %elif.then98, label %elif.else99
+
+elif.then98:                                      ; preds = %elif.else95
+  ret ptr @.str.25
+
+elif.else99:                                      ; preds = %elif.else95
+  %t100 = load i32, ptr %t, align 4
+  %eq101 = icmp eq i32 %t100, 26
+  br i1 %eq101, label %elif.then102, label %elif.else103
+
+elif.then102:                                     ; preds = %elif.else99
+  ret ptr @.str.26
+
+elif.else103:                                     ; preds = %elif.else99
+  %t104 = load i32, ptr %t, align 4
+  %eq105 = icmp eq i32 %t104, 27
+  br i1 %eq105, label %elif.then106, label %elif.else107
+
+elif.then106:                                     ; preds = %elif.else103
+  ret ptr @.str.27
+
+elif.else107:                                     ; preds = %elif.else103
+  %t108 = load i32, ptr %t, align 4
+  %eq109 = icmp eq i32 %t108, 28
+  br i1 %eq109, label %elif.then110, label %elif.else111
+
+elif.then110:                                     ; preds = %elif.else107
+  ret ptr @.str.28
+
+elif.else111:                                     ; preds = %elif.else107
+  %t112 = load i32, ptr %t, align 4
+  %eq113 = icmp eq i32 %t112, 29
+  br i1 %eq113, label %elif.then114, label %elif.else115
+
+elif.then114:                                     ; preds = %elif.else111
+  ret ptr @.str.29
+
+elif.else115:                                     ; preds = %elif.else111
+  %t116 = load i32, ptr %t, align 4
+  %eq117 = icmp eq i32 %t116, 30
+  br i1 %eq117, label %elif.then118, label %elif.else119
+
+elif.then118:                                     ; preds = %elif.else115
+  ret ptr @.str.30
+
+elif.else119:                                     ; preds = %elif.else115
+  %t120 = load i32, ptr %t, align 4
+  %eq121 = icmp eq i32 %t120, 31
+  br i1 %eq121, label %elif.then122, label %elif.else123
+
+elif.then122:                                     ; preds = %elif.else119
+  ret ptr @.str.31
+
+elif.else123:                                     ; preds = %elif.else119
+  %t124 = load i32, ptr %t, align 4
+  %eq125 = icmp eq i32 %t124, 32
+  br i1 %eq125, label %elif.then126, label %elif.else127
+
+elif.then126:                                     ; preds = %elif.else123
+  ret ptr @.str.32
+
+elif.else127:                                     ; preds = %elif.else123
+  %t128 = load i32, ptr %t, align 4
+  %eq129 = icmp eq i32 %t128, 33
+  br i1 %eq129, label %elif.then130, label %elif.else131
+
+elif.then130:                                     ; preds = %elif.else127
+  ret ptr @.str.33
+
+elif.else131:                                     ; preds = %elif.else127
+  %t132 = load i32, ptr %t, align 4
+  %eq133 = icmp eq i32 %t132, 35
+  br i1 %eq133, label %elif.then134, label %elif.else135
+
+elif.then134:                                     ; preds = %elif.else131
+  ret ptr @.str.34
+
+elif.else135:                                     ; preds = %elif.else131
+  %t136 = load i32, ptr %t, align 4
+  %eq137 = icmp eq i32 %t136, 36
+  br i1 %eq137, label %elif.then138, label %elif.else139
+
+elif.then138:                                     ; preds = %elif.else135
+  ret ptr @.str.35
+
+elif.else139:                                     ; preds = %elif.else135
+  %t140 = load i32, ptr %t, align 4
+  %eq141 = icmp eq i32 %t140, 37
+  br i1 %eq141, label %elif.then142, label %elif.else143
+
+elif.then142:                                     ; preds = %elif.else139
+  ret ptr @.str.36
+
+elif.else143:                                     ; preds = %elif.else139
+  %t144 = load i32, ptr %t, align 4
+  %eq145 = icmp eq i32 %t144, 38
+  br i1 %eq145, label %elif.then146, label %elif.else147
+
+elif.then146:                                     ; preds = %elif.else143
+  ret ptr @.str.37
+
+elif.else147:                                     ; preds = %elif.else143
+  %t148 = load i32, ptr %t, align 4
+  %eq149 = icmp eq i32 %t148, 39
+  br i1 %eq149, label %elif.then150, label %elif.else151
+
+elif.then150:                                     ; preds = %elif.else147
+  ret ptr @.str.38
+
+elif.else151:                                     ; preds = %elif.else147
+  %t152 = load i32, ptr %t, align 4
+  %eq153 = icmp eq i32 %t152, 40
+  br i1 %eq153, label %elif.then154, label %elif.else155
+
+elif.then154:                                     ; preds = %elif.else151
+  ret ptr @.str.39
+
+elif.else155:                                     ; preds = %elif.else151
+  %t156 = load i32, ptr %t, align 4
+  %eq157 = icmp eq i32 %t156, 41
+  br i1 %eq157, label %elif.then158, label %elif.else159
+
+elif.then158:                                     ; preds = %elif.else155
+  ret ptr @.str.40
+
+elif.else159:                                     ; preds = %elif.else155
+  ret ptr @.str.41
+}
+
+define ptr @tok_kind_desc(i32 %0) {
+entry:
+  %t = alloca i32, align 4
+  store i32 %0, ptr %t, align 4
+  %t1 = load i32, ptr %t, align 4
+  %eq = icmp eq i32 %t1, 0
+  br i1 %eq, label %if.then, label %if.else
+
+if.end:                                           ; preds = %elif.else85
+  %t86 = load i32, ptr %t, align 4
+  %call = call ptr @token_str(i32 %t86)
+  ret ptr %call
+
+if.then:                                          ; preds = %entry
+  ret ptr @.str.42
+
+if.else:                                          ; preds = %entry
+  %t2 = load i32, ptr %t, align 4
+  %eq3 = icmp eq i32 %t2, 1
+  br i1 %eq3, label %elif.then, label %elif.else
+
+elif.then:                                        ; preds = %if.else
+  ret ptr @.str.43
+
+elif.else:                                        ; preds = %if.else
+  %t4 = load i32, ptr %t, align 4
+  %eq5 = icmp eq i32 %t4, 2
+  br i1 %eq5, label %elif.then6, label %elif.else7
+
+elif.then6:                                       ; preds = %elif.else
+  ret ptr @.str.44
+
+elif.else7:                                       ; preds = %elif.else
+  %t8 = load i32, ptr %t, align 4
+  %eq9 = icmp eq i32 %t8, 3
+  br i1 %eq9, label %elif.then10, label %elif.else11
+
+elif.then10:                                      ; preds = %elif.else7
+  ret ptr @.str.45
+
+elif.else11:                                      ; preds = %elif.else7
+  %t12 = load i32, ptr %t, align 4
+  %eq13 = icmp eq i32 %t12, 4
+  br i1 %eq13, label %elif.then14, label %elif.else15
+
+elif.then14:                                      ; preds = %elif.else11
+  ret ptr @.str.46
+
+elif.else15:                                      ; preds = %elif.else11
+  %t16 = load i32, ptr %t, align 4
+  %eq17 = icmp eq i32 %t16, 5
+  br i1 %eq17, label %elif.then18, label %elif.else19
+
+elif.then18:                                      ; preds = %elif.else15
+  ret ptr @.str.47
+
+elif.else19:                                      ; preds = %elif.else15
+  %t20 = load i32, ptr %t, align 4
+  %eq21 = icmp eq i32 %t20, 6
+  br i1 %eq21, label %elif.then22, label %elif.else23
+
+elif.then22:                                      ; preds = %elif.else19
+  ret ptr @.str.48
+
+elif.else23:                                      ; preds = %elif.else19
+  %t24 = load i32, ptr %t, align 4
+  %eq25 = icmp eq i32 %t24, 39
+  br i1 %eq25, label %elif.then26, label %elif.else27
+
+elif.then26:                                      ; preds = %elif.else23
+  ret ptr @.str.49
+
+elif.else27:                                      ; preds = %elif.else23
+  %t28 = load i32, ptr %t, align 4
+  %eq29 = icmp eq i32 %t28, 40
+  br i1 %eq29, label %elif.then30, label %elif.else31
+
+elif.then30:                                      ; preds = %elif.else27
+  ret ptr @.str.50
+
+elif.else31:                                      ; preds = %elif.else27
+  %t32 = load i32, ptr %t, align 4
+  %eq33 = icmp eq i32 %t32, 7
+  br i1 %eq33, label %elif.then34, label %elif.else35
+
+elif.then34:                                      ; preds = %elif.else31
+  ret ptr @.str.51
+
+elif.else35:                                      ; preds = %elif.else31
+  %t36 = load i32, ptr %t, align 4
+  %eq37 = icmp eq i32 %t36, 8
+  br i1 %eq37, label %elif.then38, label %elif.else39
+
+elif.then38:                                      ; preds = %elif.else35
+  ret ptr @.str.52
+
+elif.else39:                                      ; preds = %elif.else35
+  %t40 = load i32, ptr %t, align 4
+  %eq41 = icmp eq i32 %t40, 9
+  br i1 %eq41, label %elif.then42, label %elif.else43
+
+elif.then42:                                      ; preds = %elif.else39
+  ret ptr @.str.53
+
+elif.else43:                                      ; preds = %elif.else39
+  %t44 = load i32, ptr %t, align 4
+  %eq45 = icmp eq i32 %t44, 10
+  br i1 %eq45, label %elif.then46, label %elif.else47
+
+elif.then46:                                      ; preds = %elif.else43
+  ret ptr @.str.54
+
+elif.else47:                                      ; preds = %elif.else43
+  %t48 = load i32, ptr %t, align 4
+  %eq49 = icmp eq i32 %t48, 11
+  br i1 %eq49, label %elif.then50, label %elif.else51
+
+elif.then50:                                      ; preds = %elif.else47
+  ret ptr @.str.55
+
+elif.else51:                                      ; preds = %elif.else47
+  %t52 = load i32, ptr %t, align 4
+  %eq53 = icmp eq i32 %t52, 12
+  br i1 %eq53, label %elif.then54, label %elif.else55
+
+elif.then54:                                      ; preds = %elif.else51
+  ret ptr @.str.56
+
+elif.else55:                                      ; preds = %elif.else51
+  %t56 = load i32, ptr %t, align 4
+  %eq57 = icmp eq i32 %t56, 14
+  br i1 %eq57, label %elif.then58, label %elif.else59
+
+elif.then58:                                      ; preds = %elif.else55
+  ret ptr @.str.57
+
+elif.else59:                                      ; preds = %elif.else55
+  %t60 = load i32, ptr %t, align 4
+  %eq61 = icmp eq i32 %t60, 15
+  br i1 %eq61, label %elif.then62, label %elif.else63
+
+elif.then62:                                      ; preds = %elif.else59
+  ret ptr @.str.58
+
+elif.else63:                                      ; preds = %elif.else59
+  %t64 = load i32, ptr %t, align 4
+  %eq65 = icmp eq i32 %t64, 16
+  br i1 %eq65, label %sc.end, label %sc.rhs
+
+sc.rhs:                                           ; preds = %elif.else63
+  %t66 = load i32, ptr %t, align 4
+  %eq67 = icmp eq i32 %t66, 17
+  br label %sc.end
+
+sc.end:                                           ; preds = %sc.rhs, %elif.else63
+  %sc = phi i1 [ true, %elif.else63 ], [ %eq67, %sc.rhs ]
+  br i1 %sc, label %elif.then68, label %elif.else69
+
+elif.then68:                                      ; preds = %sc.end
+  ret ptr @.str.59
+
+elif.else69:                                      ; preds = %sc.end
+  %t70 = load i32, ptr %t, align 4
+  %eq71 = icmp eq i32 %t70, 18
+  br i1 %eq71, label %elif.then72, label %elif.else73
+
+elif.then72:                                      ; preds = %elif.else69
+  ret ptr @.str.60
+
+elif.else73:                                      ; preds = %elif.else69
+  %t74 = load i32, ptr %t, align 4
+  %eq75 = icmp eq i32 %t74, 19
+  br i1 %eq75, label %elif.then76, label %elif.else77
+
+elif.then76:                                      ; preds = %elif.else73
+  ret ptr @.str.61
+
+elif.else77:                                      ; preds = %elif.else73
+  %t78 = load i32, ptr %t, align 4
+  %eq79 = icmp eq i32 %t78, 23
+  br i1 %eq79, label %elif.then80, label %elif.else81
+
+elif.then80:                                      ; preds = %elif.else77
+  ret ptr @.str.62
+
+elif.else81:                                      ; preds = %elif.else77
+  %t82 = load i32, ptr %t, align 4
+  %eq83 = icmp eq i32 %t82, 25
+  br i1 %eq83, label %elif.then84, label %elif.else85
+
+elif.then84:                                      ; preds = %elif.else81
+  ret ptr @.str.63
+
+elif.else85:                                      ; preds = %elif.else81
+  br label %if.end
+}
+
+define ptr @tok_desc(%Token %0) {
+entry:
+  %k = alloca i32, align 4
+  %buf = alloca ptr, align 8
+  %t = alloca %Token, align 8
+  store %Token %0, ptr %t, align 8
+  %call = call ptr @malloc(i64 128)
+  store ptr %call, ptr %buf, align 8
+  %fld = getelementptr inbounds nuw %Token, ptr %t, i32 0, i32 0
+  %fldval = load i32, ptr %fld, align 4
+  store i32 %fldval, ptr %k, align 4
+  %k1 = load i32, ptr %k, align 4
+  %eq = icmp eq i32 %k1, 15
+  br i1 %eq, label %if.then, label %if.else
+
+if.end:                                           ; preds = %elif.else61, %elif.then60, %elif.then44, %elif.then16, %elif.then, %if.then
+  %buf70 = load ptr, ptr %buf, align 8
+  ret ptr %buf70
+
+if.then:                                          ; preds = %entry
+  %buf2 = load ptr, ptr %buf, align 8
+  %fld3 = getelementptr inbounds nuw %Token, ptr %t, i32 0, i32 1
+  %fldval4 = load ptr, ptr %fld3, align 8
+  %call5 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf2, i64 128, ptr @.str.64, ptr %fldval4)
+  br label %if.end
+
+if.else:                                          ; preds = %entry
+  %k6 = load i32, ptr %k, align 4
+  %eq7 = icmp eq i32 %k6, 17
+  br i1 %eq7, label %sc.end, label %sc.rhs
+
+sc.rhs:                                           ; preds = %if.else
+  %k8 = load i32, ptr %k, align 4
+  %eq9 = icmp eq i32 %k8, 16
+  br label %sc.end
+
+sc.end:                                           ; preds = %sc.rhs, %if.else
+  %sc = phi i1 [ true, %if.else ], [ %eq9, %sc.rhs ]
+  br i1 %sc, label %elif.then, label %elif.else
+
+elif.then:                                        ; preds = %sc.end
+  %buf10 = load ptr, ptr %buf, align 8
+  %fld11 = getelementptr inbounds nuw %Token, ptr %t, i32 0, i32 1
+  %fldval12 = load ptr, ptr %fld11, align 8
+  %call13 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf10, i64 128, ptr @.str.65, ptr %fldval12)
+  br label %if.end
+
+elif.else:                                        ; preds = %sc.end
+  %k14 = load i32, ptr %k, align 4
+  %eq15 = icmp eq i32 %k14, 12
+  br i1 %eq15, label %elif.then16, label %elif.else17
+
+elif.then16:                                      ; preds = %elif.else
+  %buf18 = load ptr, ptr %buf, align 8
+  %fld19 = getelementptr inbounds nuw %Token, ptr %t, i32 0, i32 1
+  %fldval20 = load ptr, ptr %fld19, align 8
+  %call21 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf18, i64 128, ptr @.str.66, ptr %fldval20)
+  br label %if.end
+
+elif.else17:                                      ; preds = %elif.else
+  %k22 = load i32, ptr %k, align 4
+  %eq23 = icmp eq i32 %k22, 19
+  br i1 %eq23, label %sc.end25, label %sc.rhs24
+
+sc.rhs24:                                         ; preds = %elif.else17
+  %k26 = load i32, ptr %k, align 4
+  %eq27 = icmp eq i32 %k26, 18
+  br label %sc.end25
+
+sc.end25:                                         ; preds = %sc.rhs24, %elif.else17
+  %sc28 = phi i1 [ true, %elif.else17 ], [ %eq27, %sc.rhs24 ]
+  br i1 %sc28, label %sc.end30, label %sc.rhs29
+
+sc.rhs29:                                         ; preds = %sc.end25
+  %k31 = load i32, ptr %k, align 4
+  %eq32 = icmp eq i32 %k31, 0
+  br label %sc.end30
+
+sc.end30:                                         ; preds = %sc.rhs29, %sc.end25
+  %sc33 = phi i1 [ true, %sc.end25 ], [ %eq32, %sc.rhs29 ]
+  br i1 %sc33, label %sc.end35, label %sc.rhs34
+
+sc.rhs34:                                         ; preds = %sc.end30
+  %k36 = load i32, ptr %k, align 4
+  %eq37 = icmp eq i32 %k36, 1
+  br label %sc.end35
+
+sc.end35:                                         ; preds = %sc.rhs34, %sc.end30
+  %sc38 = phi i1 [ true, %sc.end30 ], [ %eq37, %sc.rhs34 ]
+  br i1 %sc38, label %sc.end40, label %sc.rhs39
+
+sc.rhs39:                                         ; preds = %sc.end35
+  %k41 = load i32, ptr %k, align 4
+  %eq42 = icmp eq i32 %k41, 14
+  br label %sc.end40
+
+sc.end40:                                         ; preds = %sc.rhs39, %sc.end35
+  %sc43 = phi i1 [ true, %sc.end35 ], [ %eq42, %sc.rhs39 ]
+  br i1 %sc43, label %elif.then44, label %elif.else45
+
+elif.then44:                                      ; preds = %sc.end40
+  %buf46 = load ptr, ptr %buf, align 8
+  %k47 = load i32, ptr %k, align 4
+  %call48 = call ptr @tok_kind_desc(i32 %k47)
+  %call49 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf46, i64 128, ptr @.str.67, ptr %call48)
+  br label %if.end
+
+elif.else45:                                      ; preds = %sc.end40
+  %k50 = load i32, ptr %k, align 4
+  %ge = icmp sge i32 %k50, 20
+  br i1 %ge, label %sc.rhs51, label %sc.end52
+
+sc.rhs51:                                         ; preds = %elif.else45
+  %k53 = load i32, ptr %k, align 4
+  %ne = icmp ne i32 %k53, 39
+  br label %sc.end52
+
+sc.end52:                                         ; preds = %sc.rhs51, %elif.else45
+  %sc54 = phi i1 [ false, %elif.else45 ], [ %ne, %sc.rhs51 ]
+  br i1 %sc54, label %sc.rhs55, label %sc.end56
+
+sc.rhs55:                                         ; preds = %sc.end52
+  %k57 = load i32, ptr %k, align 4
+  %ne58 = icmp ne i32 %k57, 40
+  br label %sc.end56
+
+sc.end56:                                         ; preds = %sc.rhs55, %sc.end52
+  %sc59 = phi i1 [ false, %sc.end52 ], [ %ne58, %sc.rhs55 ]
+  br i1 %sc59, label %elif.then60, label %elif.else61
+
+elif.then60:                                      ; preds = %sc.end56
+  %buf62 = load ptr, ptr %buf, align 8
+  %k63 = load i32, ptr %k, align 4
+  %call64 = call ptr @tok_kind_desc(i32 %k63)
+  %call65 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf62, i64 128, ptr @.str.66, ptr %call64)
+  br label %if.end
+
+elif.else61:                                      ; preds = %sc.end56
+  %buf66 = load ptr, ptr %buf, align 8
+  %k67 = load i32, ptr %k, align 4
+  %call68 = call ptr @tok_kind_desc(i32 %k67)
+  %call69 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf66, i64 128, ptr @.str.67, ptr %call68)
+  br label %if.end
+}
+
 declare ptr @getcwd(ptr, i64)
 
 declare ptr @get_current_dir_name()
 
 declare ptr @realpath(ptr, ptr)
+
+declare i32 @isatty(i32)
+
+define i1 @diag_color() {
+entry:
+  %call = call i32 @isatty(i32 2)
+  %ne = icmp ne i32 %call, 0
+  ret i1 %ne
+}
+
+define ptr @diag_line_of(ptr %0, i32 %1) {
+entry:
+  %end = alloca i64, align 8
+  %n = alloca i32, align 4
+  %i = alloca i64, align 8
+  %f = alloca ptr, align 8
+  %file = alloca ptr, align 8
+  store ptr %0, ptr %file, align 8
+  %line = alloca i32, align 4
+  store i32 %1, ptr %line, align 4
+  %file1 = load ptr, ptr %file, align 8
+  %eq = icmp eq ptr %file1, null
+  br i1 %eq, label %sc.end, label %sc.rhs
+
+if.end:                                           ; preds = %if.else
+  %diag_loaded = load i1, ptr @diag_loaded, align 1
+  %not = icmp eq i1 %diag_loaded, false
+  br i1 %not, label %sc.end5, label %sc.rhs4
+
+sc.rhs:                                           ; preds = %entry
+  %line2 = load i32, ptr %line, align 4
+  %lt = icmp slt i32 %line2, 1
+  br label %sc.end
+
+sc.end:                                           ; preds = %sc.rhs, %entry
+  %sc = phi i1 [ true, %entry ], [ %lt, %sc.rhs ]
+  br i1 %sc, label %if.then, label %if.else
+
+if.then:                                          ; preds = %sc.end
+  ret ptr null
+
+if.else:                                          ; preds = %sc.end
+  br label %if.end
+
+if.end3:                                          ; preds = %if.else9, %if.end16
+  store i64 0, ptr %i, align 8
+  store i32 1, ptr %n, align 4
+  br label %loop.body
+
+sc.rhs4:                                          ; preds = %if.end
+  %diag_file = load ptr, ptr @diag_file, align 8
+  %file6 = load ptr, ptr %file, align 8
+  %call = call i32 @strcmp(ptr %diag_file, ptr %file6)
+  %ne = icmp ne i32 %call, 0
+  br label %sc.end5
+
+sc.end5:                                          ; preds = %sc.rhs4, %if.end
+  %sc7 = phi i1 [ true, %if.end ], [ %ne, %sc.rhs4 ]
+  br i1 %sc7, label %if.then8, label %if.else9
+
+if.then8:                                         ; preds = %sc.end5
+  %diag_loaded11 = load i1, ptr @diag_loaded, align 1
+  br i1 %diag_loaded11, label %if.then12, label %if.else13
+
+if.else9:                                         ; preds = %sc.end5
+  br label %if.end3
+
+if.end10:                                         ; preds = %if.else13, %if.then12
+  %file14 = load ptr, ptr %file, align 8
+  %call15 = call ptr @fopen(ptr %file14, ptr @.str.68)
+  store ptr %call15, ptr %f, align 8
+  %f17 = load ptr, ptr %f, align 8
+  %eq18 = icmp eq ptr %f17, null
+  br i1 %eq18, label %if.then19, label %if.else20
+
+if.then12:                                        ; preds = %if.then8
+  call void @str_deinit(ptr @diag_text)
+  store i1 false, ptr @diag_loaded, align 1
+  br label %if.end10
+
+if.else13:                                        ; preds = %if.then8
+  br label %if.end10
+
+if.end16:                                         ; preds = %if.else20
+  %f21 = load ptr, ptr %f, align 8
+  %call22 = call i32 @str_init_file(ptr @diag_text, ptr %f21)
+  %f23 = load ptr, ptr %f, align 8
+  %call24 = call i32 @fclose(ptr %f23)
+  %file25 = load ptr, ptr %file, align 8
+  %call26 = call ptr @strdup(ptr %file25)
+  store ptr %call26, ptr @diag_file, align 8
+  store i1 true, ptr @diag_loaded, align 1
+  br label %if.end3
+
+if.then19:                                        ; preds = %if.end10
+  ret ptr null
+
+if.else20:                                        ; preds = %if.end10
+  br label %if.end16
+
+loop.body:                                        ; preds = %loop.cont, %if.end3
+  %n27 = load i32, ptr %n, align 4
+  %line28 = load i32, ptr %line, align 4
+  %lt29 = icmp slt i32 %n27, %line28
+  br i1 %lt29, label %sc.rhs30, label %sc.end31
+
+loop.cont:                                        ; preds = %if.end35
+  br label %loop.body
+
+loop.end:                                         ; preds = %sc.end31
+  %n45 = load i32, ptr %n, align 4
+  %line46 = load i32, ptr %line, align 4
+  %ne47 = icmp ne i32 %n45, %line46
+  br i1 %ne47, label %sc.end49, label %sc.rhs48
+
+sc.rhs30:                                         ; preds = %loop.body
+  %i32 = load i64, ptr %i, align 8
+  %fldval = load i64, ptr getelementptr inbounds nuw (%String, ptr @diag_text, i32 0, i32 1), align 8
+  %lt33 = icmp ult i64 %i32, %fldval
+  br label %sc.end31
+
+sc.end31:                                         ; preds = %sc.rhs30, %loop.body
+  %sc34 = phi i1 [ false, %loop.body ], [ %lt33, %sc.rhs30 ]
+  br i1 %sc34, label %while.body, label %loop.end
+
+while.body:                                       ; preds = %sc.end31
+  %fldval36 = load ptr, ptr @diag_text, align 8
+  %i37 = load i64, ptr %i, align 8
+  %elem = getelementptr i8, ptr %fldval36, i64 %i37
+  %elemval = load i8, ptr %elem, align 1
+  %eq38 = icmp eq i8 %elemval, 10
+  br i1 %eq38, label %if.then39, label %if.else40
+
+if.end35:                                         ; preds = %if.else40, %if.then39
+  %i42 = load i64, ptr %i, align 8
+  %add43 = add i64 %i42, 1
+  store i64 %add43, ptr %i, align 8
+  br label %loop.cont
+
+if.then39:                                        ; preds = %while.body
+  %n41 = load i32, ptr %n, align 4
+  %add = add i32 %n41, 1
+  store i32 %add, ptr %n, align 4
+  br label %if.end35
+
+if.else40:                                        ; preds = %while.body
+  br label %if.end35
+
+if.end44:                                         ; preds = %if.else54
+  %i55 = load i64, ptr %i, align 8
+  store i64 %i55, ptr %end, align 8
+  br label %loop.body56
+
+sc.rhs48:                                         ; preds = %loop.end
+  %i50 = load i64, ptr %i, align 8
+  %fldval51 = load i64, ptr getelementptr inbounds nuw (%String, ptr @diag_text, i32 0, i32 1), align 8
+  %ge = icmp uge i64 %i50, %fldval51
+  br label %sc.end49
+
+sc.end49:                                         ; preds = %sc.rhs48, %loop.end
+  %sc52 = phi i1 [ true, %loop.end ], [ %ge, %sc.rhs48 ]
+  br i1 %sc52, label %if.then53, label %if.else54
+
+if.then53:                                        ; preds = %sc.end49
+  ret ptr null
+
+if.else54:                                        ; preds = %sc.end49
+  br label %if.end44
+
+loop.body56:                                      ; preds = %loop.cont57, %if.end44
+  %end59 = load i64, ptr %end, align 8
+  %fldval60 = load i64, ptr getelementptr inbounds nuw (%String, ptr @diag_text, i32 0, i32 1), align 8
+  %lt61 = icmp ult i64 %end59, %fldval60
+  br i1 %lt61, label %sc.rhs62, label %sc.end63
+
+loop.cont57:                                      ; preds = %while.body78
+  br label %loop.body56
+
+loop.end58:                                       ; preds = %sc.end71
+  %i81 = load i64, ptr %i, align 8
+  %end82 = load i64, ptr %end, align 8
+  %i83 = load i64, ptr %i, align 8
+  %sub = sub i64 %end82, %i83
+  %call84 = call ptr @str_substr(ptr @diag_text, i64 %i81, i64 %sub)
+  ret ptr %call84
+
+sc.rhs62:                                         ; preds = %loop.body56
+  %fldval64 = load ptr, ptr @diag_text, align 8
+  %end65 = load i64, ptr %end, align 8
+  %elem66 = getelementptr i8, ptr %fldval64, i64 %end65
+  %elemval67 = load i8, ptr %elem66, align 1
+  %ne68 = icmp ne i8 %elemval67, 10
+  br label %sc.end63
+
+sc.end63:                                         ; preds = %sc.rhs62, %loop.body56
+  %sc69 = phi i1 [ false, %loop.body56 ], [ %ne68, %sc.rhs62 ]
+  br i1 %sc69, label %sc.rhs70, label %sc.end71
+
+sc.rhs70:                                         ; preds = %sc.end63
+  %fldval72 = load ptr, ptr @diag_text, align 8
+  %end73 = load i64, ptr %end, align 8
+  %elem74 = getelementptr i8, ptr %fldval72, i64 %end73
+  %elemval75 = load i8, ptr %elem74, align 1
+  %ne76 = icmp ne i8 %elemval75, 13
+  br label %sc.end71
+
+sc.end71:                                         ; preds = %sc.rhs70, %sc.end63
+  %sc77 = phi i1 [ false, %sc.end63 ], [ %ne76, %sc.rhs70 ]
+  br i1 %sc77, label %while.body78, label %loop.end58
+
+while.body78:                                     ; preds = %sc.end71
+  %end79 = load i64, ptr %end, align 8
+  %add80 = add i64 %end79, 1
+  store i64 %add80, ptr %end, align 8
+  br label %loop.cont57
+}
+
+define i32 @diag_digits(i32 %0) {
+entry:
+  %d = alloca i32, align 4
+  %n = alloca i32, align 4
+  store i32 %0, ptr %n, align 4
+  store i32 1, ptr %d, align 4
+  br label %loop.body
+
+loop.body:                                        ; preds = %loop.cont, %entry
+  %n1 = load i32, ptr %n, align 4
+  %ge = icmp sge i32 %n1, 10
+  br i1 %ge, label %while.body, label %loop.end
+
+loop.cont:                                        ; preds = %while.body
+  br label %loop.body
+
+loop.end:                                         ; preds = %loop.body
+  %d4 = load i32, ptr %d, align 4
+  ret i32 %d4
+
+while.body:                                       ; preds = %loop.body
+  %n2 = load i32, ptr %n, align 4
+  %div = sdiv i32 %n2, 10
+  store i32 %div, ptr %n, align 4
+  %d3 = load i32, ptr %d, align 4
+  %add = add i32 %d3, 1
+  store i32 %add, ptr %d, align 4
+  br label %loop.cont
+}
+
+define void @diag_plain(ptr %0) {
+entry:
+  %msg = alloca ptr, align 8
+  store ptr %0, ptr %msg, align 8
+  %diag_count = load i32, ptr @diag_count, align 4
+  %add = add i32 %diag_count, 1
+  store i32 %add, ptr @diag_count, align 4
+  %call = call i1 @diag_color()
+  br i1 %call, label %if.then, label %if.else
+
+if.end:                                           ; preds = %if.else, %if.then
+  ret void
+
+if.then:                                          ; preds = %entry
+  %msg1 = load ptr, ptr %msg, align 8
+  %call2 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.69, ptr %msg1)
+  br label %if.end
+
+if.else:                                          ; preds = %entry
+  %msg3 = load ptr, ptr %msg, align 8
+  %call4 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.70, ptr %msg3)
+  br label %if.end
+}
+
+define void @diag_at(%Location %0, ptr %1) {
+entry:
+  %caret = alloca i32, align 4
+  %text = alloca ptr, align 8
+  %w = alloca i32, align 4
+  %loc = alloca %Location, align 8
+  store %Location %0, ptr %loc, align 8
+  %msg = alloca ptr, align 8
+  store ptr %1, ptr %msg, align 8
+  %msg1 = load ptr, ptr %msg, align 8
+  call void @diag_plain(ptr %msg1)
+  %fld = getelementptr inbounds nuw %Location, ptr %loc, i32 0, i32 2
+  %fldval = load ptr, ptr %fld, align 8
+  %eq = icmp eq ptr %fldval, null
+  br i1 %eq, label %if.then, label %if.else
+
+if.end:                                           ; preds = %if.else
+  %fld2 = getelementptr inbounds nuw %Location, ptr %loc, i32 0, i32 0
+  %fldval3 = load i32, ptr %fld2, align 4
+  %call = call i32 @diag_digits(i32 %fldval3)
+  store i32 %call, ptr %w, align 4
+  %w4 = load i32, ptr %w, align 4
+  %fld5 = getelementptr inbounds nuw %Location, ptr %loc, i32 0, i32 2
+  %fldval6 = load ptr, ptr %fld5, align 8
+  %fld7 = getelementptr inbounds nuw %Location, ptr %loc, i32 0, i32 0
+  %fldval8 = load i32, ptr %fld7, align 4
+  %fld9 = getelementptr inbounds nuw %Location, ptr %loc, i32 0, i32 1
+  %fldval10 = load i32, ptr %fld9, align 4
+  %call11 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.71, i32 %w4, ptr @.str.72, ptr %fldval6, i32 %fldval8, i32 %fldval10)
+  %fld12 = getelementptr inbounds nuw %Location, ptr %loc, i32 0, i32 2
+  %fldval13 = load ptr, ptr %fld12, align 8
+  %fld14 = getelementptr inbounds nuw %Location, ptr %loc, i32 0, i32 0
+  %fldval15 = load i32, ptr %fld14, align 4
+  %call16 = call ptr @diag_line_of(ptr %fldval13, i32 %fldval15)
+  store ptr %call16, ptr %text, align 8
+  %text18 = load ptr, ptr %text, align 8
+  %eq19 = icmp eq ptr %text18, null
+  br i1 %eq19, label %if.then20, label %if.else21
+
+if.then:                                          ; preds = %entry
+  ret void
+
+if.else:                                          ; preds = %entry
+  br label %if.end
+
+if.end17:                                         ; preds = %if.else21
+  %fld22 = getelementptr inbounds nuw %Location, ptr %loc, i32 0, i32 1
+  %fldval23 = load i32, ptr %fld22, align 4
+  %sub = sub i32 %fldval23, 1
+  store i32 %sub, ptr %caret, align 4
+  %caret25 = load i32, ptr %caret, align 4
+  %lt = icmp slt i32 %caret25, 0
+  br i1 %lt, label %if.then26, label %if.else27
+
+if.then20:                                        ; preds = %if.end
+  ret void
+
+if.else21:                                        ; preds = %if.end
+  br label %if.end17
+
+if.end24:                                         ; preds = %if.else27, %if.then26
+  %w28 = load i32, ptr %w, align 4
+  %call29 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.73, i32 %w28, ptr @.str.72)
+  %fld30 = getelementptr inbounds nuw %Location, ptr %loc, i32 0, i32 0
+  %fldval31 = load i32, ptr %fld30, align 4
+  %text32 = load ptr, ptr %text, align 8
+  %call33 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.74, i32 %fldval31, ptr %text32)
+  %call35 = call i1 @diag_color()
+  br i1 %call35, label %if.then36, label %if.else37
+
+if.then26:                                        ; preds = %if.end17
+  store i32 0, ptr %caret, align 4
+  br label %if.end24
+
+if.else27:                                        ; preds = %if.end17
+  br label %if.end24
+
+if.end34:                                         ; preds = %if.else37, %if.then36
+  %text44 = load ptr, ptr %text, align 8
+  call void @free(ptr %text44)
+  ret void
+
+if.then36:                                        ; preds = %if.end24
+  %w38 = load i32, ptr %w, align 4
+  %caret39 = load i32, ptr %caret, align 4
+  %call40 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.75, i32 %w38, ptr @.str.72, i32 %caret39, ptr @.str.72)
+  br label %if.end34
+
+if.else37:                                        ; preds = %if.end24
+  %w41 = load i32, ptr %w, align 4
+  %caret42 = load i32, ptr %caret, align 4
+  %call43 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.76, i32 %w41, ptr @.str.72, i32 %caret42, ptr @.str.72)
+  br label %if.end34
+}
+
+define void @diag_at2(%Location %0, ptr %1, ptr %2, ptr %3) {
+entry:
+  %buf = alloca ptr, align 8
+  %loc = alloca %Location, align 8
+  store %Location %0, ptr %loc, align 8
+  %fmt = alloca ptr, align 8
+  store ptr %1, ptr %fmt, align 8
+  %a = alloca ptr, align 8
+  store ptr %2, ptr %a, align 8
+  %b = alloca ptr, align 8
+  store ptr %3, ptr %b, align 8
+  %call = call ptr @malloc(i64 512)
+  store ptr %call, ptr %buf, align 8
+  %buf1 = load ptr, ptr %buf, align 8
+  %fmt2 = load ptr, ptr %fmt, align 8
+  %a3 = load ptr, ptr %a, align 8
+  %b4 = load ptr, ptr %b, align 8
+  %call5 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf1, i64 512, ptr %fmt2, ptr %a3, ptr %b4)
+  %loc6 = load %Location, ptr %loc, align 8
+  %buf7 = load ptr, ptr %buf, align 8
+  call void @diag_at(%Location %loc6, ptr %buf7)
+  %buf8 = load ptr, ptr %buf, align 8
+  call void @free(ptr %buf8)
+  ret void
+}
+
+define void @diag_fatal(%Location %0, ptr %1, ptr %2, ptr %3) {
+entry:
+  %loc = alloca %Location, align 8
+  store %Location %0, ptr %loc, align 8
+  %fmt = alloca ptr, align 8
+  store ptr %1, ptr %fmt, align 8
+  %a = alloca ptr, align 8
+  store ptr %2, ptr %a, align 8
+  %b = alloca ptr, align 8
+  store ptr %3, ptr %b, align 8
+  %loc1 = load %Location, ptr %loc, align 8
+  %fmt2 = load ptr, ptr %fmt, align 8
+  %a3 = load ptr, ptr %a, align 8
+  %b4 = load ptr, ptr %b, align 8
+  call void @diag_at2(%Location %loc1, ptr %fmt2, ptr %a3, ptr %b4)
+  call void @exit(i32 1)
+  ret void
+}
+
+define void @diag_summary() {
+entry:
+  %diag_count = load i32, ptr @diag_count, align 4
+  %eq = icmp eq i32 %diag_count, 1
+  br i1 %eq, label %if.then, label %if.else
+
+if.end:                                           ; preds = %elif.else, %elif.then, %if.then
+  ret void
+
+if.then:                                          ; preds = %entry
+  %call = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.77)
+  br label %if.end
+
+if.else:                                          ; preds = %entry
+  %diag_count1 = load i32, ptr @diag_count, align 4
+  %gt = icmp sgt i32 %diag_count1, 1
+  br i1 %gt, label %elif.then, label %elif.else
+
+elif.then:                                        ; preds = %if.else
+  %diag_count2 = load i32, ptr @diag_count, align 4
+  %call3 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.78, i32 %diag_count2)
+  br label %if.end
+
+elif.else:                                        ; preds = %if.else
+  br label %if.end
+}
+
+define void @diag_internal(ptr %0, ptr %1) {
+entry:
+  %fmt = alloca ptr, align 8
+  store ptr %0, ptr %fmt, align 8
+  %a = alloca ptr, align 8
+  store ptr %1, ptr %a, align 8
+  %call = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.79)
+  %fmt1 = load ptr, ptr %fmt, align 8
+  %a2 = load ptr, ptr %a, align 8
+  %call3 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr %fmt1, ptr %a2)
+  %call4 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.80)
+  call void @exit(i32 2)
+  ret void
+}
+
+define ptr @pp_display(ptr %0) {
+entry:
+  %rel = alloca ptr, align 8
+  %n = alloca i64, align 8
+  %cwd = alloca ptr, align 8
+  %canon = alloca ptr, align 8
+  %path = alloca ptr, align 8
+  store ptr %0, ptr %path, align 8
+  %path1 = load ptr, ptr %path, align 8
+  %call = call ptr @realpath(ptr %path1, ptr null)
+  store ptr %call, ptr %canon, align 8
+  %canon2 = load ptr, ptr %canon, align 8
+  %eq = icmp eq ptr %canon2, null
+  br i1 %eq, label %if.then, label %if.else
+
+if.end:                                           ; preds = %if.else
+  %call5 = call ptr @getcwd(ptr null, i64 0)
+  store ptr %call5, ptr %cwd, align 8
+  %cwd7 = load ptr, ptr %cwd, align 8
+  %eq8 = icmp eq ptr %cwd7, null
+  br i1 %eq8, label %if.then9, label %if.else10
+
+if.then:                                          ; preds = %entry
+  %path3 = load ptr, ptr %path, align 8
+  %call4 = call ptr @strdup(ptr %path3)
+  ret ptr %call4
+
+if.else:                                          ; preds = %entry
+  br label %if.end
+
+if.end6:                                          ; preds = %if.else10
+  %cwd12 = load ptr, ptr %cwd, align 8
+  %call13 = call i64 @strlen(ptr %cwd12)
+  store i64 %call13, ptr %n, align 8
+  %canon15 = load ptr, ptr %canon, align 8
+  %cwd16 = load ptr, ptr %cwd, align 8
+  %n17 = load i64, ptr %n, align 8
+  %call18 = call i32 @strncmp(ptr %canon15, ptr %cwd16, i64 %n17)
+  %eq19 = icmp eq i32 %call18, 0
+  br i1 %eq19, label %sc.rhs, label %sc.end
+
+if.then9:                                         ; preds = %if.end
+  %canon11 = load ptr, ptr %canon, align 8
+  ret ptr %canon11
+
+if.else10:                                        ; preds = %if.end
+  br label %if.end6
+
+if.end14:                                         ; preds = %if.else24
+  %cwd32 = load ptr, ptr %cwd, align 8
+  call void @free(ptr %cwd32)
+  %canon33 = load ptr, ptr %canon, align 8
+  ret ptr %canon33
+
+sc.rhs:                                           ; preds = %if.end6
+  %canon20 = load ptr, ptr %canon, align 8
+  %n21 = load i64, ptr %n, align 8
+  %elem = getelementptr i8, ptr %canon20, i64 %n21
+  %elemval = load i8, ptr %elem, align 1
+  %eq22 = icmp eq i8 %elemval, 47
+  br label %sc.end
+
+sc.end:                                           ; preds = %sc.rhs, %if.end6
+  %sc = phi i1 [ false, %if.end6 ], [ %eq22, %sc.rhs ]
+  br i1 %sc, label %if.then23, label %if.else24
+
+if.then23:                                        ; preds = %sc.end
+  %canon25 = load ptr, ptr %canon, align 8
+  %n26 = load i64, ptr %n, align 8
+  %padd = getelementptr i8, ptr %canon25, i64 %n26
+  %padd27 = getelementptr i8, ptr %padd, i64 1
+  %call28 = call ptr @strdup(ptr %padd27)
+  store ptr %call28, ptr %rel, align 8
+  %canon29 = load ptr, ptr %canon, align 8
+  call void @free(ptr %canon29)
+  %cwd30 = load ptr, ptr %cwd, align 8
+  call void @free(ptr %cwd30)
+  %rel31 = load ptr, ptr %rel, align 8
+  ret ptr %rel31
+
+if.else24:                                        ; preds = %sc.end
+  br label %if.end14
+}
+
+define %Location @pp_where(ptr %0, i64 %1, ptr %2) {
+entry:
+  %b = alloca i32, align 4
+  %i = alloca i64, align 8
+  %depth = alloca i32, align 4
+  %l = alloca %Location, align 8
+  %s = alloca ptr, align 8
+  store ptr %0, ptr %s, align 8
+  %pos = alloca i64, align 8
+  store i64 %1, ptr %pos, align 8
+  %name = alloca ptr, align 8
+  store ptr %2, ptr %name, align 8
+  %fld = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 2
+  %name1 = load ptr, ptr %name, align 8
+  store ptr %name1, ptr %fld, align 8
+  %fld2 = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 0
+  store i32 1, ptr %fld2, align 4
+  %fld3 = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 1
+  store i32 1, ptr %fld3, align 4
+  store i32 0, ptr %depth, align 4
+  store i64 0, ptr %i, align 8
+  br label %loop.body
+
+loop.body:                                        ; preds = %loop.cont, %entry
+  %i4 = load i64, ptr %i, align 8
+  %pos5 = load i64, ptr %pos, align 8
+  %lt = icmp ult i64 %i4, %pos5
+  br i1 %lt, label %sc.rhs, label %sc.end
+
+loop.cont:                                        ; preds = %if.end21
+  br label %loop.body
+
+loop.end:                                         ; preds = %sc.end
+  %l46 = load %Location, ptr %l, align 8
+  ret %Location %l46
+
+sc.rhs:                                           ; preds = %loop.body
+  %i6 = load i64, ptr %i, align 8
+  %objptr = load ptr, ptr %s, align 8
+  %fld7 = getelementptr inbounds nuw %String, ptr %objptr, i32 0, i32 1
+  %fldval = load i64, ptr %fld7, align 8
+  %lt8 = icmp ult i64 %i6, %fldval
+  br label %sc.end
+
+sc.end:                                           ; preds = %sc.rhs, %loop.body
+  %sc = phi i1 [ false, %loop.body ], [ %lt8, %sc.rhs ]
+  br i1 %sc, label %while.body, label %loop.end
+
+while.body:                                       ; preds = %sc.end
+  %objptr9 = load ptr, ptr %s, align 8
+  %fld10 = getelementptr inbounds nuw %String, ptr %objptr9, i32 0, i32 0
+  %fldval11 = load ptr, ptr %fld10, align 8
+  %i12 = load i64, ptr %i, align 8
+  %elem = getelementptr i8, ptr %fldval11, i64 %i12
+  %elemval = load i8, ptr %elem, align 1
+  %cast = sext i8 %elemval to i32
+  store i32 %cast, ptr %b, align 4
+  %b13 = load i32, ptr %b, align 4
+  %eq = icmp eq i32 %b13, 1
+  br i1 %eq, label %if.then, label %if.else
+
+if.end:                                           ; preds = %if.else, %if.then
+  %b16 = load i32, ptr %b, align 4
+  %eq17 = icmp eq i32 %b16, 2
+  br i1 %eq17, label %if.then18, label %if.else19
+
+if.then:                                          ; preds = %while.body
+  %depth14 = load i32, ptr %depth, align 4
+  %add = add i32 %depth14, 1
+  store i32 %add, ptr %depth, align 4
+  br label %if.end
+
+if.else:                                          ; preds = %while.body
+  br label %if.end
+
+if.end15:                                         ; preds = %if.else19, %if.then18
+  %depth22 = load i32, ptr %depth, align 4
+  %eq23 = icmp eq i32 %depth22, 0
+  br i1 %eq23, label %sc.rhs24, label %sc.end25
+
+if.then18:                                        ; preds = %if.end
+  %depth20 = load i32, ptr %depth, align 4
+  %sub = sub i32 %depth20, 1
+  store i32 %sub, ptr %depth, align 4
+  br label %if.end15
+
+if.else19:                                        ; preds = %if.end
+  br label %if.end15
+
+if.end21:                                         ; preds = %if.else29, %if.end30
+  %i44 = load i64, ptr %i, align 8
+  %add45 = add i64 %i44, 1
+  store i64 %add45, ptr %i, align 8
+  br label %loop.cont
+
+sc.rhs24:                                         ; preds = %if.end15
+  %b26 = load i32, ptr %b, align 4
+  %ne = icmp ne i32 %b26, 2
+  br label %sc.end25
+
+sc.end25:                                         ; preds = %sc.rhs24, %if.end15
+  %sc27 = phi i1 [ false, %if.end15 ], [ %ne, %sc.rhs24 ]
+  br i1 %sc27, label %if.then28, label %if.else29
+
+if.then28:                                        ; preds = %sc.end25
+  %b31 = load i32, ptr %b, align 4
+  %eq32 = icmp eq i32 %b31, 10
+  br i1 %eq32, label %if.then33, label %if.else34
+
+if.else29:                                        ; preds = %sc.end25
+  br label %if.end21
+
+if.end30:                                         ; preds = %if.else34, %if.then33
+  br label %if.end21
+
+if.then33:                                        ; preds = %if.then28
+  %fld35 = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 0
+  %fld36 = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 0
+  %fldval37 = load i32, ptr %fld36, align 4
+  %add38 = add i32 %fldval37, 1
+  store i32 %add38, ptr %fld35, align 4
+  %fld39 = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 1
+  store i32 1, ptr %fld39, align 4
+  br label %if.end30
+
+if.else34:                                        ; preds = %if.then28
+  %fld40 = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 1
+  %fld41 = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 1
+  %fldval42 = load i32, ptr %fld41, align 4
+  %add43 = add i32 %fldval42, 1
+  store i32 %add43, ptr %fld40, align 4
+  br label %if.end30
+}
 
 define i1 @pp_first_visit(ptr %0) {
 entry:
@@ -1254,7 +2641,7 @@ if.end:                                           ; preds = %if.else
   br i1 %eq6, label %if.then7, label %if.else8
 
 if.then:                                          ; preds = %entry
-  %call = call ptr @strdup(ptr @.str.0)
+  %call = call ptr @strdup(ptr @.str.81)
   ret ptr %call
 
 if.else:                                          ; preds = %entry
@@ -1276,7 +2663,7 @@ if.end4:                                          ; preds = %if.else8
   br i1 %eq17, label %if.then18, label %if.else19
 
 if.then7:                                         ; preds = %if.end
-  %call9 = call ptr @strdup(ptr @.str.0)
+  %call9 = call ptr @strdup(ptr @.str.81)
   ret ptr %call9
 
 if.else8:                                         ; preds = %if.end
@@ -1301,7 +2688,7 @@ if.else19:                                        ; preds = %if.end4
   br label %if.end15
 }
 
-define i32 @preproc_internal(ptr %0, i32 %1, ptr %2) {
+define i32 @preproc_internal(ptr %0, i32 %1, ptr %2, ptr %3) {
 entry:
   %hit = alloca i1, align 1
   %quote = alloca i8, align 1
@@ -1313,6 +2700,8 @@ entry:
   store i32 %1, ptr %depth, align 4
   %dir = alloca ptr, align 8
   store ptr %2, ptr %dir, align 8
+  %name = alloca ptr, align 8
+  store ptr %3, ptr %name, align 8
   store i64 0, ptr %i, align 8
   br label %loop.body
 
@@ -1490,7 +2879,7 @@ if.then81:                                        ; preds = %sc.end73
   %fldval86 = load ptr, ptr %fld85, align 8
   %i87 = load i64, ptr %i, align 8
   %padd88 = getelementptr i8, ptr %fldval86, i64 %i87
-  %call = call i32 @strncmp(ptr %padd88, ptr @.str.7, i64 5)
+  %call = call i32 @strncmp(ptr %padd88, ptr @.str.88, i64 5)
   %eq89 = icmp eq i32 %call, 0
   br i1 %eq89, label %if.then90, label %if.else91
 
@@ -1515,32 +2904,35 @@ if.then94:                                        ; preds = %if.end69
   %i98 = load i64, ptr %i, align 8
   %depth99 = load i32, ptr %depth, align 4
   %dir100 = load ptr, ptr %dir, align 8
-  %call101 = call i32 @preproc_uses(ptr %src97, i64 %i98, i32 %depth99, ptr %dir100)
-  %ne102 = icmp ne i32 %call101, 0
-  br i1 %ne102, label %if.then103, label %if.else104
+  %name101 = load ptr, ptr %name, align 8
+  %call102 = call i32 @preproc_uses(ptr %src97, i64 %i98, i32 %depth99, ptr %dir100, ptr %name101)
+  %ne103 = icmp ne i32 %call102, 0
+  br i1 %ne103, label %if.then104, label %if.else105
 
 if.else95:                                        ; preds = %if.end69
-  %i105 = load i64, ptr %i, align 8
-  %add106 = add i64 %i105, 1
-  store i64 %add106, ptr %i, align 8
+  %i106 = load i64, ptr %i, align 8
+  %add107 = add i64 %i106, 1
+  store i64 %add107, ptr %i, align 8
   br label %if.end92
 
-if.end96:                                         ; preds = %if.else104
+if.end96:                                         ; preds = %if.else105
   store i64 0, ptr %i, align 8
   br label %if.end92
 
-if.then103:                                       ; preds = %if.then94
+if.then104:                                       ; preds = %if.then94
   ret i32 -1
 
-if.else104:                                       ; preds = %if.then94
+if.else105:                                       ; preds = %if.then94
   br label %if.end96
 }
 
-define i32 @insert_file(ptr %0, i64 %1, ptr %2, i32 %3, ptr %4) {
+define i32 @insert_file(ptr %0, i64 %1, ptr %2, i32 %3, ptr %4, %Location %5) {
 entry:
+  %wrapped = alloca %String, align 8
   %rc = alloca i32, align 4
   %sub_dir = alloca ptr, align 8
   %buf = alloca %String, align 8
+  %shown = alloca ptr, align 8
   %f = alloca ptr, align 8
   %n = alloca i64, align 8
   %full = alloca ptr, align 8
@@ -1554,6 +2946,8 @@ entry:
   store i32 %3, ptr %depth, align 4
   %dir = alloca ptr, align 8
   store ptr %4, ptr %dir, align 8
+  %where = alloca %Location, align 8
+  store %Location %5, ptr %where, align 8
   %depth1 = load i32, ptr %depth, align 4
   %MAX_INCLUDE_DEPTH = load i32, ptr @MAX_INCLUDE_DEPTH, align 4
   %gt = icmp sgt i32 %depth1, %MAX_INCLUDE_DEPTH
@@ -1561,31 +2955,32 @@ entry:
 
 if.end:                                           ; preds = %if.else
   store ptr null, ptr %full, align 8
-  %path4 = load ptr, ptr %path, align 8
-  %deref = load i8, ptr %path4, align 1
+  %path5 = load ptr, ptr %path, align 8
+  %deref = load i8, ptr %path5, align 1
   %eq = icmp eq i8 %deref, 47
-  br i1 %eq, label %if.then5, label %if.else6
+  br i1 %eq, label %if.then6, label %if.else7
 
 if.then:                                          ; preds = %entry
-  %path2 = load ptr, ptr %path, align 8
-  %call = call i32 (ptr, ...) @printf(ptr @.str.1, ptr %path2)
+  %where2 = load %Location, ptr %where, align 8
+  %path3 = load ptr, ptr %path, align 8
+  call void @diag_at2(%Location %where2, ptr @.str.82, ptr @.str.83, ptr %path3)
   ret i32 -1
 
 if.else:                                          ; preds = %entry
   br label %if.end
 
-if.end3:                                          ; preds = %if.end17, %if.then5
+if.end4:                                          ; preds = %if.end17, %if.then6
   %full27 = load ptr, ptr %full, align 8
   %eq28 = icmp eq ptr %full27, null
   br i1 %eq28, label %if.then29, label %if.else30
 
-if.then5:                                         ; preds = %if.end
-  %path7 = load ptr, ptr %path, align 8
-  %call8 = call ptr @strdup(ptr %path7)
-  store ptr %call8, ptr %full, align 8
-  br label %if.end3
+if.then6:                                         ; preds = %if.end
+  %path8 = load ptr, ptr %path, align 8
+  %call = call ptr @strdup(ptr %path8)
+  store ptr %call, ptr %full, align 8
+  br label %if.end4
 
-if.else6:                                         ; preds = %if.end
+if.else7:                                         ; preds = %if.end
   %dir9 = load ptr, ptr %dir, align 8
   %call10 = call i64 @strlen(ptr %dir9)
   %add = add i64 %call10, 1
@@ -1602,17 +2997,17 @@ if.else6:                                         ; preds = %if.end
   br i1 %ne, label %if.then19, label %if.else20
 
 if.end17:                                         ; preds = %if.else20, %if.then19
-  br label %if.end3
+  br label %if.end4
 
-if.then19:                                        ; preds = %if.else6
+if.then19:                                        ; preds = %if.else7
   %full21 = load ptr, ptr %full, align 8
   %n22 = load i64, ptr %n, align 8
   %dir23 = load ptr, ptr %dir, align 8
   %path24 = load ptr, ptr %path, align 8
-  %call25 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %full21, i64 %n22, ptr @.str.2, ptr %dir23, ptr %path24)
+  %call25 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %full21, i64 %n22, ptr @.str.84, ptr %dir23, ptr %path24)
   br label %if.end17
 
-if.else20:                                        ; preds = %if.else6
+if.else20:                                        ; preds = %if.else7
   br label %if.end17
 
 if.end26:                                         ; preds = %if.else30
@@ -1621,15 +3016,15 @@ if.end26:                                         ; preds = %if.else30
   %not = icmp eq i1 %call33, false
   br i1 %not, label %if.then34, label %if.else35
 
-if.then29:                                        ; preds = %if.end3
+if.then29:                                        ; preds = %if.end4
   ret i32 -1
 
-if.else30:                                        ; preds = %if.end3
+if.else30:                                        ; preds = %if.end4
   br label %if.end26
 
 if.end31:                                         ; preds = %if.else35
   %full37 = load ptr, ptr %full, align 8
-  %call38 = call ptr @fopen(ptr %full37, ptr @.str.3)
+  %call38 = call ptr @fopen(ptr %full37, ptr @.str.68)
   store ptr %call38, ptr %f, align 8
   %f40 = load ptr, ptr %f, align 8
   %eq41 = icmp eq ptr %f40, null
@@ -1644,72 +3039,96 @@ if.else35:                                        ; preds = %if.end26
   br label %if.end31
 
 if.end39:                                         ; preds = %if.else43
-  %f47 = load ptr, ptr %f, align 8
-  %call48 = call i32 @str_init_file(ptr %buf, ptr %f47)
-  %f49 = load ptr, ptr %f, align 8
-  %call50 = call i32 @fclose(ptr %f49)
-  %full51 = load ptr, ptr %full, align 8
-  %call52 = call ptr @dir_of(ptr %full51)
-  store ptr %call52, ptr %sub_dir, align 8
-  %full53 = load ptr, ptr %full, align 8
-  call void @free(ptr %full53)
-  %sub_dir55 = load ptr, ptr %sub_dir, align 8
-  %eq56 = icmp eq ptr %sub_dir55, null
-  br i1 %eq56, label %if.then57, label %if.else58
+  %full48 = load ptr, ptr %full, align 8
+  %call49 = call ptr @pp_display(ptr %full48)
+  store ptr %call49, ptr %shown, align 8
+  %f50 = load ptr, ptr %f, align 8
+  %call51 = call i32 @str_init_file(ptr %buf, ptr %f50)
+  %f52 = load ptr, ptr %f, align 8
+  %call53 = call i32 @fclose(ptr %f52)
+  %full54 = load ptr, ptr %full, align 8
+  %call55 = call ptr @dir_of(ptr %full54)
+  store ptr %call55, ptr %sub_dir, align 8
+  %full56 = load ptr, ptr %full, align 8
+  call void @free(ptr %full56)
+  %sub_dir58 = load ptr, ptr %sub_dir, align 8
+  %eq59 = icmp eq ptr %sub_dir58, null
+  br i1 %eq59, label %if.then60, label %if.else61
 
 if.then42:                                        ; preds = %if.end31
-  %full44 = load ptr, ptr %full, align 8
-  %call45 = call i32 (ptr, ...) @printf(ptr @.str.4, ptr %full44)
+  %where44 = load %Location, ptr %where, align 8
+  %path45 = load ptr, ptr %path, align 8
   %full46 = load ptr, ptr %full, align 8
-  call void @free(ptr %full46)
+  call void @diag_at2(%Location %where44, ptr @.str.85, ptr %path45, ptr %full46)
+  %full47 = load ptr, ptr %full, align 8
+  call void @free(ptr %full47)
   ret i32 -1
 
 if.else43:                                        ; preds = %if.end31
   br label %if.end39
 
-if.end54:                                         ; preds = %if.else58
-  %depth59 = load i32, ptr %depth, align 4
-  %add60 = add i32 %depth59, 1
-  %sub_dir61 = load ptr, ptr %sub_dir, align 8
-  %call62 = call i32 @preproc_internal(ptr %buf, i32 %add60, ptr %sub_dir61)
-  store i32 %call62, ptr %rc, align 4
-  %sub_dir63 = load ptr, ptr %sub_dir, align 8
-  call void @free(ptr %sub_dir63)
-  %rc65 = load i32, ptr %rc, align 4
-  %ne66 = icmp ne i32 %rc65, 0
-  br i1 %ne66, label %if.then67, label %if.else68
+if.end57:                                         ; preds = %if.else61
+  %depth62 = load i32, ptr %depth, align 4
+  %add63 = add i32 %depth62, 1
+  %sub_dir64 = load ptr, ptr %sub_dir, align 8
+  %shown65 = load ptr, ptr %shown, align 8
+  %call66 = call i32 @preproc_internal(ptr %buf, i32 %add63, ptr %sub_dir64, ptr %shown65)
+  store i32 %call66, ptr %rc, align 4
+  %sub_dir67 = load ptr, ptr %sub_dir, align 8
+  call void @free(ptr %sub_dir67)
+  %rc69 = load i32, ptr %rc, align 4
+  %ne70 = icmp ne i32 %rc69, 0
+  br i1 %ne70, label %if.then71, label %if.else72
 
-if.then57:                                        ; preds = %if.end39
+if.then60:                                        ; preds = %if.end39
   call void @str_deinit(ptr %buf)
   ret i32 -1
 
-if.else58:                                        ; preds = %if.end39
-  br label %if.end54
+if.else61:                                        ; preds = %if.end39
+  br label %if.end57
 
-if.end64:                                         ; preds = %if.else68
-  %dst69 = load ptr, ptr %dst, align 8
-  %at70 = load i64, ptr %at, align 8
-  %fld = getelementptr inbounds nuw %String, ptr %buf, i32 0, i32 0
-  %fldval = load ptr, ptr %fld, align 8
-  %call71 = call i32 @str_insert_str(ptr %dst69, i64 %at70, ptr %fldval)
+if.end68:                                         ; preds = %if.else72
+  %fld = getelementptr inbounds nuw %String, ptr %buf, i32 0, i32 1
+  %fldval = load i64, ptr %fld, align 8
+  %shown73 = load ptr, ptr %shown, align 8
+  %call74 = call i64 @strlen(ptr %shown73)
+  %add75 = add i64 %fldval, %call74
+  %add76 = add i64 %add75, 8
+  %call77 = call i32 @str_init_cap(ptr %wrapped, i64 %add76)
+  %call78 = call i32 @str_append(ptr %wrapped, i8 1)
+  %shown79 = load ptr, ptr %shown, align 8
+  %call80 = call i32 @str_append_str(ptr %wrapped, ptr %shown79)
+  %call81 = call i32 @str_append(ptr %wrapped, i8 10)
+  %fld82 = getelementptr inbounds nuw %String, ptr %buf, i32 0, i32 0
+  %fldval83 = load ptr, ptr %fld82, align 8
+  %call84 = call i32 @str_append_str(ptr %wrapped, ptr %fldval83)
+  %call85 = call i32 @str_append(ptr %wrapped, i8 10)
+  %call86 = call i32 @str_append(ptr %wrapped, i8 2)
+  %dst87 = load ptr, ptr %dst, align 8
+  %at88 = load i64, ptr %at, align 8
+  %fld89 = getelementptr inbounds nuw %String, ptr %wrapped, i32 0, i32 0
+  %fldval90 = load ptr, ptr %fld89, align 8
+  %call91 = call i32 @str_insert_str(ptr %dst87, i64 %at88, ptr %fldval90)
+  call void @str_deinit(ptr %wrapped)
   call void @str_deinit(ptr %buf)
   ret i32 0
 
-if.then67:                                        ; preds = %if.end54
+if.then71:                                        ; preds = %if.end57
   call void @str_deinit(ptr %buf)
   ret i32 -1
 
-if.else68:                                        ; preds = %if.end54
-  br label %if.end64
+if.else72:                                        ; preds = %if.end57
+  br label %if.end68
 }
 
-define i32 @preproc_uses(ptr %0, i64 %1, i32 %2, ptr %3) {
+define i32 @preproc_uses(ptr %0, i64 %1, i32 %2, ptr %3, ptr %4) {
 entry:
   %directive_len = alloca i64, align 8
   %fname = alloca ptr, align 8
   %name_len = alloca i64, align 8
   %name_begin = alloca i64, align 8
   %i = alloca i64, align 8
+  %where = alloca %Location, align 8
   %s = alloca ptr, align 8
   store ptr %0, ptr %s, align 8
   %pos = alloca i64, align 8
@@ -1718,199 +3137,234 @@ entry:
   store i32 %2, ptr %depth, align 4
   %dir = alloca ptr, align 8
   store ptr %3, ptr %dir, align 8
-  %pos1 = load i64, ptr %pos, align 8
-  %add = add i64 %pos1, 5
+  %name = alloca ptr, align 8
+  store ptr %4, ptr %name, align 8
+  %s1 = load ptr, ptr %s, align 8
+  %pos2 = load i64, ptr %pos, align 8
+  %name3 = load ptr, ptr %name, align 8
+  %call = call %Location @pp_where(ptr %s1, i64 %pos2, ptr %name3)
+  store %Location %call, ptr %where, align 8
+  %pos4 = load i64, ptr %pos, align 8
+  %add = add i64 %pos4, 5
   store i64 %add, ptr %i, align 8
   br label %loop.body
 
 loop.body:                                        ; preds = %loop.cont, %entry
-  %i2 = load i64, ptr %i, align 8
+  %i5 = load i64, ptr %i, align 8
   %objptr = load ptr, ptr %s, align 8
   %fld = getelementptr inbounds nuw %String, ptr %objptr, i32 0, i32 1
   %fldval = load i64, ptr %fld, align 8
-  %lt = icmp ult i64 %i2, %fldval
+  %lt = icmp ult i64 %i5, %fldval
   br i1 %lt, label %sc.rhs, label %sc.end
 
 loop.cont:                                        ; preds = %while.body
   br label %loop.body
 
 loop.end:                                         ; preds = %sc.end
-  %i19 = load i64, ptr %i, align 8
-  %objptr20 = load ptr, ptr %s, align 8
-  %fld21 = getelementptr inbounds nuw %String, ptr %objptr20, i32 0, i32 1
-  %fldval22 = load i64, ptr %fld21, align 8
-  %ge = icmp uge i64 %i19, %fldval22
-  br i1 %ge, label %if.then, label %if.else
+  %i22 = load i64, ptr %i, align 8
+  %objptr23 = load ptr, ptr %s, align 8
+  %fld24 = getelementptr inbounds nuw %String, ptr %objptr23, i32 0, i32 1
+  %fldval25 = load i64, ptr %fld24, align 8
+  %ge = icmp uge i64 %i22, %fldval25
+  br i1 %ge, label %sc.end27, label %sc.rhs26
 
 sc.rhs:                                           ; preds = %loop.body
-  %objptr3 = load ptr, ptr %s, align 8
-  %fld4 = getelementptr inbounds nuw %String, ptr %objptr3, i32 0, i32 0
-  %fldval5 = load ptr, ptr %fld4, align 8
-  %i6 = load i64, ptr %i, align 8
-  %padd = getelementptr i8, ptr %fldval5, i64 %i6
+  %objptr6 = load ptr, ptr %s, align 8
+  %fld7 = getelementptr inbounds nuw %String, ptr %objptr6, i32 0, i32 0
+  %fldval8 = load ptr, ptr %fld7, align 8
+  %i9 = load i64, ptr %i, align 8
+  %padd = getelementptr i8, ptr %fldval8, i64 %i9
   %deref = load i8, ptr %padd, align 1
   %eq = icmp eq i8 %deref, 32
-  br i1 %eq, label %sc.end8, label %sc.rhs7
+  br i1 %eq, label %sc.end11, label %sc.rhs10
 
-sc.end:                                           ; preds = %sc.end8, %loop.body
-  %sc16 = phi i1 [ false, %loop.body ], [ %sc, %sc.end8 ]
-  br i1 %sc16, label %while.body, label %loop.end
+sc.end:                                           ; preds = %sc.end11, %loop.body
+  %sc19 = phi i1 [ false, %loop.body ], [ %sc, %sc.end11 ]
+  br i1 %sc19, label %while.body, label %loop.end
 
-sc.rhs7:                                          ; preds = %sc.rhs
-  %objptr9 = load ptr, ptr %s, align 8
-  %fld10 = getelementptr inbounds nuw %String, ptr %objptr9, i32 0, i32 0
-  %fldval11 = load ptr, ptr %fld10, align 8
-  %i12 = load i64, ptr %i, align 8
-  %padd13 = getelementptr i8, ptr %fldval11, i64 %i12
-  %deref14 = load i8, ptr %padd13, align 1
-  %eq15 = icmp eq i8 %deref14, 9
-  br label %sc.end8
+sc.rhs10:                                         ; preds = %sc.rhs
+  %objptr12 = load ptr, ptr %s, align 8
+  %fld13 = getelementptr inbounds nuw %String, ptr %objptr12, i32 0, i32 0
+  %fldval14 = load ptr, ptr %fld13, align 8
+  %i15 = load i64, ptr %i, align 8
+  %padd16 = getelementptr i8, ptr %fldval14, i64 %i15
+  %deref17 = load i8, ptr %padd16, align 1
+  %eq18 = icmp eq i8 %deref17, 9
+  br label %sc.end11
 
-sc.end8:                                          ; preds = %sc.rhs7, %sc.rhs
-  %sc = phi i1 [ true, %sc.rhs ], [ %eq15, %sc.rhs7 ]
+sc.end11:                                         ; preds = %sc.rhs10, %sc.rhs
+  %sc = phi i1 [ true, %sc.rhs ], [ %eq18, %sc.rhs10 ]
   br label %sc.end
 
 while.body:                                       ; preds = %sc.end
-  %i17 = load i64, ptr %i, align 8
-  %add18 = add i64 %i17, 1
-  store i64 %add18, ptr %i, align 8
+  %i20 = load i64, ptr %i, align 8
+  %add21 = add i64 %i20, 1
+  store i64 %add21, ptr %i, align 8
   br label %loop.cont
 
 if.end:                                           ; preds = %if.else
-  %objptr24 = load ptr, ptr %s, align 8
-  %fld25 = getelementptr inbounds nuw %String, ptr %objptr24, i32 0, i32 0
-  %fldval26 = load ptr, ptr %fld25, align 8
-  %i27 = load i64, ptr %i, align 8
-  %padd28 = getelementptr i8, ptr %fldval26, i64 %i27
-  %deref29 = load i8, ptr %padd28, align 1
-  %ne = icmp ne i8 %deref29, 60
-  br i1 %ne, label %if.then30, label %if.else31
+  %i36 = load i64, ptr %i, align 8
+  %add37 = add i64 %i36, 1
+  store i64 %add37, ptr %i, align 8
+  %i38 = load i64, ptr %i, align 8
+  store i64 %i38, ptr %name_begin, align 8
+  br label %loop.body39
 
-if.then:                                          ; preds = %loop.end
-  %call = call i32 (ptr, ...) @printf(ptr @.str.5)
+sc.rhs26:                                         ; preds = %loop.end
+  %objptr28 = load ptr, ptr %s, align 8
+  %fld29 = getelementptr inbounds nuw %String, ptr %objptr28, i32 0, i32 0
+  %fldval30 = load ptr, ptr %fld29, align 8
+  %i31 = load i64, ptr %i, align 8
+  %padd32 = getelementptr i8, ptr %fldval30, i64 %i31
+  %deref33 = load i8, ptr %padd32, align 1
+  %ne = icmp ne i8 %deref33, 60
+  br label %sc.end27
+
+sc.end27:                                         ; preds = %sc.rhs26, %loop.end
+  %sc34 = phi i1 [ true, %loop.end ], [ %ne, %sc.rhs26 ]
+  br i1 %sc34, label %if.then, label %if.else
+
+if.then:                                          ; preds = %sc.end27
+  %where35 = load %Location, ptr %where, align 8
+  call void @diag_at(%Location %where35, ptr @.str.86)
   ret i32 -1
 
-if.else:                                          ; preds = %loop.end
+if.else:                                          ; preds = %sc.end27
   br label %if.end
 
-if.end23:                                         ; preds = %if.else31
-  %i33 = load i64, ptr %i, align 8
-  %add34 = add i64 %i33, 1
-  store i64 %add34, ptr %i, align 8
-  %i35 = load i64, ptr %i, align 8
-  store i64 %i35, ptr %name_begin, align 8
-  br label %loop.body36
+loop.body39:                                      ; preds = %loop.cont40, %if.end
+  %i42 = load i64, ptr %i, align 8
+  %objptr43 = load ptr, ptr %s, align 8
+  %fld44 = getelementptr inbounds nuw %String, ptr %objptr43, i32 0, i32 1
+  %fldval45 = load i64, ptr %fld44, align 8
+  %lt46 = icmp ult i64 %i42, %fldval45
+  br i1 %lt46, label %sc.rhs47, label %sc.end48
 
-if.then30:                                        ; preds = %if.end
-  %call32 = call i32 (ptr, ...) @printf(ptr @.str.5)
-  ret i32 -1
+loop.cont40:                                      ; preds = %while.body67
+  br label %loop.body39
 
-if.else31:                                        ; preds = %if.end
-  br label %if.end23
+loop.end41:                                       ; preds = %sc.end58
+  %i71 = load i64, ptr %i, align 8
+  %objptr72 = load ptr, ptr %s, align 8
+  %fld73 = getelementptr inbounds nuw %String, ptr %objptr72, i32 0, i32 1
+  %fldval74 = load i64, ptr %fld73, align 8
+  %ge75 = icmp uge i64 %i71, %fldval74
+  br i1 %ge75, label %sc.end77, label %sc.rhs76
 
-loop.body36:                                      ; preds = %loop.cont37, %if.end23
-  %i39 = load i64, ptr %i, align 8
-  %objptr40 = load ptr, ptr %s, align 8
-  %fld41 = getelementptr inbounds nuw %String, ptr %objptr40, i32 0, i32 1
-  %fldval42 = load i64, ptr %fld41, align 8
-  %lt43 = icmp ult i64 %i39, %fldval42
-  br i1 %lt43, label %sc.rhs44, label %sc.end45
+sc.rhs47:                                         ; preds = %loop.body39
+  %objptr49 = load ptr, ptr %s, align 8
+  %fld50 = getelementptr inbounds nuw %String, ptr %objptr49, i32 0, i32 0
+  %fldval51 = load ptr, ptr %fld50, align 8
+  %i52 = load i64, ptr %i, align 8
+  %padd53 = getelementptr i8, ptr %fldval51, i64 %i52
+  %deref54 = load i8, ptr %padd53, align 1
+  %ne55 = icmp ne i8 %deref54, 62
+  br label %sc.end48
 
-loop.cont37:                                      ; preds = %while.body54
-  br label %loop.body36
+sc.end48:                                         ; preds = %sc.rhs47, %loop.body39
+  %sc56 = phi i1 [ false, %loop.body39 ], [ %ne55, %sc.rhs47 ]
+  br i1 %sc56, label %sc.rhs57, label %sc.end58
 
-loop.end38:                                       ; preds = %sc.end45
-  %i58 = load i64, ptr %i, align 8
+sc.rhs57:                                         ; preds = %sc.end48
   %objptr59 = load ptr, ptr %s, align 8
-  %fld60 = getelementptr inbounds nuw %String, ptr %objptr59, i32 0, i32 1
-  %fldval61 = load i64, ptr %fld60, align 8
-  %ge62 = icmp uge i64 %i58, %fldval61
-  br i1 %ge62, label %if.then63, label %if.else64
+  %fld60 = getelementptr inbounds nuw %String, ptr %objptr59, i32 0, i32 0
+  %fldval61 = load ptr, ptr %fld60, align 8
+  %i62 = load i64, ptr %i, align 8
+  %padd63 = getelementptr i8, ptr %fldval61, i64 %i62
+  %deref64 = load i8, ptr %padd63, align 1
+  %ne65 = icmp ne i8 %deref64, 10
+  br label %sc.end58
 
-sc.rhs44:                                         ; preds = %loop.body36
-  %objptr46 = load ptr, ptr %s, align 8
-  %fld47 = getelementptr inbounds nuw %String, ptr %objptr46, i32 0, i32 0
-  %fldval48 = load ptr, ptr %fld47, align 8
-  %i49 = load i64, ptr %i, align 8
-  %padd50 = getelementptr i8, ptr %fldval48, i64 %i49
-  %deref51 = load i8, ptr %padd50, align 1
-  %ne52 = icmp ne i8 %deref51, 62
-  br label %sc.end45
+sc.end58:                                         ; preds = %sc.rhs57, %sc.end48
+  %sc66 = phi i1 [ false, %sc.end48 ], [ %ne65, %sc.rhs57 ]
+  br i1 %sc66, label %while.body67, label %loop.end41
 
-sc.end45:                                         ; preds = %sc.rhs44, %loop.body36
-  %sc53 = phi i1 [ false, %loop.body36 ], [ %ne52, %sc.rhs44 ]
-  br i1 %sc53, label %while.body54, label %loop.end38
+while.body67:                                     ; preds = %sc.end58
+  %i68 = load i64, ptr %i, align 8
+  %add69 = add i64 %i68, 1
+  store i64 %add69, ptr %i, align 8
+  br label %loop.cont40
 
-while.body54:                                     ; preds = %sc.end45
-  %i55 = load i64, ptr %i, align 8
-  %add56 = add i64 %i55, 1
-  store i64 %add56, ptr %i, align 8
-  br label %loop.cont37
-
-if.end57:                                         ; preds = %if.else64
-  %i66 = load i64, ptr %i, align 8
-  %name_begin67 = load i64, ptr %name_begin, align 8
-  %sub = sub i64 %i66, %name_begin67
+if.end70:                                         ; preds = %if.else87
+  %i89 = load i64, ptr %i, align 8
+  %name_begin90 = load i64, ptr %name_begin, align 8
+  %sub = sub i64 %i89, %name_begin90
   store i64 %sub, ptr %name_len, align 8
-  %objptr68 = load ptr, ptr %s, align 8
-  %fld69 = getelementptr inbounds nuw %String, ptr %objptr68, i32 0, i32 0
-  %fldval70 = load ptr, ptr %fld69, align 8
-  %name_begin71 = load i64, ptr %name_begin, align 8
-  %padd72 = getelementptr i8, ptr %fldval70, i64 %name_begin71
-  %name_len73 = load i64, ptr %name_len, align 8
-  %call74 = call ptr @strndup(ptr %padd72, i64 %name_len73)
-  store ptr %call74, ptr %fname, align 8
-  %fname76 = load ptr, ptr %fname, align 8
-  %eq77 = icmp eq ptr %fname76, null
-  br i1 %eq77, label %if.then78, label %if.else79
-
-if.then63:                                        ; preds = %loop.end38
-  %call65 = call i32 (ptr, ...) @printf(ptr @.str.6)
-  ret i32 -1
-
-if.else64:                                        ; preds = %loop.end38
-  br label %if.end57
-
-if.end75:                                         ; preds = %if.else79
-  %i80 = load i64, ptr %i, align 8
-  %add81 = add i64 %i80, 1
-  %pos82 = load i64, ptr %pos, align 8
-  %sub83 = sub i64 %add81, %pos82
-  store i64 %sub83, ptr %directive_len, align 8
-  %s84 = load ptr, ptr %s, align 8
-  %pos85 = load i64, ptr %pos, align 8
-  %directive_len86 = load i64, ptr %directive_len, align 8
-  %call87 = call i32 @str_remove_range(ptr %s84, i64 %pos85, i64 %directive_len86)
-  %s89 = load ptr, ptr %s, align 8
-  %pos90 = load i64, ptr %pos, align 8
-  %fname91 = load ptr, ptr %fname, align 8
-  %depth92 = load i32, ptr %depth, align 4
-  %dir93 = load ptr, ptr %dir, align 8
-  %call94 = call i32 @insert_file(ptr %s89, i64 %pos90, ptr %fname91, i32 %depth92, ptr %dir93)
-  %ne95 = icmp ne i32 %call94, 0
-  br i1 %ne95, label %if.then96, label %if.else97
-
-if.then78:                                        ; preds = %if.end57
-  ret i32 -1
-
-if.else79:                                        ; preds = %if.end57
-  br label %if.end75
-
-if.end88:                                         ; preds = %if.else97
+  %objptr91 = load ptr, ptr %s, align 8
+  %fld92 = getelementptr inbounds nuw %String, ptr %objptr91, i32 0, i32 0
+  %fldval93 = load ptr, ptr %fld92, align 8
+  %name_begin94 = load i64, ptr %name_begin, align 8
+  %padd95 = getelementptr i8, ptr %fldval93, i64 %name_begin94
+  %name_len96 = load i64, ptr %name_len, align 8
+  %call97 = call ptr @strndup(ptr %padd95, i64 %name_len96)
+  store ptr %call97, ptr %fname, align 8
   %fname99 = load ptr, ptr %fname, align 8
-  call void @free(ptr %fname99)
+  %eq100 = icmp eq ptr %fname99, null
+  br i1 %eq100, label %if.then101, label %if.else102
+
+sc.rhs76:                                         ; preds = %loop.end41
+  %objptr78 = load ptr, ptr %s, align 8
+  %fld79 = getelementptr inbounds nuw %String, ptr %objptr78, i32 0, i32 0
+  %fldval80 = load ptr, ptr %fld79, align 8
+  %i81 = load i64, ptr %i, align 8
+  %padd82 = getelementptr i8, ptr %fldval80, i64 %i81
+  %deref83 = load i8, ptr %padd82, align 1
+  %ne84 = icmp ne i8 %deref83, 62
+  br label %sc.end77
+
+sc.end77:                                         ; preds = %sc.rhs76, %loop.end41
+  %sc85 = phi i1 [ true, %loop.end41 ], [ %ne84, %sc.rhs76 ]
+  br i1 %sc85, label %if.then86, label %if.else87
+
+if.then86:                                        ; preds = %sc.end77
+  %where88 = load %Location, ptr %where, align 8
+  call void @diag_at(%Location %where88, ptr @.str.87)
+  ret i32 -1
+
+if.else87:                                        ; preds = %sc.end77
+  br label %if.end70
+
+if.end98:                                         ; preds = %if.else102
+  %i103 = load i64, ptr %i, align 8
+  %add104 = add i64 %i103, 1
+  %pos105 = load i64, ptr %pos, align 8
+  %sub106 = sub i64 %add104, %pos105
+  store i64 %sub106, ptr %directive_len, align 8
+  %s107 = load ptr, ptr %s, align 8
+  %pos108 = load i64, ptr %pos, align 8
+  %directive_len109 = load i64, ptr %directive_len, align 8
+  %call110 = call i32 @str_remove_range(ptr %s107, i64 %pos108, i64 %directive_len109)
+  %s112 = load ptr, ptr %s, align 8
+  %pos113 = load i64, ptr %pos, align 8
+  %fname114 = load ptr, ptr %fname, align 8
+  %depth115 = load i32, ptr %depth, align 4
+  %dir116 = load ptr, ptr %dir, align 8
+  %where117 = load %Location, ptr %where, align 8
+  %call118 = call i32 @insert_file(ptr %s112, i64 %pos113, ptr %fname114, i32 %depth115, ptr %dir116, %Location %where117)
+  %ne119 = icmp ne i32 %call118, 0
+  br i1 %ne119, label %if.then120, label %if.else121
+
+if.then101:                                       ; preds = %if.end70
+  ret i32 -1
+
+if.else102:                                       ; preds = %if.end70
+  br label %if.end98
+
+if.end111:                                        ; preds = %if.else121
+  %fname123 = load ptr, ptr %fname, align 8
+  call void @free(ptr %fname123)
   ret i32 0
 
-if.then96:                                        ; preds = %if.end75
-  %fname98 = load ptr, ptr %fname, align 8
-  call void @free(ptr %fname98)
+if.then120:                                       ; preds = %if.end98
+  %fname122 = load ptr, ptr %fname, align 8
+  call void @free(ptr %fname122)
   ret i32 -1
 
-if.else97:                                        ; preds = %if.end75
-  br label %if.end88
+if.else121:                                       ; preds = %if.end98
+  br label %if.end111
 }
 
-define i32 @preprocess(ptr %0, ptr %1) {
+define i32 @preprocess_named(ptr %0, ptr %1, ptr %2) {
 entry:
   %rc = alloca i32, align 4
   %dir = alloca ptr, align 8
@@ -1918,6 +3372,8 @@ entry:
   store ptr %0, ptr %src, align 8
   %path = alloca ptr, align 8
   store ptr %1, ptr %path, align 8
+  %name = alloca ptr, align 8
+  store ptr %2, ptr %name, align 8
   %src1 = load ptr, ptr %src, align 8
   %eq = icmp eq ptr %src1, null
   br i1 %eq, label %if.then, label %if.else
@@ -1942,18 +3398,33 @@ if.end3:                                          ; preds = %if.else7
   %call9 = call i1 @pp_first_visit(ptr %path8)
   %src10 = load ptr, ptr %src, align 8
   %dir11 = load ptr, ptr %dir, align 8
-  %call12 = call i32 @preproc_internal(ptr %src10, i32 0, ptr %dir11)
-  store i32 %call12, ptr %rc, align 4
-  %dir13 = load ptr, ptr %dir, align 8
-  call void @free(ptr %dir13)
-  %rc14 = load i32, ptr %rc, align 4
-  ret i32 %rc14
+  %name12 = load ptr, ptr %name, align 8
+  %call13 = call i32 @preproc_internal(ptr %src10, i32 0, ptr %dir11, ptr %name12)
+  store i32 %call13, ptr %rc, align 4
+  %dir14 = load ptr, ptr %dir, align 8
+  call void @free(ptr %dir14)
+  %rc15 = load i32, ptr %rc, align 4
+  ret i32 %rc15
 
 if.then6:                                         ; preds = %if.end
   ret i32 -1
 
 if.else7:                                         ; preds = %if.end
   br label %if.end3
+}
+
+define i32 @preprocess(ptr %0, ptr %1) {
+entry:
+  %src = alloca ptr, align 8
+  store ptr %0, ptr %src, align 8
+  %path = alloca ptr, align 8
+  store ptr %1, ptr %path, align 8
+  %src1 = load ptr, ptr %src, align 8
+  %path2 = load ptr, ptr %path, align 8
+  %path3 = load ptr, ptr %path, align 8
+  %call = call ptr @pp_display(ptr %path3)
+  %call4 = call i32 @preprocess_named(ptr %src1, ptr %path2, ptr %call)
+  ret i32 %call4
 }
 
 define void @arena_init(ptr %0, i64 %1) {
@@ -2374,344 +3845,6 @@ while.body:                                       ; preds = %loop.body
   br label %loop.cont
 }
 
-define ptr @token_str(i32 %0) {
-entry:
-  %t = alloca i32, align 4
-  store i32 %0, ptr %t, align 4
-  %t1 = load i32, ptr %t, align 4
-  %eq = icmp eq i32 %t1, 0
-  br i1 %eq, label %if.then, label %if.else
-
-if.end:                                           ; No predecessors!
-  ret ptr null
-
-if.then:                                          ; preds = %entry
-  ret ptr @.str.8
-
-if.else:                                          ; preds = %entry
-  %t2 = load i32, ptr %t, align 4
-  %eq3 = icmp eq i32 %t2, 1
-  br i1 %eq3, label %elif.then, label %elif.else
-
-elif.then:                                        ; preds = %if.else
-  ret ptr @.str.9
-
-elif.else:                                        ; preds = %if.else
-  %t4 = load i32, ptr %t, align 4
-  %eq5 = icmp eq i32 %t4, 2
-  br i1 %eq5, label %elif.then6, label %elif.else7
-
-elif.then6:                                       ; preds = %elif.else
-  ret ptr @.str.10
-
-elif.else7:                                       ; preds = %elif.else
-  %t8 = load i32, ptr %t, align 4
-  %eq9 = icmp eq i32 %t8, 3
-  br i1 %eq9, label %elif.then10, label %elif.else11
-
-elif.then10:                                      ; preds = %elif.else7
-  ret ptr @.str.11
-
-elif.else11:                                      ; preds = %elif.else7
-  %t12 = load i32, ptr %t, align 4
-  %eq13 = icmp eq i32 %t12, 4
-  br i1 %eq13, label %elif.then14, label %elif.else15
-
-elif.then14:                                      ; preds = %elif.else11
-  ret ptr @.str.12
-
-elif.else15:                                      ; preds = %elif.else11
-  %t16 = load i32, ptr %t, align 4
-  %eq17 = icmp eq i32 %t16, 5
-  br i1 %eq17, label %elif.then18, label %elif.else19
-
-elif.then18:                                      ; preds = %elif.else15
-  ret ptr @.str.13
-
-elif.else19:                                      ; preds = %elif.else15
-  %t20 = load i32, ptr %t, align 4
-  %eq21 = icmp eq i32 %t20, 6
-  br i1 %eq21, label %elif.then22, label %elif.else23
-
-elif.then22:                                      ; preds = %elif.else19
-  ret ptr @.str.14
-
-elif.else23:                                      ; preds = %elif.else19
-  %t24 = load i32, ptr %t, align 4
-  %eq25 = icmp eq i32 %t24, 7
-  br i1 %eq25, label %elif.then26, label %elif.else27
-
-elif.then26:                                      ; preds = %elif.else23
-  ret ptr @.str.15
-
-elif.else27:                                      ; preds = %elif.else23
-  %t28 = load i32, ptr %t, align 4
-  %eq29 = icmp eq i32 %t28, 8
-  br i1 %eq29, label %elif.then30, label %elif.else31
-
-elif.then30:                                      ; preds = %elif.else27
-  ret ptr @.str.16
-
-elif.else31:                                      ; preds = %elif.else27
-  %t32 = load i32, ptr %t, align 4
-  %eq33 = icmp eq i32 %t32, 9
-  br i1 %eq33, label %elif.then34, label %elif.else35
-
-elif.then34:                                      ; preds = %elif.else31
-  ret ptr @.str.17
-
-elif.else35:                                      ; preds = %elif.else31
-  %t36 = load i32, ptr %t, align 4
-  %eq37 = icmp eq i32 %t36, 10
-  br i1 %eq37, label %elif.then38, label %elif.else39
-
-elif.then38:                                      ; preds = %elif.else35
-  ret ptr @.str.18
-
-elif.else39:                                      ; preds = %elif.else35
-  %t40 = load i32, ptr %t, align 4
-  %eq41 = icmp eq i32 %t40, 11
-  br i1 %eq41, label %elif.then42, label %elif.else43
-
-elif.then42:                                      ; preds = %elif.else39
-  ret ptr @.str.19
-
-elif.else43:                                      ; preds = %elif.else39
-  %t44 = load i32, ptr %t, align 4
-  %eq45 = icmp eq i32 %t44, 12
-  br i1 %eq45, label %elif.then46, label %elif.else47
-
-elif.then46:                                      ; preds = %elif.else43
-  ret ptr @.str.20
-
-elif.else47:                                      ; preds = %elif.else43
-  %t48 = load i32, ptr %t, align 4
-  %eq49 = icmp eq i32 %t48, 13
-  br i1 %eq49, label %elif.then50, label %elif.else51
-
-elif.then50:                                      ; preds = %elif.else47
-  ret ptr @.str.21
-
-elif.else51:                                      ; preds = %elif.else47
-  %t52 = load i32, ptr %t, align 4
-  %eq53 = icmp eq i32 %t52, 14
-  br i1 %eq53, label %elif.then54, label %elif.else55
-
-elif.then54:                                      ; preds = %elif.else51
-  ret ptr @.str.22
-
-elif.else55:                                      ; preds = %elif.else51
-  %t56 = load i32, ptr %t, align 4
-  %eq57 = icmp eq i32 %t56, 15
-  br i1 %eq57, label %elif.then58, label %elif.else59
-
-elif.then58:                                      ; preds = %elif.else55
-  ret ptr @.str.23
-
-elif.else59:                                      ; preds = %elif.else55
-  %t60 = load i32, ptr %t, align 4
-  %eq61 = icmp eq i32 %t60, 16
-  br i1 %eq61, label %elif.then62, label %elif.else63
-
-elif.then62:                                      ; preds = %elif.else59
-  ret ptr @.str.24
-
-elif.else63:                                      ; preds = %elif.else59
-  %t64 = load i32, ptr %t, align 4
-  %eq65 = icmp eq i32 %t64, 17
-  br i1 %eq65, label %elif.then66, label %elif.else67
-
-elif.then66:                                      ; preds = %elif.else63
-  ret ptr @.str.25
-
-elif.else67:                                      ; preds = %elif.else63
-  %t68 = load i32, ptr %t, align 4
-  %eq69 = icmp eq i32 %t68, 18
-  br i1 %eq69, label %elif.then70, label %elif.else71
-
-elif.then70:                                      ; preds = %elif.else67
-  ret ptr @.str.26
-
-elif.else71:                                      ; preds = %elif.else67
-  %t72 = load i32, ptr %t, align 4
-  %eq73 = icmp eq i32 %t72, 19
-  br i1 %eq73, label %elif.then74, label %elif.else75
-
-elif.then74:                                      ; preds = %elif.else71
-  ret ptr @.str.27
-
-elif.else75:                                      ; preds = %elif.else71
-  %t76 = load i32, ptr %t, align 4
-  %eq77 = icmp eq i32 %t76, 20
-  br i1 %eq77, label %elif.then78, label %elif.else79
-
-elif.then78:                                      ; preds = %elif.else75
-  ret ptr @.str.28
-
-elif.else79:                                      ; preds = %elif.else75
-  %t80 = load i32, ptr %t, align 4
-  %eq81 = icmp eq i32 %t80, 21
-  br i1 %eq81, label %elif.then82, label %elif.else83
-
-elif.then82:                                      ; preds = %elif.else79
-  ret ptr @.str.29
-
-elif.else83:                                      ; preds = %elif.else79
-  %t84 = load i32, ptr %t, align 4
-  %eq85 = icmp eq i32 %t84, 22
-  br i1 %eq85, label %elif.then86, label %elif.else87
-
-elif.then86:                                      ; preds = %elif.else83
-  ret ptr @.str.30
-
-elif.else87:                                      ; preds = %elif.else83
-  %t88 = load i32, ptr %t, align 4
-  %eq89 = icmp eq i32 %t88, 23
-  br i1 %eq89, label %elif.then90, label %elif.else91
-
-elif.then90:                                      ; preds = %elif.else87
-  ret ptr @.str.31
-
-elif.else91:                                      ; preds = %elif.else87
-  %t92 = load i32, ptr %t, align 4
-  %eq93 = icmp eq i32 %t92, 24
-  br i1 %eq93, label %elif.then94, label %elif.else95
-
-elif.then94:                                      ; preds = %elif.else91
-  ret ptr @.str.32
-
-elif.else95:                                      ; preds = %elif.else91
-  %t96 = load i32, ptr %t, align 4
-  %eq97 = icmp eq i32 %t96, 25
-  br i1 %eq97, label %elif.then98, label %elif.else99
-
-elif.then98:                                      ; preds = %elif.else95
-  ret ptr @.str.33
-
-elif.else99:                                      ; preds = %elif.else95
-  %t100 = load i32, ptr %t, align 4
-  %eq101 = icmp eq i32 %t100, 26
-  br i1 %eq101, label %elif.then102, label %elif.else103
-
-elif.then102:                                     ; preds = %elif.else99
-  ret ptr @.str.34
-
-elif.else103:                                     ; preds = %elif.else99
-  %t104 = load i32, ptr %t, align 4
-  %eq105 = icmp eq i32 %t104, 27
-  br i1 %eq105, label %elif.then106, label %elif.else107
-
-elif.then106:                                     ; preds = %elif.else103
-  ret ptr @.str.35
-
-elif.else107:                                     ; preds = %elif.else103
-  %t108 = load i32, ptr %t, align 4
-  %eq109 = icmp eq i32 %t108, 28
-  br i1 %eq109, label %elif.then110, label %elif.else111
-
-elif.then110:                                     ; preds = %elif.else107
-  ret ptr @.str.36
-
-elif.else111:                                     ; preds = %elif.else107
-  %t112 = load i32, ptr %t, align 4
-  %eq113 = icmp eq i32 %t112, 29
-  br i1 %eq113, label %elif.then114, label %elif.else115
-
-elif.then114:                                     ; preds = %elif.else111
-  ret ptr @.str.37
-
-elif.else115:                                     ; preds = %elif.else111
-  %t116 = load i32, ptr %t, align 4
-  %eq117 = icmp eq i32 %t116, 30
-  br i1 %eq117, label %elif.then118, label %elif.else119
-
-elif.then118:                                     ; preds = %elif.else115
-  ret ptr @.str.38
-
-elif.else119:                                     ; preds = %elif.else115
-  %t120 = load i32, ptr %t, align 4
-  %eq121 = icmp eq i32 %t120, 31
-  br i1 %eq121, label %elif.then122, label %elif.else123
-
-elif.then122:                                     ; preds = %elif.else119
-  ret ptr @.str.39
-
-elif.else123:                                     ; preds = %elif.else119
-  %t124 = load i32, ptr %t, align 4
-  %eq125 = icmp eq i32 %t124, 32
-  br i1 %eq125, label %elif.then126, label %elif.else127
-
-elif.then126:                                     ; preds = %elif.else123
-  ret ptr @.str.40
-
-elif.else127:                                     ; preds = %elif.else123
-  %t128 = load i32, ptr %t, align 4
-  %eq129 = icmp eq i32 %t128, 33
-  br i1 %eq129, label %elif.then130, label %elif.else131
-
-elif.then130:                                     ; preds = %elif.else127
-  ret ptr @.str.41
-
-elif.else131:                                     ; preds = %elif.else127
-  %t132 = load i32, ptr %t, align 4
-  %eq133 = icmp eq i32 %t132, 35
-  br i1 %eq133, label %elif.then134, label %elif.else135
-
-elif.then134:                                     ; preds = %elif.else131
-  ret ptr @.str.42
-
-elif.else135:                                     ; preds = %elif.else131
-  %t136 = load i32, ptr %t, align 4
-  %eq137 = icmp eq i32 %t136, 36
-  br i1 %eq137, label %elif.then138, label %elif.else139
-
-elif.then138:                                     ; preds = %elif.else135
-  ret ptr @.str.43
-
-elif.else139:                                     ; preds = %elif.else135
-  %t140 = load i32, ptr %t, align 4
-  %eq141 = icmp eq i32 %t140, 37
-  br i1 %eq141, label %elif.then142, label %elif.else143
-
-elif.then142:                                     ; preds = %elif.else139
-  ret ptr @.str.44
-
-elif.else143:                                     ; preds = %elif.else139
-  %t144 = load i32, ptr %t, align 4
-  %eq145 = icmp eq i32 %t144, 38
-  br i1 %eq145, label %elif.then146, label %elif.else147
-
-elif.then146:                                     ; preds = %elif.else143
-  ret ptr @.str.45
-
-elif.else147:                                     ; preds = %elif.else143
-  %t148 = load i32, ptr %t, align 4
-  %eq149 = icmp eq i32 %t148, 39
-  br i1 %eq149, label %elif.then150, label %elif.else151
-
-elif.then150:                                     ; preds = %elif.else147
-  ret ptr @.str.46
-
-elif.else151:                                     ; preds = %elif.else147
-  %t152 = load i32, ptr %t, align 4
-  %eq153 = icmp eq i32 %t152, 40
-  br i1 %eq153, label %elif.then154, label %elif.else155
-
-elif.then154:                                     ; preds = %elif.else151
-  ret ptr @.str.47
-
-elif.else155:                                     ; preds = %elif.else151
-  %t156 = load i32, ptr %t, align 4
-  %eq157 = icmp eq i32 %t156, 41
-  br i1 %eq157, label %elif.then158, label %elif.else159
-
-elif.then158:                                     ; preds = %elif.else155
-  ret ptr @.str.48
-
-elif.else159:                                     ; preds = %elif.else155
-  ret ptr @.str.49
-}
-
 define ptr @ast_node_new(ptr %0) {
 entry:
   %n = alloca ptr, align 8
@@ -2719,7 +3852,7 @@ entry:
   store ptr %0, ptr %ast, align 8
   %objptr = load ptr, ptr %ast, align 8
   %fld = getelementptr inbounds nuw %AST, ptr %objptr, i32 0, i32 0
-  %call = call ptr @arena_alloc(ptr %fld, i64 56)
+  %call = call ptr @arena_alloc(ptr %fld, i64 64)
   store ptr %call, ptr %n, align 8
   %n1 = load ptr, ptr %n, align 8
   %eq = icmp eq ptr %n1, null
@@ -2727,12 +3860,12 @@ entry:
 
 if.end:                                           ; preds = %if.else, %if.then
   %n3 = load ptr, ptr %n, align 8
-  %call4 = call ptr @memset(ptr %n3, i32 0, i64 56)
+  %call4 = call ptr @memset(ptr %n3, i32 0, i64 64)
   %n5 = load ptr, ptr %n, align 8
   ret ptr %n5
 
 if.then:                                          ; preds = %entry
-  %call2 = call i32 @puts(ptr @.str.50)
+  %call2 = call i32 @puts(ptr @.str.89)
   call void @exit(i32 1)
   br label %if.end
 
@@ -2903,7 +4036,7 @@ entry:
   %n8 = load i64, ptr %n, align 8
   %cls9 = load ptr, ptr %cls, align 8
   %method10 = load ptr, ptr %method, align 8
-  %call11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf7, i64 %n8, ptr @.str.51, ptr %cls9, ptr %method10)
+  %call11 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf7, i64 %n8, ptr @.str.90, ptr %cls9, ptr %method10)
   %buf12 = load ptr, ptr %buf, align 8
   ret ptr %buf12
 }
@@ -2914,7 +4047,7 @@ entry:
   store ptr %0, ptr %ast, align 8
   %objptr = load ptr, ptr %ast, align 8
   %fld = getelementptr inbounds nuw %AST, ptr %objptr, i32 0, i32 0
-  call void @arena_init(ptr %fld, i64 57344)
+  call void @arena_init(ptr %fld, i64 65536)
   %objptr1 = load ptr, ptr %ast, align 8
   %fld2 = getelementptr inbounds nuw %AST, ptr %objptr1, i32 0, i32 1
   %ast3 = load ptr, ptr %ast, align 8
@@ -2967,18 +4100,37 @@ entry:
   %objptr6 = load ptr, ptr %lx, align 8
   %fld7 = getelementptr inbounds nuw %Lexer, ptr %objptr6, i32 0, i32 3
   store i32 1, ptr %fld7, align 4
-  %source8 = load ptr, ptr %source, align 8
-  %objptr9 = load ptr, ptr %source, align 8
-  %fld10 = getelementptr inbounds nuw %String, ptr %objptr9, i32 0, i32 1
-  %fldval = load i64, ptr %fld10, align 8
+  %objptr8 = load ptr, ptr %lx, align 8
+  %fld9 = getelementptr inbounds nuw %Lexer, ptr %objptr8, i32 0, i32 4
+  %call = call ptr @malloc(i64 24)
+  store ptr %call, ptr %fld9, align 8
+  %objptr10 = load ptr, ptr %lx, align 8
+  %fld11 = getelementptr inbounds nuw %Lexer, ptr %objptr10, i32 0, i32 4
+  %objptr12 = load ptr, ptr %fld11, align 8
+  %fld13 = getelementptr inbounds nuw %SrcFrame, ptr %objptr12, i32 0, i32 0
+  store ptr null, ptr %fld13, align 8
+  %objptr14 = load ptr, ptr %lx, align 8
+  %fld15 = getelementptr inbounds nuw %Lexer, ptr %objptr14, i32 0, i32 4
+  %objptr16 = load ptr, ptr %fld15, align 8
+  %fld17 = getelementptr inbounds nuw %SrcFrame, ptr %objptr16, i32 0, i32 1
+  store i32 0, ptr %fld17, align 4
+  %objptr18 = load ptr, ptr %lx, align 8
+  %fld19 = getelementptr inbounds nuw %Lexer, ptr %objptr18, i32 0, i32 4
+  %objptr20 = load ptr, ptr %fld19, align 8
+  %fld21 = getelementptr inbounds nuw %SrcFrame, ptr %objptr20, i32 0, i32 2
+  store ptr null, ptr %fld21, align 8
+  %source22 = load ptr, ptr %source, align 8
+  %objptr23 = load ptr, ptr %source, align 8
+  %fld24 = getelementptr inbounds nuw %String, ptr %objptr23, i32 0, i32 1
+  %fldval = load i64, ptr %fld24, align 8
   %add = add i64 %fldval, 16
-  %call = call i32 @str_reserve(ptr %source8, i64 %add)
+  %call25 = call i32 @str_reserve(ptr %source22, i64 %add)
   store i64 0, ptr %i, align 8
   br label %loop.body
 
 loop.body:                                        ; preds = %loop.cont, %entry
-  %i11 = load i64, ptr %i, align 8
-  %lt = icmp ult i64 %i11, 16
+  %i26 = load i64, ptr %i, align 8
+  %lt = icmp ult i64 %i26, 16
   br i1 %lt, label %while.body, label %loop.end
 
 loop.cont:                                        ; preds = %while.body
@@ -2988,20 +4140,61 @@ loop.end:                                         ; preds = %loop.body
   ret void
 
 while.body:                                       ; preds = %loop.body
-  %objptr12 = load ptr, ptr %source, align 8
-  %fld13 = getelementptr inbounds nuw %String, ptr %objptr12, i32 0, i32 0
-  %fldval14 = load ptr, ptr %fld13, align 8
-  %objptr15 = load ptr, ptr %source, align 8
-  %fld16 = getelementptr inbounds nuw %String, ptr %objptr15, i32 0, i32 1
-  %fldval17 = load i64, ptr %fld16, align 8
-  %padd = getelementptr i8, ptr %fldval14, i64 %fldval17
-  %i18 = load i64, ptr %i, align 8
-  %padd19 = getelementptr i8, ptr %padd, i64 %i18
-  store i8 0, ptr %padd19, align 1
-  %i20 = load i64, ptr %i, align 8
-  %add21 = add i64 %i20, 1
-  store i64 %add21, ptr %i, align 8
+  %objptr27 = load ptr, ptr %source, align 8
+  %fld28 = getelementptr inbounds nuw %String, ptr %objptr27, i32 0, i32 0
+  %fldval29 = load ptr, ptr %fld28, align 8
+  %objptr30 = load ptr, ptr %source, align 8
+  %fld31 = getelementptr inbounds nuw %String, ptr %objptr30, i32 0, i32 1
+  %fldval32 = load i64, ptr %fld31, align 8
+  %padd = getelementptr i8, ptr %fldval29, i64 %fldval32
+  %i33 = load i64, ptr %i, align 8
+  %padd34 = getelementptr i8, ptr %padd, i64 %i33
+  store i8 0, ptr %padd34, align 1
+  %i35 = load i64, ptr %i, align 8
+  %add36 = add i64 %i35, 1
+  store i64 %add36, ptr %i, align 8
   br label %loop.cont
+}
+
+define void @lexer_set_file(ptr %0, ptr %1) {
+entry:
+  %lx = alloca ptr, align 8
+  store ptr %0, ptr %lx, align 8
+  %name = alloca ptr, align 8
+  store ptr %1, ptr %name, align 8
+  %objptr = load ptr, ptr %lx, align 8
+  %fld = getelementptr inbounds nuw %Lexer, ptr %objptr, i32 0, i32 4
+  %objptr1 = load ptr, ptr %fld, align 8
+  %fld2 = getelementptr inbounds nuw %SrcFrame, ptr %objptr1, i32 0, i32 0
+  %name3 = load ptr, ptr %name, align 8
+  store ptr %name3, ptr %fld2, align 8
+  ret void
+}
+
+define %Location @lex_here(ptr %0) {
+entry:
+  %l = alloca %Location, align 8
+  %lx = alloca ptr, align 8
+  store ptr %0, ptr %lx, align 8
+  %fld = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 0
+  %objptr = load ptr, ptr %lx, align 8
+  %fld1 = getelementptr inbounds nuw %Lexer, ptr %objptr, i32 0, i32 2
+  %fldval = load i32, ptr %fld1, align 4
+  store i32 %fldval, ptr %fld, align 4
+  %fld2 = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 1
+  %objptr3 = load ptr, ptr %lx, align 8
+  %fld4 = getelementptr inbounds nuw %Lexer, ptr %objptr3, i32 0, i32 3
+  %fldval5 = load i32, ptr %fld4, align 4
+  store i32 %fldval5, ptr %fld2, align 4
+  %fld6 = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 2
+  %objptr7 = load ptr, ptr %lx, align 8
+  %fld8 = getelementptr inbounds nuw %Lexer, ptr %objptr7, i32 0, i32 4
+  %objptr9 = load ptr, ptr %fld8, align 8
+  %fld10 = getelementptr inbounds nuw %SrcFrame, ptr %objptr9, i32 0, i32 0
+  %fldval11 = load ptr, ptr %fld10, align 8
+  store ptr %fldval11, ptr %fld6, align 8
+  %l12 = load %Location, ptr %l, align 8
+  ret %Location %l12
 }
 
 define i8 @lex_peek(ptr %0) {
@@ -3271,6 +4464,7 @@ define %Token @lex_string(ptr %0, i8 %1, i32 %2) {
 entry:
   %lex = alloca ptr, align 8
   %len = alloca i64, align 8
+  %at = alloca %Location, align 8
   %start = alloca i64, align 8
   %col = alloca i32, align 4
   %line = alloca i32, align 4
@@ -3343,42 +4537,58 @@ if.then:                                          ; preds = %while.body
 if.else:                                          ; preds = %while.body
   br label %if.end
 
-if.end20:                                         ; preds = %if.else26, %if.then25
-  %lx34 = load ptr, ptr %lx, align 8
-  %call35 = call i8 @lex_nextc(ptr %lx34)
-  %objptr36 = load ptr, ptr %lx, align 8
-  %fld37 = getelementptr inbounds nuw %Lexer, ptr %objptr36, i32 0, i32 1
-  %fldval38 = load i64, ptr %fld37, align 8
-  %start39 = load i64, ptr %start, align 8
-  %sub = sub i64 %fldval38, %start39
+if.end20:                                         ; preds = %if.else26, %if.end33
+  %lx40 = load ptr, ptr %lx, align 8
+  %call41 = call i8 @lex_nextc(ptr %lx40)
+  %objptr42 = load ptr, ptr %lx, align 8
+  %fld43 = getelementptr inbounds nuw %Lexer, ptr %objptr42, i32 0, i32 1
+  %fldval44 = load i64, ptr %fld43, align 8
+  %start45 = load i64, ptr %start, align 8
+  %sub = sub i64 %fldval44, %start45
   store i64 %sub, ptr %len, align 8
-  %objptr40 = load ptr, ptr %lx, align 8
-  %fld41 = getelementptr inbounds nuw %Lexer, ptr %objptr40, i32 0, i32 0
-  %fldval42 = load ptr, ptr %fld41, align 8
-  %start43 = load i64, ptr %start, align 8
-  %len44 = load i64, ptr %len, align 8
-  %call45 = call ptr @str_substr(ptr %fldval42, i64 %start43, i64 %len44)
-  store ptr %call45, ptr %lex, align 8
-  %kind46 = load i32, ptr %kind, align 4
-  %lex47 = load ptr, ptr %lex, align 8
-  %line48 = load i32, ptr %line, align 4
-  %col49 = load i32, ptr %col, align 4
-  %call50 = call %Token @make_tok(i32 %kind46, ptr %lex47, i32 %line48, i32 %col49, i32 -1)
-  ret %Token %call50
+  %objptr46 = load ptr, ptr %lx, align 8
+  %fld47 = getelementptr inbounds nuw %Lexer, ptr %objptr46, i32 0, i32 0
+  %fldval48 = load ptr, ptr %fld47, align 8
+  %start49 = load i64, ptr %start, align 8
+  %len50 = load i64, ptr %len, align 8
+  %call51 = call ptr @str_substr(ptr %fldval48, i64 %start49, i64 %len50)
+  store ptr %call51, ptr %lex, align 8
+  %kind52 = load i32, ptr %kind, align 4
+  %lex53 = load ptr, ptr %lex, align 8
+  %line54 = load i32, ptr %line, align 4
+  %col55 = load i32, ptr %col, align 4
+  %call56 = call %Token @make_tok(i32 %kind52, ptr %lex53, i32 %line54, i32 %col55, i32 -1)
+  ret %Token %call56
 
 if.then25:                                        ; preds = %loop.end
-  %objptr27 = load ptr, ptr %lx, align 8
-  %fld28 = getelementptr inbounds nuw %Lexer, ptr %objptr27, i32 0, i32 2
-  %fldval29 = load i32, ptr %fld28, align 4
-  %objptr30 = load ptr, ptr %lx, align 8
-  %fld31 = getelementptr inbounds nuw %Lexer, ptr %objptr30, i32 0, i32 3
-  %fldval32 = load i32, ptr %fld31, align 4
-  %call33 = call i32 (ptr, ...) @printf(ptr @.str.52, i32 %fldval29, i32 %fldval32)
-  call void @exit(i32 1)
-  br label %if.end20
+  %lx27 = load ptr, ptr %lx, align 8
+  %call28 = call %Location @lex_here(ptr %lx27)
+  store %Location %call28, ptr %at, align 8
+  %fld29 = getelementptr inbounds nuw %Location, ptr %at, i32 0, i32 0
+  %line30 = load i32, ptr %line, align 4
+  store i32 %line30, ptr %fld29, align 4
+  %fld31 = getelementptr inbounds nuw %Location, ptr %at, i32 0, i32 1
+  %col32 = load i32, ptr %col, align 4
+  store i32 %col32, ptr %fld31, align 4
+  %term34 = load i8, ptr %term, align 1
+  %eq35 = icmp eq i8 %term34, 34
+  br i1 %eq35, label %if.then36, label %if.else37
 
 if.else26:                                        ; preds = %loop.end
   br label %if.end20
+
+if.end33:                                         ; preds = %if.else37, %if.then36
+  %at39 = load %Location, ptr %at, align 8
+  call void @diag_fatal(%Location %at39, ptr @.str.92, ptr @.str.72, ptr @.str.72)
+  br label %if.end20
+
+if.then36:                                        ; preds = %if.then25
+  %at38 = load %Location, ptr %at, align 8
+  call void @diag_fatal(%Location %at38, ptr @.str.91, ptr @.str.72, ptr @.str.72)
+  br label %if.end33
+
+if.else37:                                        ; preds = %if.then25
+  br label %if.end33
 }
 
 define %Token @lex_number(ptr %0) {
@@ -3643,7 +4853,7 @@ entry:
   %s = alloca ptr, align 8
   store ptr %0, ptr %s, align 8
   %s1 = load ptr, ptr %s, align 8
-  %call = call i32 @strcmp(ptr %s1, ptr @.str.30)
+  %call = call i32 @strcmp(ptr %s1, ptr @.str.22)
   %eq = icmp eq i32 %call, 0
   br i1 %eq, label %if.then, label %if.else
 
@@ -3655,7 +4865,7 @@ if.then:                                          ; preds = %entry
 
 if.else:                                          ; preds = %entry
   %s2 = load ptr, ptr %s, align 8
-  %call3 = call i32 @strcmp(ptr %s2, ptr @.str.53)
+  %call3 = call i32 @strcmp(ptr %s2, ptr @.str.62)
   %eq4 = icmp eq i32 %call3, 0
   br i1 %eq4, label %elif.then, label %elif.else
 
@@ -3664,7 +4874,7 @@ elif.then:                                        ; preds = %if.else
 
 elif.else:                                        ; preds = %if.else
   %s5 = load ptr, ptr %s, align 8
-  %call6 = call i32 @strcmp(ptr %s5, ptr @.str.32)
+  %call6 = call i32 @strcmp(ptr %s5, ptr @.str.24)
   %eq7 = icmp eq i32 %call6, 0
   br i1 %eq7, label %elif.then8, label %elif.else9
 
@@ -3673,7 +4883,7 @@ elif.then8:                                       ; preds = %elif.else
 
 elif.else9:                                       ; preds = %elif.else
   %s10 = load ptr, ptr %s, align 8
-  %call11 = call i32 @strcmp(ptr %s10, ptr @.str.54)
+  %call11 = call i32 @strcmp(ptr %s10, ptr @.str.63)
   %eq12 = icmp eq i32 %call11, 0
   br i1 %eq12, label %elif.then13, label %elif.else14
 
@@ -3682,7 +4892,7 @@ elif.then13:                                      ; preds = %elif.else9
 
 elif.else14:                                      ; preds = %elif.else9
   %s15 = load ptr, ptr %s, align 8
-  %call16 = call i32 @strcmp(ptr %s15, ptr @.str.34)
+  %call16 = call i32 @strcmp(ptr %s15, ptr @.str.26)
   %eq17 = icmp eq i32 %call16, 0
   br i1 %eq17, label %elif.then18, label %elif.else19
 
@@ -3691,7 +4901,7 @@ elif.then18:                                      ; preds = %elif.else14
 
 elif.else19:                                      ; preds = %elif.else14
   %s20 = load ptr, ptr %s, align 8
-  %call21 = call i32 @strcmp(ptr %s20, ptr @.str.35)
+  %call21 = call i32 @strcmp(ptr %s20, ptr @.str.27)
   %eq22 = icmp eq i32 %call21, 0
   br i1 %eq22, label %elif.then23, label %elif.else24
 
@@ -3700,7 +4910,7 @@ elif.then23:                                      ; preds = %elif.else19
 
 elif.else24:                                      ; preds = %elif.else19
   %s25 = load ptr, ptr %s, align 8
-  %call26 = call i32 @strcmp(ptr %s25, ptr @.str.36)
+  %call26 = call i32 @strcmp(ptr %s25, ptr @.str.28)
   %eq27 = icmp eq i32 %call26, 0
   br i1 %eq27, label %elif.then28, label %elif.else29
 
@@ -3709,7 +4919,7 @@ elif.then28:                                      ; preds = %elif.else24
 
 elif.else29:                                      ; preds = %elif.else24
   %s30 = load ptr, ptr %s, align 8
-  %call31 = call i32 @strcmp(ptr %s30, ptr @.str.37)
+  %call31 = call i32 @strcmp(ptr %s30, ptr @.str.29)
   %eq32 = icmp eq i32 %call31, 0
   br i1 %eq32, label %elif.then33, label %elif.else34
 
@@ -3718,7 +4928,7 @@ elif.then33:                                      ; preds = %elif.else29
 
 elif.else34:                                      ; preds = %elif.else29
   %s35 = load ptr, ptr %s, align 8
-  %call36 = call i32 @strcmp(ptr %s35, ptr @.str.38)
+  %call36 = call i32 @strcmp(ptr %s35, ptr @.str.30)
   %eq37 = icmp eq i32 %call36, 0
   br i1 %eq37, label %elif.then38, label %elif.else39
 
@@ -3727,7 +4937,7 @@ elif.then38:                                      ; preds = %elif.else34
 
 elif.else39:                                      ; preds = %elif.else34
   %s40 = load ptr, ptr %s, align 8
-  %call41 = call i32 @strcmp(ptr %s40, ptr @.str.39)
+  %call41 = call i32 @strcmp(ptr %s40, ptr @.str.31)
   %eq42 = icmp eq i32 %call41, 0
   br i1 %eq42, label %elif.then43, label %elif.else44
 
@@ -3736,7 +4946,7 @@ elif.then43:                                      ; preds = %elif.else39
 
 elif.else44:                                      ; preds = %elif.else39
   %s45 = load ptr, ptr %s, align 8
-  %call46 = call i32 @strcmp(ptr %s45, ptr @.str.40)
+  %call46 = call i32 @strcmp(ptr %s45, ptr @.str.32)
   %eq47 = icmp eq i32 %call46, 0
   br i1 %eq47, label %elif.then48, label %elif.else49
 
@@ -3745,7 +4955,7 @@ elif.then48:                                      ; preds = %elif.else44
 
 elif.else49:                                      ; preds = %elif.else44
   %s50 = load ptr, ptr %s, align 8
-  %call51 = call i32 @strcmp(ptr %s50, ptr @.str.41)
+  %call51 = call i32 @strcmp(ptr %s50, ptr @.str.33)
   %eq52 = icmp eq i32 %call51, 0
   br i1 %eq52, label %elif.then53, label %elif.else54
 
@@ -3754,7 +4964,7 @@ elif.then53:                                      ; preds = %elif.else49
 
 elif.else54:                                      ; preds = %elif.else49
   %s55 = load ptr, ptr %s, align 8
-  %call56 = call i32 @strcmp(ptr %s55, ptr @.str.49)
+  %call56 = call i32 @strcmp(ptr %s55, ptr @.str.41)
   %eq57 = icmp eq i32 %call56, 0
   br i1 %eq57, label %elif.then58, label %elif.else59
 
@@ -3763,7 +4973,7 @@ elif.then58:                                      ; preds = %elif.else54
 
 elif.else59:                                      ; preds = %elif.else54
   %s60 = load ptr, ptr %s, align 8
-  %call61 = call i32 @strcmp(ptr %s60, ptr @.str.21)
+  %call61 = call i32 @strcmp(ptr %s60, ptr @.str.13)
   %eq62 = icmp eq i32 %call61, 0
   br i1 %eq62, label %elif.then63, label %elif.else64
 
@@ -3772,7 +4982,7 @@ elif.then63:                                      ; preds = %elif.else59
 
 elif.else64:                                      ; preds = %elif.else59
   %s65 = load ptr, ptr %s, align 8
-  %call66 = call i32 @strcmp(ptr %s65, ptr @.str.28)
+  %call66 = call i32 @strcmp(ptr %s65, ptr @.str.20)
   %eq67 = icmp eq i32 %call66, 0
   br i1 %eq67, label %elif.then68, label %elif.else69
 
@@ -3781,7 +4991,7 @@ elif.then68:                                      ; preds = %elif.else64
 
 elif.else69:                                      ; preds = %elif.else64
   %s70 = load ptr, ptr %s, align 8
-  %call71 = call i32 @strcmp(ptr %s70, ptr @.str.29)
+  %call71 = call i32 @strcmp(ptr %s70, ptr @.str.21)
   %eq72 = icmp eq i32 %call71, 0
   br i1 %eq72, label %elif.then73, label %elif.else74
 
@@ -3790,7 +5000,7 @@ elif.then73:                                      ; preds = %elif.else69
 
 elif.else74:                                      ; preds = %elif.else69
   %s75 = load ptr, ptr %s, align 8
-  %call76 = call i32 @strcmp(ptr %s75, ptr @.str.42)
+  %call76 = call i32 @strcmp(ptr %s75, ptr @.str.34)
   %eq77 = icmp eq i32 %call76, 0
   br i1 %eq77, label %elif.then78, label %elif.else79
 
@@ -3799,7 +5009,7 @@ elif.then78:                                      ; preds = %elif.else74
 
 elif.else79:                                      ; preds = %elif.else74
   %s80 = load ptr, ptr %s, align 8
-  %call81 = call i32 @strcmp(ptr %s80, ptr @.str.43)
+  %call81 = call i32 @strcmp(ptr %s80, ptr @.str.35)
   %eq82 = icmp eq i32 %call81, 0
   br i1 %eq82, label %elif.then83, label %elif.else84
 
@@ -3808,7 +5018,7 @@ elif.then83:                                      ; preds = %elif.else79
 
 elif.else84:                                      ; preds = %elif.else79
   %s85 = load ptr, ptr %s, align 8
-  %call86 = call i32 @strcmp(ptr %s85, ptr @.str.44)
+  %call86 = call i32 @strcmp(ptr %s85, ptr @.str.36)
   %eq87 = icmp eq i32 %call86, 0
   br i1 %eq87, label %elif.then88, label %elif.else89
 
@@ -3817,7 +5027,7 @@ elif.then88:                                      ; preds = %elif.else84
 
 elif.else89:                                      ; preds = %elif.else84
   %s90 = load ptr, ptr %s, align 8
-  %call91 = call i32 @strcmp(ptr %s90, ptr @.str.45)
+  %call91 = call i32 @strcmp(ptr %s90, ptr @.str.37)
   %eq92 = icmp eq i32 %call91, 0
   br i1 %eq92, label %elif.then93, label %elif.else94
 
@@ -3826,7 +5036,7 @@ elif.then93:                                      ; preds = %elif.else89
 
 elif.else94:                                      ; preds = %elif.else89
   %s95 = load ptr, ptr %s, align 8
-  %call96 = call i32 @strcmp(ptr %s95, ptr @.str.48)
+  %call96 = call i32 @strcmp(ptr %s95, ptr @.str.40)
   %eq97 = icmp eq i32 %call96, 0
   br i1 %eq97, label %elif.then98, label %elif.else99
 
@@ -4038,18 +5248,23 @@ sc.end50:                                         ; preds = %sc.rhs49, %sc.end45
   ret i1 %sc53
 }
 
-define %Token @lexer_next(ptr %0) {
+define %Token @lex_token(ptr %0) {
 entry:
+  %ch = alloca ptr, align 8
   %len = alloca i64, align 8
   %n = alloca i8, align 1
-  %start = alloca i64, align 8
-  %col437 = alloca i32, align 4
-  %line433 = alloca i32, align 4
-  %col283 = alloca i32, align 4
-  %line279 = alloca i32, align 4
+  %start530 = alloca i64, align 8
+  %col526 = alloca i32, align 4
+  %line522 = alloca i32, align 4
+  %col371 = alloca i32, align 4
+  %line367 = alloca i32, align 4
   %col = alloca i32, align 4
   %line = alloca i32, align 4
   %indent = alloca i32, align 4
+  %end_col = alloca i32, align 4
+  %end_line = alloca i32, align 4
+  %f = alloca ptr, align 8
+  %start = alloca i64, align 8
   %c = alloca i8, align 1
   %lx = alloca ptr, align 8
   store ptr %0, ptr %lx, align 8
@@ -4060,746 +5275,901 @@ loop.body:                                        ; preds = %loop.cont, %entry
   %call = call i8 @lex_peek(ptr %lx1)
   store i8 %call, ptr %c, align 1
   %c2 = load i8, ptr %c, align 1
-  %sext = sext i8 %c2 to i32
-  %eq = icmp eq i32 %sext, 0
+  %cast = sext i8 %c2 to i32
+  %eq = icmp eq i32 %cast, 1
   br i1 %eq, label %if.then, label %if.else
 
-loop.cont:                                        ; preds = %if.end428, %loop.end91, %if.then68
+loop.cont:                                        ; preds = %if.end517, %loop.end176, %if.then158, %if.end54, %loop.end7
   br label %loop.body
 
 loop.end:                                         ; No predecessors!
   ret %Token zeroinitializer
 
 if.end:                                           ; preds = %if.else
-  %c8 = load i8, ptr %c, align 1
-  %eq9 = icmp eq i8 %c8, 10
-  br i1 %eq9, label %sc.end, label %sc.rhs
+  %c47 = load i8, ptr %c, align 1
+  %cast48 = sext i8 %c47 to i32
+  %eq49 = icmp eq i32 %cast48, 2
+  br i1 %eq49, label %if.then50, label %if.else51
 
 if.then:                                          ; preds = %loop.body
+  %lx3 = load ptr, ptr %lx, align 8
+  %call4 = call i8 @lex_nextc(ptr %lx3)
   %objptr = load ptr, ptr %lx, align 8
-  %fld = getelementptr inbounds nuw %Lexer, ptr %objptr, i32 0, i32 2
-  %fldval = load i32, ptr %fld, align 4
-  %objptr3 = load ptr, ptr %lx, align 8
-  %fld4 = getelementptr inbounds nuw %Lexer, ptr %objptr3, i32 0, i32 3
-  %fldval5 = load i32, ptr %fld4, align 4
-  %call6 = call %Token @make_tok(i32 0, ptr null, i32 %fldval, i32 %fldval5, i32 -1)
-  ret %Token %call6
+  %fld = getelementptr inbounds nuw %Lexer, ptr %objptr, i32 0, i32 1
+  %fldval = load i64, ptr %fld, align 8
+  store i64 %fldval, ptr %start, align 8
+  br label %loop.body5
 
 if.else:                                          ; preds = %loop.body
   br label %if.end
 
-if.end7:                                          ; preds = %if.else13
-  %c66 = load i8, ptr %c, align 1
-  %eq67 = icmp eq i8 %c66, 32
-  br i1 %eq67, label %if.then68, label %if.else69
+loop.body5:                                       ; preds = %loop.cont6, %if.then
+  %lx8 = load ptr, ptr %lx, align 8
+  %call9 = call i8 @lex_peek(ptr %lx8)
+  %ne = icmp ne i8 %call9, 10
+  br i1 %ne, label %sc.rhs, label %sc.end
 
-sc.rhs:                                           ; preds = %if.end
-  %c10 = load i8, ptr %c, align 1
-  %eq11 = icmp eq i8 %c10, 13
-  br label %sc.end
+loop.cont6:                                       ; preds = %while.body
+  br label %loop.body5
 
-sc.end:                                           ; preds = %sc.rhs, %if.end
-  %sc = phi i1 [ true, %if.end ], [ %eq11, %sc.rhs ]
-  br i1 %sc, label %if.then12, label %if.else13
-
-if.then12:                                        ; preds = %sc.end
-  %c15 = load i8, ptr %c, align 1
-  %eq16 = icmp eq i8 %c15, 13
-  br i1 %eq16, label %sc.rhs17, label %sc.end18
-
-if.else13:                                        ; preds = %sc.end
-  br label %if.end7
-
-if.end14:                                         ; preds = %if.else24, %if.then23
-  %lx27 = load ptr, ptr %lx, align 8
-  %call28 = call i8 @lex_nextc(ptr %lx27)
+loop.end7:                                        ; preds = %sc.end
+  %call15 = call ptr @malloc(i64 24)
+  store ptr %call15, ptr %f, align 8
+  %objptr16 = load ptr, ptr %f, align 8
+  %fld17 = getelementptr inbounds nuw %SrcFrame, ptr %objptr16, i32 0, i32 0
+  %objptr18 = load ptr, ptr %lx, align 8
+  %fld19 = getelementptr inbounds nuw %Lexer, ptr %objptr18, i32 0, i32 0
+  %fldval20 = load ptr, ptr %fld19, align 8
+  %start21 = load i64, ptr %start, align 8
+  %objptr22 = load ptr, ptr %lx, align 8
+  %fld23 = getelementptr inbounds nuw %Lexer, ptr %objptr22, i32 0, i32 1
+  %fldval24 = load i64, ptr %fld23, align 8
+  %start25 = load i64, ptr %start, align 8
+  %sub = sub i64 %fldval24, %start25
+  %call26 = call ptr @str_substr(ptr %fldval20, i64 %start21, i64 %sub)
+  store ptr %call26, ptr %fld17, align 8
+  %objptr27 = load ptr, ptr %f, align 8
+  %fld28 = getelementptr inbounds nuw %SrcFrame, ptr %objptr27, i32 0, i32 1
   %objptr29 = load ptr, ptr %lx, align 8
   %fld30 = getelementptr inbounds nuw %Lexer, ptr %objptr29, i32 0, i32 2
-  %objptr31 = load ptr, ptr %lx, align 8
-  %fld32 = getelementptr inbounds nuw %Lexer, ptr %objptr31, i32 0, i32 2
-  %fldval33 = load i32, ptr %fld32, align 4
-  %add = add i32 %fldval33, 1
-  store i32 %add, ptr %fld30, align 4
+  %fldval31 = load i32, ptr %fld30, align 4
+  store i32 %fldval31, ptr %fld28, align 4
+  %objptr32 = load ptr, ptr %f, align 8
+  %fld33 = getelementptr inbounds nuw %SrcFrame, ptr %objptr32, i32 0, i32 2
   %objptr34 = load ptr, ptr %lx, align 8
-  %fld35 = getelementptr inbounds nuw %Lexer, ptr %objptr34, i32 0, i32 3
-  store i32 1, ptr %fld35, align 4
-  %lx36 = load ptr, ptr %lx, align 8
-  %call37 = call i32 @lex_count_indent(ptr %lx36)
-  store i32 %call37, ptr %indent, align 4
-  %lx39 = load ptr, ptr %lx, align 8
-  %call40 = call i1 @lex_is_block_end(ptr %lx39)
-  br i1 %call40, label %if.then41, label %if.else42
+  %fld35 = getelementptr inbounds nuw %Lexer, ptr %objptr34, i32 0, i32 4
+  %fldval36 = load ptr, ptr %fld35, align 8
+  store ptr %fldval36, ptr %fld33, align 8
+  %lx37 = load ptr, ptr %lx, align 8
+  %call38 = call i8 @lex_nextc(ptr %lx37)
+  %objptr39 = load ptr, ptr %lx, align 8
+  %fld40 = getelementptr inbounds nuw %Lexer, ptr %objptr39, i32 0, i32 4
+  %f41 = load ptr, ptr %f, align 8
+  store ptr %f41, ptr %fld40, align 8
+  %objptr42 = load ptr, ptr %lx, align 8
+  %fld43 = getelementptr inbounds nuw %Lexer, ptr %objptr42, i32 0, i32 2
+  store i32 1, ptr %fld43, align 4
+  %objptr44 = load ptr, ptr %lx, align 8
+  %fld45 = getelementptr inbounds nuw %Lexer, ptr %objptr44, i32 0, i32 3
+  store i32 1, ptr %fld45, align 4
+  br label %loop.cont
 
-sc.rhs17:                                         ; preds = %if.then12
-  %lx19 = load ptr, ptr %lx, align 8
-  %call20 = call i8 @lex_look(ptr %lx19, i64 1)
-  %eq21 = icmp eq i8 %call20, 10
-  br label %sc.end18
+sc.rhs:                                           ; preds = %loop.body5
+  %lx10 = load ptr, ptr %lx, align 8
+  %call11 = call i8 @lex_peek(ptr %lx10)
+  %ne12 = icmp ne i8 %call11, 0
+  br label %sc.end
 
-sc.end18:                                         ; preds = %sc.rhs17, %if.then12
-  %sc22 = phi i1 [ false, %if.then12 ], [ %eq21, %sc.rhs17 ]
-  br i1 %sc22, label %if.then23, label %if.else24
+sc.end:                                           ; preds = %sc.rhs, %loop.body5
+  %sc = phi i1 [ false, %loop.body5 ], [ %ne12, %sc.rhs ]
+  br i1 %sc, label %while.body, label %loop.end7
 
-if.then23:                                        ; preds = %sc.end18
-  %lx25 = load ptr, ptr %lx, align 8
-  %call26 = call i8 @lex_nextc(ptr %lx25)
-  br label %if.end14
+while.body:                                       ; preds = %sc.end
+  %lx13 = load ptr, ptr %lx, align 8
+  %call14 = call i8 @lex_nextc(ptr %lx13)
+  br label %loop.cont6
 
-if.else24:                                        ; preds = %sc.end18
-  br label %if.end14
+if.end46:                                         ; preds = %if.else51
+  %c78 = load i8, ptr %c, align 1
+  %sext = sext i8 %c78 to i32
+  %eq79 = icmp eq i32 %sext, 0
+  br i1 %eq79, label %if.then80, label %if.else81
 
-if.end38:                                         ; preds = %if.else42
-  %objptr60 = load ptr, ptr %lx, align 8
-  %fld61 = getelementptr inbounds nuw %Lexer, ptr %objptr60, i32 0, i32 2
-  %fldval62 = load i32, ptr %fld61, align 4
-  %indent63 = load i32, ptr %indent, align 4
-  %call64 = call %Token @make_tok(i32 1, ptr null, i32 %fldval62, i32 1, i32 %indent63)
-  ret %Token %call64
-
-if.then41:                                        ; preds = %if.end14
-  %objptr43 = load ptr, ptr %lx, align 8
-  %fld44 = getelementptr inbounds nuw %Lexer, ptr %objptr43, i32 0, i32 3
-  %objptr45 = load ptr, ptr %lx, align 8
-  %fld46 = getelementptr inbounds nuw %Lexer, ptr %objptr45, i32 0, i32 3
-  %fldval47 = load i32, ptr %fld46, align 4
-  %add48 = add i32 %fldval47, 3
-  store i32 %add48, ptr %fld44, align 4
-  %objptr49 = load ptr, ptr %lx, align 8
-  %fld50 = getelementptr inbounds nuw %Lexer, ptr %objptr49, i32 0, i32 1
-  %objptr51 = load ptr, ptr %lx, align 8
-  %fld52 = getelementptr inbounds nuw %Lexer, ptr %objptr51, i32 0, i32 1
-  %fldval53 = load i64, ptr %fld52, align 8
-  %add54 = add i64 %fldval53, 3
-  store i64 %add54, ptr %fld50, align 8
+if.then50:                                        ; preds = %if.end
+  %lx52 = load ptr, ptr %lx, align 8
+  %call53 = call i8 @lex_nextc(ptr %lx52)
   %objptr55 = load ptr, ptr %lx, align 8
-  %fld56 = getelementptr inbounds nuw %Lexer, ptr %objptr55, i32 0, i32 2
-  %fldval57 = load i32, ptr %fld56, align 4
-  %indent58 = load i32, ptr %indent, align 4
-  %call59 = call %Token @make_tok(i32 14, ptr null, i32 %fldval57, i32 1, i32 %indent58)
-  ret %Token %call59
+  %fld56 = getelementptr inbounds nuw %Lexer, ptr %objptr55, i32 0, i32 4
+  %objptr57 = load ptr, ptr %fld56, align 8
+  %fld58 = getelementptr inbounds nuw %SrcFrame, ptr %objptr57, i32 0, i32 2
+  %fldval59 = load ptr, ptr %fld58, align 8
+  %ne60 = icmp ne ptr %fldval59, null
+  br i1 %ne60, label %if.then61, label %if.else62
 
-if.else42:                                        ; preds = %if.end14
-  br label %if.end38
+if.else51:                                        ; preds = %if.end
+  br label %if.end46
 
-if.end65:                                         ; preds = %if.else69
-  %c73 = load i8, ptr %c, align 1
-  %eq74 = icmp eq i8 %c73, 9
-  br i1 %eq74, label %if.then75, label %if.else76
-
-if.then68:                                        ; preds = %if.end7
-  %lx70 = load ptr, ptr %lx, align 8
-  %call71 = call i8 @lex_nextc(ptr %lx70)
+if.end54:                                         ; preds = %if.else62, %if.then61
   br label %loop.cont
 
-if.else69:                                        ; preds = %if.end7
-  br label %if.end65
+if.then61:                                        ; preds = %if.then50
+  %objptr63 = load ptr, ptr %lx, align 8
+  %fld64 = getelementptr inbounds nuw %Lexer, ptr %objptr63, i32 0, i32 2
+  %objptr65 = load ptr, ptr %lx, align 8
+  %fld66 = getelementptr inbounds nuw %Lexer, ptr %objptr65, i32 0, i32 4
+  %objptr67 = load ptr, ptr %fld66, align 8
+  %fld68 = getelementptr inbounds nuw %SrcFrame, ptr %objptr67, i32 0, i32 1
+  %fldval69 = load i32, ptr %fld68, align 4
+  store i32 %fldval69, ptr %fld64, align 4
+  %objptr70 = load ptr, ptr %lx, align 8
+  %fld71 = getelementptr inbounds nuw %Lexer, ptr %objptr70, i32 0, i32 4
+  %objptr72 = load ptr, ptr %lx, align 8
+  %fld73 = getelementptr inbounds nuw %Lexer, ptr %objptr72, i32 0, i32 4
+  %objptr74 = load ptr, ptr %fld73, align 8
+  %fld75 = getelementptr inbounds nuw %SrcFrame, ptr %objptr74, i32 0, i32 2
+  %fldval76 = load ptr, ptr %fld75, align 8
+  store ptr %fldval76, ptr %fld71, align 8
+  br label %if.end54
 
-if.end72:                                         ; preds = %if.else76, %if.then75
-  %c85 = load i8, ptr %c, align 1
-  %eq86 = icmp eq i8 %c85, 59
-  br i1 %eq86, label %if.then87, label %if.else88
+if.else62:                                        ; preds = %if.then50
+  br label %if.end54
 
-if.then75:                                        ; preds = %if.end65
-  %objptr77 = load ptr, ptr %lx, align 8
-  %fld78 = getelementptr inbounds nuw %Lexer, ptr %objptr77, i32 0, i32 2
-  %fldval79 = load i32, ptr %fld78, align 4
-  %objptr80 = load ptr, ptr %lx, align 8
-  %fld81 = getelementptr inbounds nuw %Lexer, ptr %objptr80, i32 0, i32 3
-  %fldval82 = load i32, ptr %fld81, align 4
-  %call83 = call i32 (ptr, ...) @printf(ptr @.str.55, i32 %fldval79, i32 %fldval82)
+if.end77:                                         ; preds = %if.else81
+  %c90 = load i8, ptr %c, align 1
+  %eq91 = icmp eq i8 %c90, 10
+  br i1 %eq91, label %sc.end93, label %sc.rhs92
+
+if.then80:                                        ; preds = %if.end46
+  %objptr82 = load ptr, ptr %lx, align 8
+  %fld83 = getelementptr inbounds nuw %Lexer, ptr %objptr82, i32 0, i32 2
+  %fldval84 = load i32, ptr %fld83, align 4
+  %objptr85 = load ptr, ptr %lx, align 8
+  %fld86 = getelementptr inbounds nuw %Lexer, ptr %objptr85, i32 0, i32 3
+  %fldval87 = load i32, ptr %fld86, align 4
+  %call88 = call %Token @make_tok(i32 0, ptr null, i32 %fldval84, i32 %fldval87, i32 -1)
+  ret %Token %call88
+
+if.else81:                                        ; preds = %if.end46
+  br label %if.end77
+
+if.end89:                                         ; preds = %if.else98
+  %c156 = load i8, ptr %c, align 1
+  %eq157 = icmp eq i8 %c156, 32
+  br i1 %eq157, label %if.then158, label %if.else159
+
+sc.rhs92:                                         ; preds = %if.end77
+  %c94 = load i8, ptr %c, align 1
+  %eq95 = icmp eq i8 %c94, 13
+  br label %sc.end93
+
+sc.end93:                                         ; preds = %sc.rhs92, %if.end77
+  %sc96 = phi i1 [ true, %if.end77 ], [ %eq95, %sc.rhs92 ]
+  br i1 %sc96, label %if.then97, label %if.else98
+
+if.then97:                                        ; preds = %sc.end93
+  %objptr99 = load ptr, ptr %lx, align 8
+  %fld100 = getelementptr inbounds nuw %Lexer, ptr %objptr99, i32 0, i32 2
+  %fldval101 = load i32, ptr %fld100, align 4
+  store i32 %fldval101, ptr %end_line, align 4
+  %objptr102 = load ptr, ptr %lx, align 8
+  %fld103 = getelementptr inbounds nuw %Lexer, ptr %objptr102, i32 0, i32 3
+  %fldval104 = load i32, ptr %fld103, align 4
+  store i32 %fldval104, ptr %end_col, align 4
+  %c106 = load i8, ptr %c, align 1
+  %eq107 = icmp eq i8 %c106, 13
+  br i1 %eq107, label %sc.rhs108, label %sc.end109
+
+if.else98:                                        ; preds = %sc.end93
+  br label %if.end89
+
+if.end105:                                        ; preds = %if.else115, %if.then114
+  %lx118 = load ptr, ptr %lx, align 8
+  %call119 = call i8 @lex_nextc(ptr %lx118)
+  %objptr120 = load ptr, ptr %lx, align 8
+  %fld121 = getelementptr inbounds nuw %Lexer, ptr %objptr120, i32 0, i32 2
+  %objptr122 = load ptr, ptr %lx, align 8
+  %fld123 = getelementptr inbounds nuw %Lexer, ptr %objptr122, i32 0, i32 2
+  %fldval124 = load i32, ptr %fld123, align 4
+  %add = add i32 %fldval124, 1
+  store i32 %add, ptr %fld121, align 4
+  %objptr125 = load ptr, ptr %lx, align 8
+  %fld126 = getelementptr inbounds nuw %Lexer, ptr %objptr125, i32 0, i32 3
+  store i32 1, ptr %fld126, align 4
+  %lx127 = load ptr, ptr %lx, align 8
+  %call128 = call i32 @lex_count_indent(ptr %lx127)
+  store i32 %call128, ptr %indent, align 4
+  %lx130 = load ptr, ptr %lx, align 8
+  %call131 = call i1 @lex_is_block_end(ptr %lx130)
+  br i1 %call131, label %if.then132, label %if.else133
+
+sc.rhs108:                                        ; preds = %if.then97
+  %lx110 = load ptr, ptr %lx, align 8
+  %call111 = call i8 @lex_look(ptr %lx110, i64 1)
+  %eq112 = icmp eq i8 %call111, 10
+  br label %sc.end109
+
+sc.end109:                                        ; preds = %sc.rhs108, %if.then97
+  %sc113 = phi i1 [ false, %if.then97 ], [ %eq112, %sc.rhs108 ]
+  br i1 %sc113, label %if.then114, label %if.else115
+
+if.then114:                                       ; preds = %sc.end109
+  %lx116 = load ptr, ptr %lx, align 8
+  %call117 = call i8 @lex_nextc(ptr %lx116)
+  br label %if.end105
+
+if.else115:                                       ; preds = %sc.end109
+  br label %if.end105
+
+if.end129:                                        ; preds = %if.else133
+  %end_line151 = load i32, ptr %end_line, align 4
+  %end_col152 = load i32, ptr %end_col, align 4
+  %indent153 = load i32, ptr %indent, align 4
+  %call154 = call %Token @make_tok(i32 1, ptr null, i32 %end_line151, i32 %end_col152, i32 %indent153)
+  ret %Token %call154
+
+if.then132:                                       ; preds = %if.end105
+  %objptr134 = load ptr, ptr %lx, align 8
+  %fld135 = getelementptr inbounds nuw %Lexer, ptr %objptr134, i32 0, i32 3
+  %objptr136 = load ptr, ptr %lx, align 8
+  %fld137 = getelementptr inbounds nuw %Lexer, ptr %objptr136, i32 0, i32 3
+  %fldval138 = load i32, ptr %fld137, align 4
+  %add139 = add i32 %fldval138, 3
+  store i32 %add139, ptr %fld135, align 4
+  %objptr140 = load ptr, ptr %lx, align 8
+  %fld141 = getelementptr inbounds nuw %Lexer, ptr %objptr140, i32 0, i32 1
+  %objptr142 = load ptr, ptr %lx, align 8
+  %fld143 = getelementptr inbounds nuw %Lexer, ptr %objptr142, i32 0, i32 1
+  %fldval144 = load i64, ptr %fld143, align 8
+  %add145 = add i64 %fldval144, 3
+  store i64 %add145, ptr %fld141, align 8
+  %objptr146 = load ptr, ptr %lx, align 8
+  %fld147 = getelementptr inbounds nuw %Lexer, ptr %objptr146, i32 0, i32 2
+  %fldval148 = load i32, ptr %fld147, align 4
+  %indent149 = load i32, ptr %indent, align 4
+  %call150 = call %Token @make_tok(i32 14, ptr null, i32 %fldval148, i32 1, i32 %indent149)
+  ret %Token %call150
+
+if.else133:                                       ; preds = %if.end105
+  br label %if.end129
+
+if.end155:                                        ; preds = %if.else159
+  %c163 = load i8, ptr %c, align 1
+  %eq164 = icmp eq i8 %c163, 9
+  br i1 %eq164, label %if.then165, label %if.else166
+
+if.then158:                                       ; preds = %if.end89
+  %lx160 = load ptr, ptr %lx, align 8
+  %call161 = call i8 @lex_nextc(ptr %lx160)
+  br label %loop.cont
+
+if.else159:                                       ; preds = %if.end89
+  br label %if.end155
+
+if.end162:                                        ; preds = %if.else166, %if.then165
+  %c170 = load i8, ptr %c, align 1
+  %eq171 = icmp eq i8 %c170, 59
+  br i1 %eq171, label %if.then172, label %if.else173
+
+if.then165:                                       ; preds = %if.end155
+  %lx167 = load ptr, ptr %lx, align 8
+  %call168 = call %Location @lex_here(ptr %lx167)
+  call void @diag_at(%Location %call168, ptr @.str.93)
   call void @exit(i32 33)
-  br label %if.end72
+  br label %if.end162
 
-if.else76:                                        ; preds = %if.end65
-  br label %if.end72
+if.else166:                                       ; preds = %if.end155
+  br label %if.end162
 
-if.end84:                                         ; preds = %if.else88
-  %c110 = load i8, ptr %c, align 1
-  %eq111 = icmp eq i8 %c110, 58
-  br i1 %eq111, label %if.then112, label %if.else113
+if.end169:                                        ; preds = %if.else173
+  %c197 = load i8, ptr %c, align 1
+  %eq198 = icmp eq i8 %c197, 58
+  br i1 %eq198, label %if.then199, label %if.else200
 
-if.then87:                                        ; preds = %if.end72
-  br label %loop.body89
+if.then172:                                       ; preds = %if.end162
+  br label %loop.body174
 
-if.else88:                                        ; preds = %if.end72
-  br label %if.end84
+if.else173:                                       ; preds = %if.end162
+  br label %if.end169
 
-loop.body89:                                      ; preds = %loop.cont90, %if.then87
-  %lx92 = load ptr, ptr %lx, align 8
-  %call93 = call i8 @lex_peek(ptr %lx92)
-  %sext94 = sext i8 %call93 to i32
-  %ne = icmp ne i32 %sext94, 0
-  br i1 %ne, label %sc.rhs95, label %sc.end96
+loop.body174:                                     ; preds = %loop.cont175, %if.then172
+  %lx177 = load ptr, ptr %lx, align 8
+  %call178 = call i8 @lex_peek(ptr %lx177)
+  %sext179 = sext i8 %call178 to i32
+  %ne180 = icmp ne i32 %sext179, 0
+  br i1 %ne180, label %sc.rhs181, label %sc.end182
 
-loop.cont90:                                      ; preds = %while.body
-  br label %loop.body89
+loop.cont175:                                     ; preds = %while.body193
+  br label %loop.body174
 
-loop.end91:                                       ; preds = %sc.end102
+loop.end176:                                      ; preds = %sc.end188
   br label %loop.cont
 
-sc.rhs95:                                         ; preds = %loop.body89
-  %lx97 = load ptr, ptr %lx, align 8
-  %call98 = call i8 @lex_peek(ptr %lx97)
-  %ne99 = icmp ne i8 %call98, 10
-  br label %sc.end96
+sc.rhs181:                                        ; preds = %loop.body174
+  %lx183 = load ptr, ptr %lx, align 8
+  %call184 = call i8 @lex_peek(ptr %lx183)
+  %ne185 = icmp ne i8 %call184, 10
+  br label %sc.end182
 
-sc.end96:                                         ; preds = %sc.rhs95, %loop.body89
-  %sc100 = phi i1 [ false, %loop.body89 ], [ %ne99, %sc.rhs95 ]
-  br i1 %sc100, label %sc.rhs101, label %sc.end102
+sc.end182:                                        ; preds = %sc.rhs181, %loop.body174
+  %sc186 = phi i1 [ false, %loop.body174 ], [ %ne185, %sc.rhs181 ]
+  br i1 %sc186, label %sc.rhs187, label %sc.end188
 
-sc.rhs101:                                        ; preds = %sc.end96
-  %lx103 = load ptr, ptr %lx, align 8
-  %call104 = call i8 @lex_peek(ptr %lx103)
-  %ne105 = icmp ne i8 %call104, 13
-  br label %sc.end102
+sc.rhs187:                                        ; preds = %sc.end182
+  %lx189 = load ptr, ptr %lx, align 8
+  %call190 = call i8 @lex_peek(ptr %lx189)
+  %ne191 = icmp ne i8 %call190, 13
+  br label %sc.end188
 
-sc.end102:                                        ; preds = %sc.rhs101, %sc.end96
-  %sc106 = phi i1 [ false, %sc.end96 ], [ %ne105, %sc.rhs101 ]
-  br i1 %sc106, label %while.body, label %loop.end91
+sc.end188:                                        ; preds = %sc.rhs187, %sc.end182
+  %sc192 = phi i1 [ false, %sc.end182 ], [ %ne191, %sc.rhs187 ]
+  br i1 %sc192, label %while.body193, label %loop.end176
 
-while.body:                                       ; preds = %sc.end102
-  %lx107 = load ptr, ptr %lx, align 8
-  %call108 = call i8 @lex_nextc(ptr %lx107)
-  br label %loop.cont90
+while.body193:                                    ; preds = %sc.end188
+  %lx194 = load ptr, ptr %lx, align 8
+  %call195 = call i8 @lex_nextc(ptr %lx194)
+  br label %loop.cont175
 
-if.end109:                                        ; preds = %if.else113
-  %c124 = load i8, ptr %c, align 1
-  %eq125 = icmp eq i8 %c124, 91
-  br i1 %eq125, label %if.then126, label %if.else127
+if.end196:                                        ; preds = %if.else200
+  %c212 = load i8, ptr %c, align 1
+  %eq213 = icmp eq i8 %c212, 91
+  br i1 %eq213, label %if.then214, label %if.else215
 
-if.then112:                                       ; preds = %if.end84
-  %lx114 = load ptr, ptr %lx, align 8
-  %call115 = call i8 @lex_nextc(ptr %lx114)
-  %objptr116 = load ptr, ptr %lx, align 8
-  %fld117 = getelementptr inbounds nuw %Lexer, ptr %objptr116, i32 0, i32 2
-  %fldval118 = load i32, ptr %fld117, align 4
-  %objptr119 = load ptr, ptr %lx, align 8
-  %fld120 = getelementptr inbounds nuw %Lexer, ptr %objptr119, i32 0, i32 3
-  %fldval121 = load i32, ptr %fld120, align 4
-  %sub = sub i32 %fldval121, 1
-  %call122 = call %Token @make_tok(i32 2, ptr null, i32 %fldval118, i32 %sub, i32 -1)
-  ret %Token %call122
+if.then199:                                       ; preds = %if.end169
+  %lx201 = load ptr, ptr %lx, align 8
+  %call202 = call i8 @lex_nextc(ptr %lx201)
+  %objptr203 = load ptr, ptr %lx, align 8
+  %fld204 = getelementptr inbounds nuw %Lexer, ptr %objptr203, i32 0, i32 2
+  %fldval205 = load i32, ptr %fld204, align 4
+  %objptr206 = load ptr, ptr %lx, align 8
+  %fld207 = getelementptr inbounds nuw %Lexer, ptr %objptr206, i32 0, i32 3
+  %fldval208 = load i32, ptr %fld207, align 4
+  %sub209 = sub i32 %fldval208, 1
+  %call210 = call %Token @make_tok(i32 2, ptr null, i32 %fldval205, i32 %sub209, i32 -1)
+  ret %Token %call210
 
-if.else113:                                       ; preds = %if.end84
-  br label %if.end109
+if.else200:                                       ; preds = %if.end169
+  br label %if.end196
 
-if.end123:                                        ; preds = %if.else127
-  %c139 = load i8, ptr %c, align 1
-  %eq140 = icmp eq i8 %c139, 93
-  br i1 %eq140, label %if.then141, label %if.else142
+if.end211:                                        ; preds = %if.else215
+  %c227 = load i8, ptr %c, align 1
+  %eq228 = icmp eq i8 %c227, 93
+  br i1 %eq228, label %if.then229, label %if.else230
 
-if.then126:                                       ; preds = %if.end109
-  %lx128 = load ptr, ptr %lx, align 8
-  %call129 = call i8 @lex_nextc(ptr %lx128)
-  %objptr130 = load ptr, ptr %lx, align 8
-  %fld131 = getelementptr inbounds nuw %Lexer, ptr %objptr130, i32 0, i32 2
-  %fldval132 = load i32, ptr %fld131, align 4
-  %objptr133 = load ptr, ptr %lx, align 8
-  %fld134 = getelementptr inbounds nuw %Lexer, ptr %objptr133, i32 0, i32 3
-  %fldval135 = load i32, ptr %fld134, align 4
-  %sub136 = sub i32 %fldval135, 1
-  %call137 = call %Token @make_tok(i32 3, ptr null, i32 %fldval132, i32 %sub136, i32 -1)
-  ret %Token %call137
+if.then214:                                       ; preds = %if.end196
+  %lx216 = load ptr, ptr %lx, align 8
+  %call217 = call i8 @lex_nextc(ptr %lx216)
+  %objptr218 = load ptr, ptr %lx, align 8
+  %fld219 = getelementptr inbounds nuw %Lexer, ptr %objptr218, i32 0, i32 2
+  %fldval220 = load i32, ptr %fld219, align 4
+  %objptr221 = load ptr, ptr %lx, align 8
+  %fld222 = getelementptr inbounds nuw %Lexer, ptr %objptr221, i32 0, i32 3
+  %fldval223 = load i32, ptr %fld222, align 4
+  %sub224 = sub i32 %fldval223, 1
+  %call225 = call %Token @make_tok(i32 3, ptr null, i32 %fldval220, i32 %sub224, i32 -1)
+  ret %Token %call225
 
-if.else127:                                       ; preds = %if.end109
-  br label %if.end123
+if.else215:                                       ; preds = %if.end196
+  br label %if.end211
 
-if.end138:                                        ; preds = %if.else142
-  %c154 = load i8, ptr %c, align 1
-  %eq155 = icmp eq i8 %c154, 40
-  br i1 %eq155, label %if.then156, label %if.else157
+if.end226:                                        ; preds = %if.else230
+  %c242 = load i8, ptr %c, align 1
+  %eq243 = icmp eq i8 %c242, 40
+  br i1 %eq243, label %if.then244, label %if.else245
 
-if.then141:                                       ; preds = %if.end123
-  %lx143 = load ptr, ptr %lx, align 8
-  %call144 = call i8 @lex_nextc(ptr %lx143)
-  %objptr145 = load ptr, ptr %lx, align 8
-  %fld146 = getelementptr inbounds nuw %Lexer, ptr %objptr145, i32 0, i32 2
-  %fldval147 = load i32, ptr %fld146, align 4
-  %objptr148 = load ptr, ptr %lx, align 8
-  %fld149 = getelementptr inbounds nuw %Lexer, ptr %objptr148, i32 0, i32 3
-  %fldval150 = load i32, ptr %fld149, align 4
-  %sub151 = sub i32 %fldval150, 1
-  %call152 = call %Token @make_tok(i32 4, ptr null, i32 %fldval147, i32 %sub151, i32 -1)
-  ret %Token %call152
-
-if.else142:                                       ; preds = %if.end123
-  br label %if.end138
-
-if.end153:                                        ; preds = %if.else157
-  %c169 = load i8, ptr %c, align 1
-  %eq170 = icmp eq i8 %c169, 41
-  br i1 %eq170, label %if.then171, label %if.else172
-
-if.then156:                                       ; preds = %if.end138
-  %lx158 = load ptr, ptr %lx, align 8
-  %call159 = call i8 @lex_nextc(ptr %lx158)
-  %objptr160 = load ptr, ptr %lx, align 8
-  %fld161 = getelementptr inbounds nuw %Lexer, ptr %objptr160, i32 0, i32 2
-  %fldval162 = load i32, ptr %fld161, align 4
-  %objptr163 = load ptr, ptr %lx, align 8
-  %fld164 = getelementptr inbounds nuw %Lexer, ptr %objptr163, i32 0, i32 3
-  %fldval165 = load i32, ptr %fld164, align 4
-  %sub166 = sub i32 %fldval165, 1
-  %call167 = call %Token @make_tok(i32 5, ptr null, i32 %fldval162, i32 %sub166, i32 -1)
-  ret %Token %call167
-
-if.else157:                                       ; preds = %if.end138
-  br label %if.end153
-
-if.end168:                                        ; preds = %if.else172
-  %c184 = load i8, ptr %c, align 1
-  %eq185 = icmp eq i8 %c184, 123
-  br i1 %eq185, label %if.then186, label %if.else187
-
-if.then171:                                       ; preds = %if.end153
-  %lx173 = load ptr, ptr %lx, align 8
-  %call174 = call i8 @lex_nextc(ptr %lx173)
-  %objptr175 = load ptr, ptr %lx, align 8
-  %fld176 = getelementptr inbounds nuw %Lexer, ptr %objptr175, i32 0, i32 2
-  %fldval177 = load i32, ptr %fld176, align 4
-  %objptr178 = load ptr, ptr %lx, align 8
-  %fld179 = getelementptr inbounds nuw %Lexer, ptr %objptr178, i32 0, i32 3
-  %fldval180 = load i32, ptr %fld179, align 4
-  %sub181 = sub i32 %fldval180, 1
-  %call182 = call %Token @make_tok(i32 6, ptr null, i32 %fldval177, i32 %sub181, i32 -1)
-  ret %Token %call182
-
-if.else172:                                       ; preds = %if.end153
-  br label %if.end168
-
-if.end183:                                        ; preds = %if.else187
-  %c199 = load i8, ptr %c, align 1
-  %eq200 = icmp eq i8 %c199, 125
-  br i1 %eq200, label %if.then201, label %if.else202
-
-if.then186:                                       ; preds = %if.end168
-  %lx188 = load ptr, ptr %lx, align 8
-  %call189 = call i8 @lex_nextc(ptr %lx188)
-  %objptr190 = load ptr, ptr %lx, align 8
-  %fld191 = getelementptr inbounds nuw %Lexer, ptr %objptr190, i32 0, i32 2
-  %fldval192 = load i32, ptr %fld191, align 4
-  %objptr193 = load ptr, ptr %lx, align 8
-  %fld194 = getelementptr inbounds nuw %Lexer, ptr %objptr193, i32 0, i32 3
-  %fldval195 = load i32, ptr %fld194, align 4
-  %sub196 = sub i32 %fldval195, 1
-  %call197 = call %Token @make_tok(i32 39, ptr null, i32 %fldval192, i32 %sub196, i32 -1)
-  ret %Token %call197
-
-if.else187:                                       ; preds = %if.end168
-  br label %if.end183
-
-if.end198:                                        ; preds = %if.else202
-  %c214 = load i8, ptr %c, align 1
-  %eq215 = icmp eq i8 %c214, 124
-  br i1 %eq215, label %sc.rhs216, label %sc.end217
-
-if.then201:                                       ; preds = %if.end183
-  %lx203 = load ptr, ptr %lx, align 8
-  %call204 = call i8 @lex_nextc(ptr %lx203)
-  %objptr205 = load ptr, ptr %lx, align 8
-  %fld206 = getelementptr inbounds nuw %Lexer, ptr %objptr205, i32 0, i32 2
-  %fldval207 = load i32, ptr %fld206, align 4
-  %objptr208 = load ptr, ptr %lx, align 8
-  %fld209 = getelementptr inbounds nuw %Lexer, ptr %objptr208, i32 0, i32 3
-  %fldval210 = load i32, ptr %fld209, align 4
-  %sub211 = sub i32 %fldval210, 1
-  %call212 = call %Token @make_tok(i32 40, ptr null, i32 %fldval207, i32 %sub211, i32 -1)
-  ret %Token %call212
-
-if.else202:                                       ; preds = %if.end183
-  br label %if.end198
-
-if.end213:                                        ; preds = %if.else223
-  %c254 = load i8, ptr %c, align 1
-  %eq255 = icmp eq i8 %c254, 124
-  br i1 %eq255, label %if.then256, label %if.else257
-
-sc.rhs216:                                        ; preds = %if.end198
-  %lx218 = load ptr, ptr %lx, align 8
-  %call219 = call i8 @lex_look(ptr %lx218, i64 1)
-  %eq220 = icmp eq i8 %call219, 124
-  br label %sc.end217
-
-sc.end217:                                        ; preds = %sc.rhs216, %if.end198
-  %sc221 = phi i1 [ false, %if.end198 ], [ %eq220, %sc.rhs216 ]
-  br i1 %sc221, label %if.then222, label %if.else223
-
-if.then222:                                       ; preds = %sc.end217
-  %objptr224 = load ptr, ptr %lx, align 8
-  %fld225 = getelementptr inbounds nuw %Lexer, ptr %objptr224, i32 0, i32 2
-  %fldval226 = load i32, ptr %fld225, align 4
-  store i32 %fldval226, ptr %line, align 4
-  %objptr227 = load ptr, ptr %lx, align 8
-  %fld228 = getelementptr inbounds nuw %Lexer, ptr %objptr227, i32 0, i32 3
-  %fldval229 = load i32, ptr %fld228, align 4
-  store i32 %fldval229, ptr %col, align 4
-  %objptr230 = load ptr, ptr %lx, align 8
-  %fld231 = getelementptr inbounds nuw %Lexer, ptr %objptr230, i32 0, i32 3
-  %objptr232 = load ptr, ptr %lx, align 8
-  %fld233 = getelementptr inbounds nuw %Lexer, ptr %objptr232, i32 0, i32 3
-  %fldval234 = load i32, ptr %fld233, align 4
-  %add235 = add i32 %fldval234, 2
-  store i32 %add235, ptr %fld231, align 4
+if.then229:                                       ; preds = %if.end211
+  %lx231 = load ptr, ptr %lx, align 8
+  %call232 = call i8 @lex_nextc(ptr %lx231)
+  %objptr233 = load ptr, ptr %lx, align 8
+  %fld234 = getelementptr inbounds nuw %Lexer, ptr %objptr233, i32 0, i32 2
+  %fldval235 = load i32, ptr %fld234, align 4
   %objptr236 = load ptr, ptr %lx, align 8
-  %fld237 = getelementptr inbounds nuw %Lexer, ptr %objptr236, i32 0, i32 1
-  %objptr238 = load ptr, ptr %lx, align 8
-  %fld239 = getelementptr inbounds nuw %Lexer, ptr %objptr238, i32 0, i32 1
-  %fldval240 = load i64, ptr %fld239, align 8
-  %add241 = add i64 %fldval240, 2
-  store i64 %add241, ptr %fld237, align 8
-  %objptr242 = load ptr, ptr %lx, align 8
-  %fld243 = getelementptr inbounds nuw %Lexer, ptr %objptr242, i32 0, i32 0
-  %fldval244 = load ptr, ptr %fld243, align 8
-  %objptr245 = load ptr, ptr %lx, align 8
-  %fld246 = getelementptr inbounds nuw %Lexer, ptr %objptr245, i32 0, i32 1
-  %fldval247 = load i64, ptr %fld246, align 8
-  %sub248 = sub i64 %fldval247, 2
-  %call249 = call ptr @str_substr(ptr %fldval244, i64 %sub248, i64 2)
-  %line250 = load i32, ptr %line, align 4
-  %col251 = load i32, ptr %col, align 4
-  %call252 = call %Token @make_tok(i32 12, ptr %call249, i32 %line250, i32 %col251, i32 -1)
-  ret %Token %call252
+  %fld237 = getelementptr inbounds nuw %Lexer, ptr %objptr236, i32 0, i32 3
+  %fldval238 = load i32, ptr %fld237, align 4
+  %sub239 = sub i32 %fldval238, 1
+  %call240 = call %Token @make_tok(i32 4, ptr null, i32 %fldval235, i32 %sub239, i32 -1)
+  ret %Token %call240
 
-if.else223:                                       ; preds = %sc.end217
-  br label %if.end213
+if.else230:                                       ; preds = %if.end211
+  br label %if.end226
 
-if.end253:                                        ; preds = %if.else257
-  %c269 = load i8, ptr %c, align 1
-  %eq270 = icmp eq i8 %c269, 38
-  br i1 %eq270, label %sc.rhs271, label %sc.end272
+if.end241:                                        ; preds = %if.else245
+  %c257 = load i8, ptr %c, align 1
+  %eq258 = icmp eq i8 %c257, 41
+  br i1 %eq258, label %if.then259, label %if.else260
 
-if.then256:                                       ; preds = %if.end213
-  %lx258 = load ptr, ptr %lx, align 8
-  %call259 = call i8 @lex_nextc(ptr %lx258)
-  %objptr260 = load ptr, ptr %lx, align 8
-  %fld261 = getelementptr inbounds nuw %Lexer, ptr %objptr260, i32 0, i32 2
-  %fldval262 = load i32, ptr %fld261, align 4
+if.then244:                                       ; preds = %if.end226
+  %lx246 = load ptr, ptr %lx, align 8
+  %call247 = call i8 @lex_nextc(ptr %lx246)
+  %objptr248 = load ptr, ptr %lx, align 8
+  %fld249 = getelementptr inbounds nuw %Lexer, ptr %objptr248, i32 0, i32 2
+  %fldval250 = load i32, ptr %fld249, align 4
+  %objptr251 = load ptr, ptr %lx, align 8
+  %fld252 = getelementptr inbounds nuw %Lexer, ptr %objptr251, i32 0, i32 3
+  %fldval253 = load i32, ptr %fld252, align 4
+  %sub254 = sub i32 %fldval253, 1
+  %call255 = call %Token @make_tok(i32 5, ptr null, i32 %fldval250, i32 %sub254, i32 -1)
+  ret %Token %call255
+
+if.else245:                                       ; preds = %if.end226
+  br label %if.end241
+
+if.end256:                                        ; preds = %if.else260
+  %c272 = load i8, ptr %c, align 1
+  %eq273 = icmp eq i8 %c272, 123
+  br i1 %eq273, label %if.then274, label %if.else275
+
+if.then259:                                       ; preds = %if.end241
+  %lx261 = load ptr, ptr %lx, align 8
+  %call262 = call i8 @lex_nextc(ptr %lx261)
   %objptr263 = load ptr, ptr %lx, align 8
-  %fld264 = getelementptr inbounds nuw %Lexer, ptr %objptr263, i32 0, i32 3
+  %fld264 = getelementptr inbounds nuw %Lexer, ptr %objptr263, i32 0, i32 2
   %fldval265 = load i32, ptr %fld264, align 4
-  %sub266 = sub i32 %fldval265, 1
-  %call267 = call %Token @make_tok(i32 7, ptr null, i32 %fldval262, i32 %sub266, i32 -1)
-  ret %Token %call267
+  %objptr266 = load ptr, ptr %lx, align 8
+  %fld267 = getelementptr inbounds nuw %Lexer, ptr %objptr266, i32 0, i32 3
+  %fldval268 = load i32, ptr %fld267, align 4
+  %sub269 = sub i32 %fldval268, 1
+  %call270 = call %Token @make_tok(i32 6, ptr null, i32 %fldval265, i32 %sub269, i32 -1)
+  ret %Token %call270
 
-if.else257:                                       ; preds = %if.end213
-  br label %if.end253
+if.else260:                                       ; preds = %if.end241
+  br label %if.end256
 
-if.end268:                                        ; preds = %if.else278
-  %c311 = load i8, ptr %c, align 1
-  %eq312 = icmp eq i8 %c311, 63
-  br i1 %eq312, label %if.then313, label %if.else314
+if.end271:                                        ; preds = %if.else275
+  %c287 = load i8, ptr %c, align 1
+  %eq288 = icmp eq i8 %c287, 125
+  br i1 %eq288, label %if.then289, label %if.else290
 
-sc.rhs271:                                        ; preds = %if.end253
-  %lx273 = load ptr, ptr %lx, align 8
-  %call274 = call i8 @lex_look(ptr %lx273, i64 1)
-  %eq275 = icmp eq i8 %call274, 38
-  br label %sc.end272
+if.then274:                                       ; preds = %if.end256
+  %lx276 = load ptr, ptr %lx, align 8
+  %call277 = call i8 @lex_nextc(ptr %lx276)
+  %objptr278 = load ptr, ptr %lx, align 8
+  %fld279 = getelementptr inbounds nuw %Lexer, ptr %objptr278, i32 0, i32 2
+  %fldval280 = load i32, ptr %fld279, align 4
+  %objptr281 = load ptr, ptr %lx, align 8
+  %fld282 = getelementptr inbounds nuw %Lexer, ptr %objptr281, i32 0, i32 3
+  %fldval283 = load i32, ptr %fld282, align 4
+  %sub284 = sub i32 %fldval283, 1
+  %call285 = call %Token @make_tok(i32 39, ptr null, i32 %fldval280, i32 %sub284, i32 -1)
+  ret %Token %call285
 
-sc.end272:                                        ; preds = %sc.rhs271, %if.end253
-  %sc276 = phi i1 [ false, %if.end253 ], [ %eq275, %sc.rhs271 ]
-  br i1 %sc276, label %if.then277, label %if.else278
+if.else275:                                       ; preds = %if.end256
+  br label %if.end271
 
-if.then277:                                       ; preds = %sc.end272
-  %objptr280 = load ptr, ptr %lx, align 8
-  %fld281 = getelementptr inbounds nuw %Lexer, ptr %objptr280, i32 0, i32 2
-  %fldval282 = load i32, ptr %fld281, align 4
-  store i32 %fldval282, ptr %line279, align 4
-  %objptr284 = load ptr, ptr %lx, align 8
-  %fld285 = getelementptr inbounds nuw %Lexer, ptr %objptr284, i32 0, i32 3
-  %fldval286 = load i32, ptr %fld285, align 4
-  store i32 %fldval286, ptr %col283, align 4
-  %objptr287 = load ptr, ptr %lx, align 8
-  %fld288 = getelementptr inbounds nuw %Lexer, ptr %objptr287, i32 0, i32 3
-  %objptr289 = load ptr, ptr %lx, align 8
-  %fld290 = getelementptr inbounds nuw %Lexer, ptr %objptr289, i32 0, i32 3
-  %fldval291 = load i32, ptr %fld290, align 4
-  %add292 = add i32 %fldval291, 2
-  store i32 %add292, ptr %fld288, align 4
+if.end286:                                        ; preds = %if.else290
+  %c302 = load i8, ptr %c, align 1
+  %eq303 = icmp eq i8 %c302, 124
+  br i1 %eq303, label %sc.rhs304, label %sc.end305
+
+if.then289:                                       ; preds = %if.end271
+  %lx291 = load ptr, ptr %lx, align 8
+  %call292 = call i8 @lex_nextc(ptr %lx291)
   %objptr293 = load ptr, ptr %lx, align 8
-  %fld294 = getelementptr inbounds nuw %Lexer, ptr %objptr293, i32 0, i32 1
-  %objptr295 = load ptr, ptr %lx, align 8
-  %fld296 = getelementptr inbounds nuw %Lexer, ptr %objptr295, i32 0, i32 1
-  %fldval297 = load i64, ptr %fld296, align 8
-  %add298 = add i64 %fldval297, 2
-  store i64 %add298, ptr %fld294, align 8
-  %objptr299 = load ptr, ptr %lx, align 8
-  %fld300 = getelementptr inbounds nuw %Lexer, ptr %objptr299, i32 0, i32 0
-  %fldval301 = load ptr, ptr %fld300, align 8
-  %objptr302 = load ptr, ptr %lx, align 8
-  %fld303 = getelementptr inbounds nuw %Lexer, ptr %objptr302, i32 0, i32 1
-  %fldval304 = load i64, ptr %fld303, align 8
-  %sub305 = sub i64 %fldval304, 2
-  %call306 = call ptr @str_substr(ptr %fldval301, i64 %sub305, i64 2)
-  %line307 = load i32, ptr %line279, align 4
-  %col308 = load i32, ptr %col283, align 4
-  %call309 = call %Token @make_tok(i32 12, ptr %call306, i32 %line307, i32 %col308, i32 -1)
-  ret %Token %call309
+  %fld294 = getelementptr inbounds nuw %Lexer, ptr %objptr293, i32 0, i32 2
+  %fldval295 = load i32, ptr %fld294, align 4
+  %objptr296 = load ptr, ptr %lx, align 8
+  %fld297 = getelementptr inbounds nuw %Lexer, ptr %objptr296, i32 0, i32 3
+  %fldval298 = load i32, ptr %fld297, align 4
+  %sub299 = sub i32 %fldval298, 1
+  %call300 = call %Token @make_tok(i32 40, ptr null, i32 %fldval295, i32 %sub299, i32 -1)
+  ret %Token %call300
 
-if.else278:                                       ; preds = %sc.end272
-  br label %if.end268
+if.else290:                                       ; preds = %if.end271
+  br label %if.end286
 
-if.end310:                                        ; preds = %if.else314
-  %c326 = load i8, ptr %c, align 1
-  %eq327 = icmp eq i8 %c326, 64
-  br i1 %eq327, label %if.then328, label %if.else329
+if.end301:                                        ; preds = %if.else311
+  %c342 = load i8, ptr %c, align 1
+  %eq343 = icmp eq i8 %c342, 124
+  br i1 %eq343, label %if.then344, label %if.else345
 
-if.then313:                                       ; preds = %if.end268
-  %lx315 = load ptr, ptr %lx, align 8
-  %call316 = call i8 @lex_nextc(ptr %lx315)
-  %objptr317 = load ptr, ptr %lx, align 8
-  %fld318 = getelementptr inbounds nuw %Lexer, ptr %objptr317, i32 0, i32 2
-  %fldval319 = load i32, ptr %fld318, align 4
+sc.rhs304:                                        ; preds = %if.end286
+  %lx306 = load ptr, ptr %lx, align 8
+  %call307 = call i8 @lex_look(ptr %lx306, i64 1)
+  %eq308 = icmp eq i8 %call307, 124
+  br label %sc.end305
+
+sc.end305:                                        ; preds = %sc.rhs304, %if.end286
+  %sc309 = phi i1 [ false, %if.end286 ], [ %eq308, %sc.rhs304 ]
+  br i1 %sc309, label %if.then310, label %if.else311
+
+if.then310:                                       ; preds = %sc.end305
+  %objptr312 = load ptr, ptr %lx, align 8
+  %fld313 = getelementptr inbounds nuw %Lexer, ptr %objptr312, i32 0, i32 2
+  %fldval314 = load i32, ptr %fld313, align 4
+  store i32 %fldval314, ptr %line, align 4
+  %objptr315 = load ptr, ptr %lx, align 8
+  %fld316 = getelementptr inbounds nuw %Lexer, ptr %objptr315, i32 0, i32 3
+  %fldval317 = load i32, ptr %fld316, align 4
+  store i32 %fldval317, ptr %col, align 4
+  %objptr318 = load ptr, ptr %lx, align 8
+  %fld319 = getelementptr inbounds nuw %Lexer, ptr %objptr318, i32 0, i32 3
   %objptr320 = load ptr, ptr %lx, align 8
   %fld321 = getelementptr inbounds nuw %Lexer, ptr %objptr320, i32 0, i32 3
   %fldval322 = load i32, ptr %fld321, align 4
-  %sub323 = sub i32 %fldval322, 1
-  %call324 = call %Token @make_tok(i32 10, ptr null, i32 %fldval319, i32 %sub323, i32 -1)
-  ret %Token %call324
+  %add323 = add i32 %fldval322, 2
+  store i32 %add323, ptr %fld319, align 4
+  %objptr324 = load ptr, ptr %lx, align 8
+  %fld325 = getelementptr inbounds nuw %Lexer, ptr %objptr324, i32 0, i32 1
+  %objptr326 = load ptr, ptr %lx, align 8
+  %fld327 = getelementptr inbounds nuw %Lexer, ptr %objptr326, i32 0, i32 1
+  %fldval328 = load i64, ptr %fld327, align 8
+  %add329 = add i64 %fldval328, 2
+  store i64 %add329, ptr %fld325, align 8
+  %objptr330 = load ptr, ptr %lx, align 8
+  %fld331 = getelementptr inbounds nuw %Lexer, ptr %objptr330, i32 0, i32 0
+  %fldval332 = load ptr, ptr %fld331, align 8
+  %objptr333 = load ptr, ptr %lx, align 8
+  %fld334 = getelementptr inbounds nuw %Lexer, ptr %objptr333, i32 0, i32 1
+  %fldval335 = load i64, ptr %fld334, align 8
+  %sub336 = sub i64 %fldval335, 2
+  %call337 = call ptr @str_substr(ptr %fldval332, i64 %sub336, i64 2)
+  %line338 = load i32, ptr %line, align 4
+  %col339 = load i32, ptr %col, align 4
+  %call340 = call %Token @make_tok(i32 12, ptr %call337, i32 %line338, i32 %col339, i32 -1)
+  ret %Token %call340
 
-if.else314:                                       ; preds = %if.end268
-  br label %if.end310
+if.else311:                                       ; preds = %sc.end305
+  br label %if.end301
 
-if.end325:                                        ; preds = %if.else329
-  %c341 = load i8, ptr %c, align 1
-  %eq342 = icmp eq i8 %c341, 46
-  br i1 %eq342, label %sc.rhs343, label %sc.end344
+if.end341:                                        ; preds = %if.else345
+  %c357 = load i8, ptr %c, align 1
+  %eq358 = icmp eq i8 %c357, 38
+  br i1 %eq358, label %sc.rhs359, label %sc.end360
 
-if.then328:                                       ; preds = %if.end310
-  %lx330 = load ptr, ptr %lx, align 8
-  %call331 = call i8 @lex_nextc(ptr %lx330)
-  %objptr332 = load ptr, ptr %lx, align 8
-  %fld333 = getelementptr inbounds nuw %Lexer, ptr %objptr332, i32 0, i32 2
-  %fldval334 = load i32, ptr %fld333, align 4
-  %objptr335 = load ptr, ptr %lx, align 8
-  %fld336 = getelementptr inbounds nuw %Lexer, ptr %objptr335, i32 0, i32 3
-  %fldval337 = load i32, ptr %fld336, align 4
-  %sub338 = sub i32 %fldval337, 1
-  %call339 = call %Token @make_tok(i32 9, ptr null, i32 %fldval334, i32 %sub338, i32 -1)
-  ret %Token %call339
+if.then344:                                       ; preds = %if.end301
+  %lx346 = load ptr, ptr %lx, align 8
+  %call347 = call i8 @lex_nextc(ptr %lx346)
+  %objptr348 = load ptr, ptr %lx, align 8
+  %fld349 = getelementptr inbounds nuw %Lexer, ptr %objptr348, i32 0, i32 2
+  %fldval350 = load i32, ptr %fld349, align 4
+  %objptr351 = load ptr, ptr %lx, align 8
+  %fld352 = getelementptr inbounds nuw %Lexer, ptr %objptr351, i32 0, i32 3
+  %fldval353 = load i32, ptr %fld352, align 4
+  %sub354 = sub i32 %fldval353, 1
+  %call355 = call %Token @make_tok(i32 7, ptr null, i32 %fldval350, i32 %sub354, i32 -1)
+  ret %Token %call355
 
-if.else329:                                       ; preds = %if.end310
-  br label %if.end325
+if.else345:                                       ; preds = %if.end301
+  br label %if.end341
 
-if.end340:                                        ; preds = %if.else356
-  %c378 = load i8, ptr %c, align 1
-  %eq379 = icmp eq i8 %c378, 46
-  br i1 %eq379, label %if.then380, label %if.else381
+if.end356:                                        ; preds = %if.else366
+  %c399 = load i8, ptr %c, align 1
+  %eq400 = icmp eq i8 %c399, 63
+  br i1 %eq400, label %if.then401, label %if.else402
 
-sc.rhs343:                                        ; preds = %if.end325
-  %lx345 = load ptr, ptr %lx, align 8
-  %call346 = call i8 @lex_look(ptr %lx345, i64 1)
-  %eq347 = icmp eq i8 %call346, 46
-  br label %sc.end344
+sc.rhs359:                                        ; preds = %if.end341
+  %lx361 = load ptr, ptr %lx, align 8
+  %call362 = call i8 @lex_look(ptr %lx361, i64 1)
+  %eq363 = icmp eq i8 %call362, 38
+  br label %sc.end360
 
-sc.end344:                                        ; preds = %sc.rhs343, %if.end325
-  %sc348 = phi i1 [ false, %if.end325 ], [ %eq347, %sc.rhs343 ]
-  br i1 %sc348, label %sc.rhs349, label %sc.end350
+sc.end360:                                        ; preds = %sc.rhs359, %if.end341
+  %sc364 = phi i1 [ false, %if.end341 ], [ %eq363, %sc.rhs359 ]
+  br i1 %sc364, label %if.then365, label %if.else366
 
-sc.rhs349:                                        ; preds = %sc.end344
-  %lx351 = load ptr, ptr %lx, align 8
-  %call352 = call i8 @lex_look(ptr %lx351, i64 2)
-  %eq353 = icmp eq i8 %call352, 46
-  br label %sc.end350
-
-sc.end350:                                        ; preds = %sc.rhs349, %sc.end344
-  %sc354 = phi i1 [ false, %sc.end344 ], [ %eq353, %sc.rhs349 ]
-  br i1 %sc354, label %if.then355, label %if.else356
-
-if.then355:                                       ; preds = %sc.end350
-  %objptr357 = load ptr, ptr %lx, align 8
-  %fld358 = getelementptr inbounds nuw %Lexer, ptr %objptr357, i32 0, i32 3
-  %objptr359 = load ptr, ptr %lx, align 8
-  %fld360 = getelementptr inbounds nuw %Lexer, ptr %objptr359, i32 0, i32 3
-  %fldval361 = load i32, ptr %fld360, align 4
-  %add362 = add i32 %fldval361, 3
-  store i32 %add362, ptr %fld358, align 4
-  %objptr363 = load ptr, ptr %lx, align 8
-  %fld364 = getelementptr inbounds nuw %Lexer, ptr %objptr363, i32 0, i32 1
-  %objptr365 = load ptr, ptr %lx, align 8
-  %fld366 = getelementptr inbounds nuw %Lexer, ptr %objptr365, i32 0, i32 1
-  %fldval367 = load i64, ptr %fld366, align 8
-  %add368 = add i64 %fldval367, 3
-  store i64 %add368, ptr %fld364, align 8
-  %objptr369 = load ptr, ptr %lx, align 8
-  %fld370 = getelementptr inbounds nuw %Lexer, ptr %objptr369, i32 0, i32 2
-  %fldval371 = load i32, ptr %fld370, align 4
+if.then365:                                       ; preds = %sc.end360
+  %objptr368 = load ptr, ptr %lx, align 8
+  %fld369 = getelementptr inbounds nuw %Lexer, ptr %objptr368, i32 0, i32 2
+  %fldval370 = load i32, ptr %fld369, align 4
+  store i32 %fldval370, ptr %line367, align 4
   %objptr372 = load ptr, ptr %lx, align 8
   %fld373 = getelementptr inbounds nuw %Lexer, ptr %objptr372, i32 0, i32 3
   %fldval374 = load i32, ptr %fld373, align 4
-  %sub375 = sub i32 %fldval374, 3
-  %call376 = call %Token @make_tok(i32 11, ptr null, i32 %fldval371, i32 %sub375, i32 -1)
-  ret %Token %call376
-
-if.else356:                                       ; preds = %sc.end350
-  br label %if.end340
-
-if.end377:                                        ; preds = %if.else381
-  %c393 = load i8, ptr %c, align 1
-  %eq394 = icmp eq i8 %c393, 34
-  br i1 %eq394, label %if.then395, label %if.else396
-
-if.then380:                                       ; preds = %if.end340
-  %lx382 = load ptr, ptr %lx, align 8
-  %call383 = call i8 @lex_nextc(ptr %lx382)
-  %objptr384 = load ptr, ptr %lx, align 8
-  %fld385 = getelementptr inbounds nuw %Lexer, ptr %objptr384, i32 0, i32 2
-  %fldval386 = load i32, ptr %fld385, align 4
+  store i32 %fldval374, ptr %col371, align 4
+  %objptr375 = load ptr, ptr %lx, align 8
+  %fld376 = getelementptr inbounds nuw %Lexer, ptr %objptr375, i32 0, i32 3
+  %objptr377 = load ptr, ptr %lx, align 8
+  %fld378 = getelementptr inbounds nuw %Lexer, ptr %objptr377, i32 0, i32 3
+  %fldval379 = load i32, ptr %fld378, align 4
+  %add380 = add i32 %fldval379, 2
+  store i32 %add380, ptr %fld376, align 4
+  %objptr381 = load ptr, ptr %lx, align 8
+  %fld382 = getelementptr inbounds nuw %Lexer, ptr %objptr381, i32 0, i32 1
+  %objptr383 = load ptr, ptr %lx, align 8
+  %fld384 = getelementptr inbounds nuw %Lexer, ptr %objptr383, i32 0, i32 1
+  %fldval385 = load i64, ptr %fld384, align 8
+  %add386 = add i64 %fldval385, 2
+  store i64 %add386, ptr %fld382, align 8
   %objptr387 = load ptr, ptr %lx, align 8
-  %fld388 = getelementptr inbounds nuw %Lexer, ptr %objptr387, i32 0, i32 3
-  %fldval389 = load i32, ptr %fld388, align 4
-  %sub390 = sub i32 %fldval389, 1
-  %call391 = call %Token @make_tok(i32 8, ptr null, i32 %fldval386, i32 %sub390, i32 -1)
-  ret %Token %call391
+  %fld388 = getelementptr inbounds nuw %Lexer, ptr %objptr387, i32 0, i32 0
+  %fldval389 = load ptr, ptr %fld388, align 8
+  %objptr390 = load ptr, ptr %lx, align 8
+  %fld391 = getelementptr inbounds nuw %Lexer, ptr %objptr390, i32 0, i32 1
+  %fldval392 = load i64, ptr %fld391, align 8
+  %sub393 = sub i64 %fldval392, 2
+  %call394 = call ptr @str_substr(ptr %fldval389, i64 %sub393, i64 2)
+  %line395 = load i32, ptr %line367, align 4
+  %col396 = load i32, ptr %col371, align 4
+  %call397 = call %Token @make_tok(i32 12, ptr %call394, i32 %line395, i32 %col396, i32 -1)
+  ret %Token %call397
 
-if.else381:                                       ; preds = %if.end340
-  br label %if.end377
+if.else366:                                       ; preds = %sc.end360
+  br label %if.end356
 
-if.end392:                                        ; preds = %if.else396
-  %c400 = load i8, ptr %c, align 1
-  %eq401 = icmp eq i8 %c400, 39
-  br i1 %eq401, label %if.then402, label %if.else403
+if.end398:                                        ; preds = %if.else402
+  %c414 = load i8, ptr %c, align 1
+  %eq415 = icmp eq i8 %c414, 64
+  br i1 %eq415, label %if.then416, label %if.else417
 
-if.then395:                                       ; preds = %if.end377
-  %lx397 = load ptr, ptr %lx, align 8
-  %call398 = call %Token @lex_string(ptr %lx397, i8 34, i32 19)
-  ret %Token %call398
+if.then401:                                       ; preds = %if.end356
+  %lx403 = load ptr, ptr %lx, align 8
+  %call404 = call i8 @lex_nextc(ptr %lx403)
+  %objptr405 = load ptr, ptr %lx, align 8
+  %fld406 = getelementptr inbounds nuw %Lexer, ptr %objptr405, i32 0, i32 2
+  %fldval407 = load i32, ptr %fld406, align 4
+  %objptr408 = load ptr, ptr %lx, align 8
+  %fld409 = getelementptr inbounds nuw %Lexer, ptr %objptr408, i32 0, i32 3
+  %fldval410 = load i32, ptr %fld409, align 4
+  %sub411 = sub i32 %fldval410, 1
+  %call412 = call %Token @make_tok(i32 10, ptr null, i32 %fldval407, i32 %sub411, i32 -1)
+  ret %Token %call412
 
-if.else396:                                       ; preds = %if.end377
-  br label %if.end392
+if.else402:                                       ; preds = %if.end356
+  br label %if.end398
 
-if.end399:                                        ; preds = %if.else403
-  %c407 = load i8, ptr %c, align 1
-  %cast = sext i8 %c407 to i32
-  %call408 = call i32 @isdigit(i32 %cast)
-  %ne409 = icmp ne i32 %call408, 0
-  br i1 %ne409, label %if.then410, label %if.else411
-
-if.then402:                                       ; preds = %if.end392
-  %lx404 = load ptr, ptr %lx, align 8
-  %call405 = call %Token @lex_string(ptr %lx404, i8 39, i32 18)
-  ret %Token %call405
-
-if.else403:                                       ; preds = %if.end392
-  br label %if.end399
-
-if.end406:                                        ; preds = %if.else411
-  %c415 = load i8, ptr %c, align 1
-  %cast416 = sext i8 %c415 to i32
-  %call417 = call i32 @isalpha(i32 %cast416)
-  %ne418 = icmp ne i32 %call417, 0
-  br i1 %ne418, label %sc.end420, label %sc.rhs419
-
-if.then410:                                       ; preds = %if.end399
-  %lx412 = load ptr, ptr %lx, align 8
-  %call413 = call %Token @lex_number(ptr %lx412)
-  ret %Token %call413
-
-if.else411:                                       ; preds = %if.end399
-  br label %if.end406
-
-if.end414:                                        ; preds = %if.else425
+if.end413:                                        ; preds = %if.else417
   %c429 = load i8, ptr %c, align 1
-  %call430 = call i1 @is_op_start(i8 %c429)
-  br i1 %call430, label %if.then431, label %if.else432
+  %eq430 = icmp eq i8 %c429, 46
+  br i1 %eq430, label %sc.rhs431, label %sc.end432
 
-sc.rhs419:                                        ; preds = %if.end406
-  %c421 = load i8, ptr %c, align 1
-  %eq422 = icmp eq i8 %c421, 95
-  br label %sc.end420
-
-sc.end420:                                        ; preds = %sc.rhs419, %if.end406
-  %sc423 = phi i1 [ true, %if.end406 ], [ %eq422, %sc.rhs419 ]
-  br i1 %sc423, label %if.then424, label %if.else425
-
-if.then424:                                       ; preds = %sc.end420
-  %lx426 = load ptr, ptr %lx, align 8
-  %call427 = call %Token @lex_indent_or_keyword(ptr %lx426)
+if.then416:                                       ; preds = %if.end398
+  %lx418 = load ptr, ptr %lx, align 8
+  %call419 = call i8 @lex_nextc(ptr %lx418)
+  %objptr420 = load ptr, ptr %lx, align 8
+  %fld421 = getelementptr inbounds nuw %Lexer, ptr %objptr420, i32 0, i32 2
+  %fldval422 = load i32, ptr %fld421, align 4
+  %objptr423 = load ptr, ptr %lx, align 8
+  %fld424 = getelementptr inbounds nuw %Lexer, ptr %objptr423, i32 0, i32 3
+  %fldval425 = load i32, ptr %fld424, align 4
+  %sub426 = sub i32 %fldval425, 1
+  %call427 = call %Token @make_tok(i32 9, ptr null, i32 %fldval422, i32 %sub426, i32 -1)
   ret %Token %call427
 
-if.else425:                                       ; preds = %sc.end420
-  br label %if.end414
+if.else417:                                       ; preds = %if.end398
+  br label %if.end413
 
-if.end428:                                        ; preds = %if.else432
-  %objptr479 = load ptr, ptr %lx, align 8
-  %fld480 = getelementptr inbounds nuw %Lexer, ptr %objptr479, i32 0, i32 2
-  %fldval481 = load i32, ptr %fld480, align 4
-  %objptr482 = load ptr, ptr %lx, align 8
-  %fld483 = getelementptr inbounds nuw %Lexer, ptr %objptr482, i32 0, i32 3
-  %fldval484 = load i32, ptr %fld483, align 4
-  %c485 = load i8, ptr %c, align 1
-  %vapromo = sext i8 %c485 to i32
-  %call486 = call i32 (ptr, ...) @printf(ptr @.str.56, i32 %fldval481, i32 %fldval484, i32 %vapromo)
-  call void @exit(i32 1)
-  br label %loop.cont
+if.end428:                                        ; preds = %if.else444
+  %c466 = load i8, ptr %c, align 1
+  %eq467 = icmp eq i8 %c466, 46
+  br i1 %eq467, label %if.then468, label %if.else469
 
-if.then431:                                       ; preds = %if.end414
-  %objptr434 = load ptr, ptr %lx, align 8
-  %fld435 = getelementptr inbounds nuw %Lexer, ptr %objptr434, i32 0, i32 2
-  %fldval436 = load i32, ptr %fld435, align 4
-  store i32 %fldval436, ptr %line433, align 4
-  %objptr438 = load ptr, ptr %lx, align 8
-  %fld439 = getelementptr inbounds nuw %Lexer, ptr %objptr438, i32 0, i32 3
-  %fldval440 = load i32, ptr %fld439, align 4
-  store i32 %fldval440, ptr %col437, align 4
-  %objptr441 = load ptr, ptr %lx, align 8
-  %fld442 = getelementptr inbounds nuw %Lexer, ptr %objptr441, i32 0, i32 1
-  %fldval443 = load i64, ptr %fld442, align 8
-  store i64 %fldval443, ptr %start, align 8
-  %lx444 = load ptr, ptr %lx, align 8
-  %call445 = call i8 @lex_nextc(ptr %lx444)
-  %lx446 = load ptr, ptr %lx, align 8
-  %call447 = call i8 @lex_peek(ptr %lx446)
-  store i8 %call447, ptr %n, align 1
-  %n449 = load i8, ptr %n, align 1
-  %eq450 = icmp eq i8 %n449, 61
-  br i1 %eq450, label %sc.end452, label %sc.rhs451
+sc.rhs431:                                        ; preds = %if.end413
+  %lx433 = load ptr, ptr %lx, align 8
+  %call434 = call i8 @lex_look(ptr %lx433, i64 1)
+  %eq435 = icmp eq i8 %call434, 46
+  br label %sc.end432
 
-if.else432:                                       ; preds = %if.end414
+sc.end432:                                        ; preds = %sc.rhs431, %if.end413
+  %sc436 = phi i1 [ false, %if.end413 ], [ %eq435, %sc.rhs431 ]
+  br i1 %sc436, label %sc.rhs437, label %sc.end438
+
+sc.rhs437:                                        ; preds = %sc.end432
+  %lx439 = load ptr, ptr %lx, align 8
+  %call440 = call i8 @lex_look(ptr %lx439, i64 2)
+  %eq441 = icmp eq i8 %call440, 46
+  br label %sc.end438
+
+sc.end438:                                        ; preds = %sc.rhs437, %sc.end432
+  %sc442 = phi i1 [ false, %sc.end432 ], [ %eq441, %sc.rhs437 ]
+  br i1 %sc442, label %if.then443, label %if.else444
+
+if.then443:                                       ; preds = %sc.end438
+  %objptr445 = load ptr, ptr %lx, align 8
+  %fld446 = getelementptr inbounds nuw %Lexer, ptr %objptr445, i32 0, i32 3
+  %objptr447 = load ptr, ptr %lx, align 8
+  %fld448 = getelementptr inbounds nuw %Lexer, ptr %objptr447, i32 0, i32 3
+  %fldval449 = load i32, ptr %fld448, align 4
+  %add450 = add i32 %fldval449, 3
+  store i32 %add450, ptr %fld446, align 4
+  %objptr451 = load ptr, ptr %lx, align 8
+  %fld452 = getelementptr inbounds nuw %Lexer, ptr %objptr451, i32 0, i32 1
+  %objptr453 = load ptr, ptr %lx, align 8
+  %fld454 = getelementptr inbounds nuw %Lexer, ptr %objptr453, i32 0, i32 1
+  %fldval455 = load i64, ptr %fld454, align 8
+  %add456 = add i64 %fldval455, 3
+  store i64 %add456, ptr %fld452, align 8
+  %objptr457 = load ptr, ptr %lx, align 8
+  %fld458 = getelementptr inbounds nuw %Lexer, ptr %objptr457, i32 0, i32 2
+  %fldval459 = load i32, ptr %fld458, align 4
+  %objptr460 = load ptr, ptr %lx, align 8
+  %fld461 = getelementptr inbounds nuw %Lexer, ptr %objptr460, i32 0, i32 3
+  %fldval462 = load i32, ptr %fld461, align 4
+  %sub463 = sub i32 %fldval462, 3
+  %call464 = call %Token @make_tok(i32 11, ptr null, i32 %fldval459, i32 %sub463, i32 -1)
+  ret %Token %call464
+
+if.else444:                                       ; preds = %sc.end438
   br label %if.end428
 
-if.end448:                                        ; preds = %if.else462, %if.then461
-  %objptr465 = load ptr, ptr %lx, align 8
-  %fld466 = getelementptr inbounds nuw %Lexer, ptr %objptr465, i32 0, i32 1
-  %fldval467 = load i64, ptr %fld466, align 8
-  %start468 = load i64, ptr %start, align 8
-  %sub469 = sub i64 %fldval467, %start468
-  store i64 %sub469, ptr %len, align 8
-  %objptr470 = load ptr, ptr %lx, align 8
-  %fld471 = getelementptr inbounds nuw %Lexer, ptr %objptr470, i32 0, i32 0
-  %fldval472 = load ptr, ptr %fld471, align 8
-  %start473 = load i64, ptr %start, align 8
-  %len474 = load i64, ptr %len, align 8
-  %call475 = call ptr @str_substr(ptr %fldval472, i64 %start473, i64 %len474)
-  %line476 = load i32, ptr %line433, align 4
-  %col477 = load i32, ptr %col437, align 4
-  %call478 = call %Token @make_tok(i32 12, ptr %call475, i32 %line476, i32 %col477, i32 -1)
-  ret %Token %call478
+if.end465:                                        ; preds = %if.else469
+  %c481 = load i8, ptr %c, align 1
+  %eq482 = icmp eq i8 %c481, 34
+  br i1 %eq482, label %if.then483, label %if.else484
 
-sc.rhs451:                                        ; preds = %if.then431
-  %n453 = load i8, ptr %n, align 1
-  %eq454 = icmp eq i8 %n453, 60
-  br label %sc.end452
+if.then468:                                       ; preds = %if.end428
+  %lx470 = load ptr, ptr %lx, align 8
+  %call471 = call i8 @lex_nextc(ptr %lx470)
+  %objptr472 = load ptr, ptr %lx, align 8
+  %fld473 = getelementptr inbounds nuw %Lexer, ptr %objptr472, i32 0, i32 2
+  %fldval474 = load i32, ptr %fld473, align 4
+  %objptr475 = load ptr, ptr %lx, align 8
+  %fld476 = getelementptr inbounds nuw %Lexer, ptr %objptr475, i32 0, i32 3
+  %fldval477 = load i32, ptr %fld476, align 4
+  %sub478 = sub i32 %fldval477, 1
+  %call479 = call %Token @make_tok(i32 8, ptr null, i32 %fldval474, i32 %sub478, i32 -1)
+  ret %Token %call479
 
-sc.end452:                                        ; preds = %sc.rhs451, %if.then431
-  %sc455 = phi i1 [ true, %if.then431 ], [ %eq454, %sc.rhs451 ]
-  br i1 %sc455, label %sc.end457, label %sc.rhs456
+if.else469:                                       ; preds = %if.end428
+  br label %if.end465
 
-sc.rhs456:                                        ; preds = %sc.end452
-  %n458 = load i8, ptr %n, align 1
-  %eq459 = icmp eq i8 %n458, 62
-  br label %sc.end457
+if.end480:                                        ; preds = %if.else484
+  %c488 = load i8, ptr %c, align 1
+  %eq489 = icmp eq i8 %c488, 39
+  br i1 %eq489, label %if.then490, label %if.else491
 
-sc.end457:                                        ; preds = %sc.rhs456, %sc.end452
-  %sc460 = phi i1 [ true, %sc.end452 ], [ %eq459, %sc.rhs456 ]
-  br i1 %sc460, label %if.then461, label %if.else462
+if.then483:                                       ; preds = %if.end465
+  %lx485 = load ptr, ptr %lx, align 8
+  %call486 = call %Token @lex_string(ptr %lx485, i8 34, i32 19)
+  ret %Token %call486
 
-if.then461:                                       ; preds = %sc.end457
-  %lx463 = load ptr, ptr %lx, align 8
-  %call464 = call i8 @lex_nextc(ptr %lx463)
-  br label %if.end448
+if.else484:                                       ; preds = %if.end465
+  br label %if.end480
 
-if.else462:                                       ; preds = %sc.end457
-  br label %if.end448
+if.end487:                                        ; preds = %if.else491
+  %c495 = load i8, ptr %c, align 1
+  %cast496 = sext i8 %c495 to i32
+  %call497 = call i32 @isdigit(i32 %cast496)
+  %ne498 = icmp ne i32 %call497, 0
+  br i1 %ne498, label %if.then499, label %if.else500
+
+if.then490:                                       ; preds = %if.end480
+  %lx492 = load ptr, ptr %lx, align 8
+  %call493 = call %Token @lex_string(ptr %lx492, i8 39, i32 18)
+  ret %Token %call493
+
+if.else491:                                       ; preds = %if.end480
+  br label %if.end487
+
+if.end494:                                        ; preds = %if.else500
+  %c504 = load i8, ptr %c, align 1
+  %cast505 = sext i8 %c504 to i32
+  %call506 = call i32 @isalpha(i32 %cast505)
+  %ne507 = icmp ne i32 %call506, 0
+  br i1 %ne507, label %sc.end509, label %sc.rhs508
+
+if.then499:                                       ; preds = %if.end487
+  %lx501 = load ptr, ptr %lx, align 8
+  %call502 = call %Token @lex_number(ptr %lx501)
+  ret %Token %call502
+
+if.else500:                                       ; preds = %if.end487
+  br label %if.end494
+
+if.end503:                                        ; preds = %if.else514
+  %c518 = load i8, ptr %c, align 1
+  %call519 = call i1 @is_op_start(i8 %c518)
+  br i1 %call519, label %if.then520, label %if.else521
+
+sc.rhs508:                                        ; preds = %if.end494
+  %c510 = load i8, ptr %c, align 1
+  %eq511 = icmp eq i8 %c510, 95
+  br label %sc.end509
+
+sc.end509:                                        ; preds = %sc.rhs508, %if.end494
+  %sc512 = phi i1 [ true, %if.end494 ], [ %eq511, %sc.rhs508 ]
+  br i1 %sc512, label %if.then513, label %if.else514
+
+if.then513:                                       ; preds = %sc.end509
+  %lx515 = load ptr, ptr %lx, align 8
+  %call516 = call %Token @lex_indent_or_keyword(ptr %lx515)
+  ret %Token %call516
+
+if.else514:                                       ; preds = %sc.end509
+  br label %if.end503
+
+if.end517:                                        ; preds = %if.else521
+  %call569 = call ptr @malloc(i64 2)
+  store ptr %call569, ptr %ch, align 8
+  %ch570 = load ptr, ptr %ch, align 8
+  %elem = getelementptr i8, ptr %ch570, i64 0
+  %c571 = load i8, ptr %c, align 1
+  store i8 %c571, ptr %elem, align 1
+  %ch572 = load ptr, ptr %ch, align 8
+  %elem573 = getelementptr i8, ptr %ch572, i64 1
+  store i8 0, ptr %elem573, align 1
+  %lx574 = load ptr, ptr %lx, align 8
+  %call575 = call %Location @lex_here(ptr %lx574)
+  %ch576 = load ptr, ptr %ch, align 8
+  call void @diag_fatal(%Location %call575, ptr @.str.94, ptr %ch576, ptr @.str.72)
+  br label %loop.cont
+
+if.then520:                                       ; preds = %if.end503
+  %objptr523 = load ptr, ptr %lx, align 8
+  %fld524 = getelementptr inbounds nuw %Lexer, ptr %objptr523, i32 0, i32 2
+  %fldval525 = load i32, ptr %fld524, align 4
+  store i32 %fldval525, ptr %line522, align 4
+  %objptr527 = load ptr, ptr %lx, align 8
+  %fld528 = getelementptr inbounds nuw %Lexer, ptr %objptr527, i32 0, i32 3
+  %fldval529 = load i32, ptr %fld528, align 4
+  store i32 %fldval529, ptr %col526, align 4
+  %objptr531 = load ptr, ptr %lx, align 8
+  %fld532 = getelementptr inbounds nuw %Lexer, ptr %objptr531, i32 0, i32 1
+  %fldval533 = load i64, ptr %fld532, align 8
+  store i64 %fldval533, ptr %start530, align 8
+  %lx534 = load ptr, ptr %lx, align 8
+  %call535 = call i8 @lex_nextc(ptr %lx534)
+  %lx536 = load ptr, ptr %lx, align 8
+  %call537 = call i8 @lex_peek(ptr %lx536)
+  store i8 %call537, ptr %n, align 1
+  %n539 = load i8, ptr %n, align 1
+  %eq540 = icmp eq i8 %n539, 61
+  br i1 %eq540, label %sc.end542, label %sc.rhs541
+
+if.else521:                                       ; preds = %if.end503
+  br label %if.end517
+
+if.end538:                                        ; preds = %if.else552, %if.then551
+  %objptr555 = load ptr, ptr %lx, align 8
+  %fld556 = getelementptr inbounds nuw %Lexer, ptr %objptr555, i32 0, i32 1
+  %fldval557 = load i64, ptr %fld556, align 8
+  %start558 = load i64, ptr %start530, align 8
+  %sub559 = sub i64 %fldval557, %start558
+  store i64 %sub559, ptr %len, align 8
+  %objptr560 = load ptr, ptr %lx, align 8
+  %fld561 = getelementptr inbounds nuw %Lexer, ptr %objptr560, i32 0, i32 0
+  %fldval562 = load ptr, ptr %fld561, align 8
+  %start563 = load i64, ptr %start530, align 8
+  %len564 = load i64, ptr %len, align 8
+  %call565 = call ptr @str_substr(ptr %fldval562, i64 %start563, i64 %len564)
+  %line566 = load i32, ptr %line522, align 4
+  %col567 = load i32, ptr %col526, align 4
+  %call568 = call %Token @make_tok(i32 12, ptr %call565, i32 %line566, i32 %col567, i32 -1)
+  ret %Token %call568
+
+sc.rhs541:                                        ; preds = %if.then520
+  %n543 = load i8, ptr %n, align 1
+  %eq544 = icmp eq i8 %n543, 60
+  br label %sc.end542
+
+sc.end542:                                        ; preds = %sc.rhs541, %if.then520
+  %sc545 = phi i1 [ true, %if.then520 ], [ %eq544, %sc.rhs541 ]
+  br i1 %sc545, label %sc.end547, label %sc.rhs546
+
+sc.rhs546:                                        ; preds = %sc.end542
+  %n548 = load i8, ptr %n, align 1
+  %eq549 = icmp eq i8 %n548, 62
+  br label %sc.end547
+
+sc.end547:                                        ; preds = %sc.rhs546, %sc.end542
+  %sc550 = phi i1 [ true, %sc.end542 ], [ %eq549, %sc.rhs546 ]
+  br i1 %sc550, label %if.then551, label %if.else552
+
+if.then551:                                       ; preds = %sc.end547
+  %lx553 = load ptr, ptr %lx, align 8
+  %call554 = call i8 @lex_nextc(ptr %lx553)
+  br label %if.end538
+
+if.else552:                                       ; preds = %sc.end547
+  br label %if.end538
+}
+
+define %Token @lexer_next(ptr %0) {
+entry:
+  %t = alloca %Token, align 8
+  %lx = alloca ptr, align 8
+  store ptr %0, ptr %lx, align 8
+  %lx1 = load ptr, ptr %lx, align 8
+  %call = call %Token @lex_token(ptr %lx1)
+  store %Token %call, ptr %t, align 8
+  %fld = getelementptr inbounds nuw %Token, ptr %t, i32 0, i32 3
+  %fld2 = getelementptr inbounds nuw %Location, ptr %fld, i32 0, i32 2
+  %objptr = load ptr, ptr %lx, align 8
+  %fld3 = getelementptr inbounds nuw %Lexer, ptr %objptr, i32 0, i32 4
+  %objptr4 = load ptr, ptr %fld3, align 8
+  %fld5 = getelementptr inbounds nuw %SrcFrame, ptr %objptr4, i32 0, i32 0
+  %fldval = load ptr, ptr %fld5, align 8
+  store ptr %fldval, ptr %fld2, align 8
+  %t6 = load %Token, ptr %t, align 8
+  ret %Token %t6
 }
 
 define void @parser_next(ptr %0) {
@@ -4850,6 +6220,20 @@ while.body:                                       ; preds = %loop.body
   br label %loop.cont
 }
 
+define ptr @itoa(i64 %0) {
+entry:
+  %buf = alloca ptr, align 8
+  %n = alloca i64, align 8
+  store i64 %0, ptr %n, align 8
+  %call = call ptr @malloc(i64 24)
+  store ptr %call, ptr %buf, align 8
+  %buf1 = load ptr, ptr %buf, align 8
+  %n2 = load i64, ptr %n, align 8
+  %call3 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf1, i64 24, ptr @.str.95, i64 %n2)
+  %buf4 = load ptr, ptr %buf, align 8
+  ret ptr %buf4
+}
+
 define void @unexpected(ptr %0) {
 entry:
   %pr = alloca ptr, align 8
@@ -4857,27 +6241,17 @@ entry:
   %objptr = load ptr, ptr %pr, align 8
   %fld = getelementptr inbounds nuw %Parser, ptr %objptr, i32 0, i32 1
   %fld1 = getelementptr inbounds nuw %Token, ptr %fld, i32 0, i32 3
-  %fld2 = getelementptr inbounds nuw %Location, ptr %fld1, i32 0, i32 0
-  %fldval = load i32, ptr %fld2, align 4
-  %objptr3 = load ptr, ptr %pr, align 8
-  %fld4 = getelementptr inbounds nuw %Parser, ptr %objptr3, i32 0, i32 1
-  %fld5 = getelementptr inbounds nuw %Token, ptr %fld4, i32 0, i32 3
-  %fld6 = getelementptr inbounds nuw %Location, ptr %fld5, i32 0, i32 1
-  %fldval7 = load i32, ptr %fld6, align 4
-  %objptr8 = load ptr, ptr %pr, align 8
-  %fld9 = getelementptr inbounds nuw %Parser, ptr %objptr8, i32 0, i32 1
-  %fld10 = getelementptr inbounds nuw %Token, ptr %fld9, i32 0, i32 0
-  %fldval11 = load i32, ptr %fld10, align 4
-  %call = call ptr @token_str(i32 %fldval11)
-  %call12 = call i32 (ptr, ...) @printf(ptr @.str.57, i32 %fldval, i32 %fldval7, ptr %call)
-  call void @exit(i32 1)
+  %fldval = load %Location, ptr %fld1, align 8
+  %objptr2 = load ptr, ptr %pr, align 8
+  %fld3 = getelementptr inbounds nuw %Parser, ptr %objptr2, i32 0, i32 1
+  %fldval4 = load %Token, ptr %fld3, align 8
+  %call = call ptr @tok_desc(%Token %fldval4)
+  call void @diag_fatal(%Location %fldval, ptr @.str.96, ptr %call, ptr @.str.72)
   ret void
 }
 
 define void @expect(ptr %0, i32 %1) {
 entry:
-  %want = alloca ptr, align 8
-  %got = alloca ptr, align 8
   %pr = alloca ptr, align 8
   store ptr %0, ptr %pr, align 8
   %t = alloca i32, align 4
@@ -4891,34 +6265,22 @@ entry:
   br i1 %ne, label %if.then, label %if.else
 
 if.end:                                           ; preds = %if.else, %if.then
-  %pr22 = load ptr, ptr %pr, align 8
-  call void @parser_next(ptr %pr22)
+  %pr12 = load ptr, ptr %pr, align 8
+  call void @parser_next(ptr %pr12)
   ret void
 
 if.then:                                          ; preds = %entry
   %objptr3 = load ptr, ptr %pr, align 8
   %fld4 = getelementptr inbounds nuw %Parser, ptr %objptr3, i32 0, i32 1
-  %fld5 = getelementptr inbounds nuw %Token, ptr %fld4, i32 0, i32 0
-  %fldval6 = load i32, ptr %fld5, align 4
-  %call = call ptr @token_str(i32 %fldval6)
-  store ptr %call, ptr %got, align 8
+  %fld5 = getelementptr inbounds nuw %Token, ptr %fld4, i32 0, i32 3
+  %fldval6 = load %Location, ptr %fld5, align 8
   %t7 = load i32, ptr %t, align 4
-  %call8 = call ptr @token_str(i32 %t7)
-  store ptr %call8, ptr %want, align 8
-  %objptr9 = load ptr, ptr %pr, align 8
-  %fld10 = getelementptr inbounds nuw %Parser, ptr %objptr9, i32 0, i32 1
-  %fld11 = getelementptr inbounds nuw %Token, ptr %fld10, i32 0, i32 3
-  %fld12 = getelementptr inbounds nuw %Location, ptr %fld11, i32 0, i32 0
-  %fldval13 = load i32, ptr %fld12, align 4
-  %objptr14 = load ptr, ptr %pr, align 8
-  %fld15 = getelementptr inbounds nuw %Parser, ptr %objptr14, i32 0, i32 1
-  %fld16 = getelementptr inbounds nuw %Token, ptr %fld15, i32 0, i32 3
-  %fld17 = getelementptr inbounds nuw %Location, ptr %fld16, i32 0, i32 1
-  %fldval18 = load i32, ptr %fld17, align 4
-  %got19 = load ptr, ptr %got, align 8
-  %want20 = load ptr, ptr %want, align 8
-  %call21 = call i32 (ptr, ...) @printf(ptr @.str.58, i32 %fldval13, i32 %fldval18, ptr %got19, ptr %want20)
-  call void @exit(i32 1)
+  %call = call ptr @tok_kind_desc(i32 %t7)
+  %objptr8 = load ptr, ptr %pr, align 8
+  %fld9 = getelementptr inbounds nuw %Parser, ptr %objptr8, i32 0, i32 1
+  %fldval10 = load %Token, ptr %fld9, align 8
+  %call11 = call ptr @tok_desc(%Token %fldval10)
+  call void @diag_fatal(%Location %fldval6, ptr @.str.97, ptr %call, ptr %call11)
   br label %if.end
 
 if.else:                                          ; preds = %entry
@@ -4960,13 +6322,14 @@ entry:
   %objptr = load ptr, ptr %node, align 8
   %fld = getelementptr inbounds nuw %ASTNode, ptr %objptr, i32 0, i32 1
   %fld1 = getelementptr inbounds nuw %Token, ptr %tok, i32 0, i32 3
-  %fldval = load %Location, ptr %fld1, align 4
-  store %Location %fldval, ptr %fld, align 4
+  %fldval = load %Location, ptr %fld1, align 8
+  store %Location %fldval, ptr %fld, align 8
   ret void
 }
 
 define void @check_indent(ptr %0, %Token %1) {
 entry:
+  %at = alloca %Location, align 8
   %pr = alloca ptr, align 8
   store ptr %0, ptr %pr, align 8
   %tok = alloca %Token, align 8
@@ -4993,23 +6356,27 @@ sc.end:                                           ; preds = %sc.rhs, %entry
   br i1 %sc, label %if.then, label %if.else
 
 if.then:                                          ; preds = %sc.end
-  %objptr6 = load ptr, ptr %pr, align 8
-  %fld7 = getelementptr inbounds nuw %Parser, ptr %objptr6, i32 0, i32 1
-  %fld8 = getelementptr inbounds nuw %Token, ptr %fld7, i32 0, i32 3
-  %fld9 = getelementptr inbounds nuw %Location, ptr %fld8, i32 0, i32 0
+  %fld6 = getelementptr inbounds nuw %Token, ptr %tok, i32 0, i32 3
+  %fldval7 = load %Location, ptr %fld6, align 8
+  store %Location %fldval7, ptr %at, align 8
+  %fld8 = getelementptr inbounds nuw %Location, ptr %at, i32 0, i32 0
+  %fld9 = getelementptr inbounds nuw %Location, ptr %at, i32 0, i32 0
   %fldval10 = load i32, ptr %fld9, align 4
-  %objptr11 = load ptr, ptr %pr, align 8
-  %fld12 = getelementptr inbounds nuw %Parser, ptr %objptr11, i32 0, i32 1
-  %fld13 = getelementptr inbounds nuw %Token, ptr %fld12, i32 0, i32 3
-  %fld14 = getelementptr inbounds nuw %Location, ptr %fld13, i32 0, i32 1
-  %fldval15 = load i32, ptr %fld14, align 4
-  %fld16 = getelementptr inbounds nuw %Token, ptr %tok, i32 0, i32 2
+  %add = add i32 %fldval10, 1
+  store i32 %add, ptr %fld8, align 4
+  %fld11 = getelementptr inbounds nuw %Location, ptr %at, i32 0, i32 1
+  store i32 1, ptr %fld11, align 4
+  %at12 = load %Location, ptr %at, align 8
+  %fld13 = getelementptr inbounds nuw %Token, ptr %tok, i32 0, i32 2
+  %fldval14 = load i32, ptr %fld13, align 4
+  %sext = sext i32 %fldval14 to i64
+  %call = call ptr @itoa(i64 %sext)
+  %objptr15 = load ptr, ptr %pr, align 8
+  %fld16 = getelementptr inbounds nuw %Parser, ptr %objptr15, i32 0, i32 3
   %fldval17 = load i32, ptr %fld16, align 4
-  %objptr18 = load ptr, ptr %pr, align 8
-  %fld19 = getelementptr inbounds nuw %Parser, ptr %objptr18, i32 0, i32 3
-  %fldval20 = load i32, ptr %fld19, align 4
-  %call = call i32 (ptr, ...) @printf(ptr @.str.59, i32 %fldval10, i32 %fldval15, i32 %fldval17, i32 %fldval20)
-  call void @exit(i32 1)
+  %sext18 = sext i32 %fldval17 to i64
+  %call19 = call ptr @itoa(i64 %sext18)
+  call void @diag_fatal(%Location %at12, ptr @.str.98, ptr %call, ptr %call19)
   br label %if.end
 
 if.else:                                          ; preds = %sc.end
@@ -5053,7 +6420,7 @@ entry:
   %s = alloca ptr, align 8
   store ptr %0, ptr %s, align 8
   %s1 = load ptr, ptr %s, align 8
-  %call = call i32 @strcmp(ptr %s1, ptr @.str.60)
+  %call = call i32 @strcmp(ptr %s1, ptr @.str.99)
   %eq = icmp eq i32 %call, 0
   br i1 %eq, label %if.then, label %if.else
 
@@ -5065,7 +6432,7 @@ if.then:                                          ; preds = %entry
 
 if.else:                                          ; preds = %entry
   %s2 = load ptr, ptr %s, align 8
-  %call3 = call i32 @strcmp(ptr %s2, ptr @.str.61)
+  %call3 = call i32 @strcmp(ptr %s2, ptr @.str.100)
   %eq4 = icmp eq i32 %call3, 0
   br i1 %eq4, label %elif.then, label %elif.else
 
@@ -5074,7 +6441,7 @@ elif.then:                                        ; preds = %if.else
 
 elif.else:                                        ; preds = %if.else
   %s5 = load ptr, ptr %s, align 8
-  %call6 = call i32 @strcmp(ptr %s5, ptr @.str.62)
+  %call6 = call i32 @strcmp(ptr %s5, ptr @.str.101)
   %eq7 = icmp eq i32 %call6, 0
   br i1 %eq7, label %elif.then8, label %elif.else9
 
@@ -5083,7 +6450,7 @@ elif.then8:                                       ; preds = %elif.else
 
 elif.else9:                                       ; preds = %elif.else
   %s10 = load ptr, ptr %s, align 8
-  %call11 = call i32 @strcmp(ptr %s10, ptr @.str.63)
+  %call11 = call i32 @strcmp(ptr %s10, ptr @.str.102)
   %eq12 = icmp eq i32 %call11, 0
   br i1 %eq12, label %elif.then13, label %elif.else14
 
@@ -5092,7 +6459,7 @@ elif.then13:                                      ; preds = %elif.else9
 
 elif.else14:                                      ; preds = %elif.else9
   %s15 = load ptr, ptr %s, align 8
-  %call16 = call i32 @strcmp(ptr %s15, ptr @.str.64)
+  %call16 = call i32 @strcmp(ptr %s15, ptr @.str.103)
   %eq17 = icmp eq i32 %call16, 0
   br i1 %eq17, label %elif.then18, label %elif.else19
 
@@ -5101,7 +6468,7 @@ elif.then18:                                      ; preds = %elif.else14
 
 elif.else19:                                      ; preds = %elif.else14
   %s20 = load ptr, ptr %s, align 8
-  %call21 = call i32 @strcmp(ptr %s20, ptr @.str.65)
+  %call21 = call i32 @strcmp(ptr %s20, ptr @.str.104)
   %eq22 = icmp eq i32 %call21, 0
   br i1 %eq22, label %elif.then23, label %elif.else24
 
@@ -5110,7 +6477,7 @@ elif.then23:                                      ; preds = %elif.else19
 
 elif.else24:                                      ; preds = %elif.else19
   %s25 = load ptr, ptr %s, align 8
-  %call26 = call i32 @strcmp(ptr %s25, ptr @.str.66)
+  %call26 = call i32 @strcmp(ptr %s25, ptr @.str.105)
   %eq27 = icmp eq i32 %call26, 0
   br i1 %eq27, label %elif.then28, label %elif.else29
 
@@ -5119,7 +6486,7 @@ elif.then28:                                      ; preds = %elif.else24
 
 elif.else29:                                      ; preds = %elif.else24
   %s30 = load ptr, ptr %s, align 8
-  %call31 = call i32 @strcmp(ptr %s30, ptr @.str.67)
+  %call31 = call i32 @strcmp(ptr %s30, ptr @.str.106)
   %eq32 = icmp eq i32 %call31, 0
   br i1 %eq32, label %elif.then33, label %elif.else34
 
@@ -5128,7 +6495,7 @@ elif.then33:                                      ; preds = %elif.else29
 
 elif.else34:                                      ; preds = %elif.else29
   %s35 = load ptr, ptr %s, align 8
-  %call36 = call i32 @strcmp(ptr %s35, ptr @.str.68)
+  %call36 = call i32 @strcmp(ptr %s35, ptr @.str.107)
   %eq37 = icmp eq i32 %call36, 0
   br i1 %eq37, label %elif.then38, label %elif.else39
 
@@ -5137,7 +6504,7 @@ elif.then38:                                      ; preds = %elif.else34
 
 elif.else39:                                      ; preds = %elif.else34
   %s40 = load ptr, ptr %s, align 8
-  %call41 = call i32 @strcmp(ptr %s40, ptr @.str.69)
+  %call41 = call i32 @strcmp(ptr %s40, ptr @.str.108)
   %eq42 = icmp eq i32 %call41, 0
   br i1 %eq42, label %elif.then43, label %elif.else44
 
@@ -5146,7 +6513,7 @@ elif.then43:                                      ; preds = %elif.else39
 
 elif.else44:                                      ; preds = %elif.else39
   %s45 = load ptr, ptr %s, align 8
-  %call46 = call i32 @strcmp(ptr %s45, ptr @.str.70)
+  %call46 = call i32 @strcmp(ptr %s45, ptr @.str.109)
   %eq47 = icmp eq i32 %call46, 0
   br i1 %eq47, label %elif.then48, label %elif.else49
 
@@ -5155,7 +6522,7 @@ elif.then48:                                      ; preds = %elif.else44
 
 elif.else49:                                      ; preds = %elif.else44
   %s50 = load ptr, ptr %s, align 8
-  %call51 = call i32 @strcmp(ptr %s50, ptr @.str.71)
+  %call51 = call i32 @strcmp(ptr %s50, ptr @.str.110)
   %eq52 = icmp eq i32 %call51, 0
   br i1 %eq52, label %elif.then53, label %elif.else54
 
@@ -5164,7 +6531,7 @@ elif.then53:                                      ; preds = %elif.else49
 
 elif.else54:                                      ; preds = %elif.else49
   %s55 = load ptr, ptr %s, align 8
-  %call56 = call i32 @strcmp(ptr %s55, ptr @.str.72)
+  %call56 = call i32 @strcmp(ptr %s55, ptr @.str.111)
   %eq57 = icmp eq i32 %call56, 0
   br i1 %eq57, label %elif.then58, label %elif.else59
 
@@ -5173,7 +6540,7 @@ elif.then58:                                      ; preds = %elif.else54
 
 elif.else59:                                      ; preds = %elif.else54
   %s60 = load ptr, ptr %s, align 8
-  %call61 = call i32 @strcmp(ptr %s60, ptr @.str.73)
+  %call61 = call i32 @strcmp(ptr %s60, ptr @.str.112)
   %eq62 = icmp eq i32 %call61, 0
   br i1 %eq62, label %elif.then63, label %elif.else64
 
@@ -5182,7 +6549,7 @@ elif.then63:                                      ; preds = %elif.else59
 
 elif.else64:                                      ; preds = %elif.else59
   %s65 = load ptr, ptr %s, align 8
-  %call66 = call i32 @strcmp(ptr %s65, ptr @.str.74)
+  %call66 = call i32 @strcmp(ptr %s65, ptr @.str.113)
   %eq67 = icmp eq i32 %call66, 0
   br i1 %eq67, label %elif.then68, label %elif.else69
 
@@ -5325,7 +6692,7 @@ if.else35:                                        ; preds = %sc.end29
 if.end36:                                         ; preds = %if.else40
   %fld42 = getelementptr inbounds nuw %Token, ptr %t, i32 0, i32 1
   %fldval43 = load ptr, ptr %fld42, align 8
-  %call44 = call i32 @strcmp(ptr %fldval43, ptr @.str.75)
+  %call44 = call i32 @strcmp(ptr %fldval43, ptr @.str.114)
   %eq45 = icmp eq i32 %call44, 0
   br i1 %eq45, label %if.then46, label %if.else47
 
@@ -5347,7 +6714,7 @@ if.then46:                                        ; preds = %if.end36
 if.else47:                                        ; preds = %if.end36
   %fld49 = getelementptr inbounds nuw %Token, ptr %t, i32 0, i32 1
   %fldval50 = load ptr, ptr %fld49, align 8
-  %call51 = call i32 @strcmp(ptr %fldval50, ptr @.str.76)
+  %call51 = call i32 @strcmp(ptr %fldval50, ptr @.str.115)
   %eq52 = icmp eq i32 %call51, 0
   br i1 %eq52, label %elif.then, label %elif.else
 
@@ -5360,7 +6727,7 @@ elif.then:                                        ; preds = %if.else47
 elif.else:                                        ; preds = %if.else47
   %fld54 = getelementptr inbounds nuw %Token, ptr %t, i32 0, i32 1
   %fldval55 = load ptr, ptr %fld54, align 8
-  %call56 = call i32 @strcmp(ptr %fldval55, ptr @.str.77)
+  %call56 = call i32 @strcmp(ptr %fldval55, ptr @.str.116)
   %eq57 = icmp eq i32 %call56, 0
   br i1 %eq57, label %elif.then58, label %elif.else59
 
@@ -5390,7 +6757,7 @@ entry:
   %tok = alloca %Token, align 8
   store %Token %1, ptr %tok, align 8
   %tok1 = load %Token, ptr %tok, align 8
-  %call = call i1 @is_op(%Token %tok1, ptr @.str.75)
+  %call = call i1 @is_op(%Token %tok1, ptr @.str.114)
   %not = icmp eq i1 %call, false
   br i1 %not, label %if.then, label %if.else
 
@@ -5533,7 +6900,7 @@ entry:
   %objptr = load ptr, ptr %pr, align 8
   %fld = getelementptr inbounds nuw %Parser, ptr %objptr, i32 0, i32 1
   %fldval = load %Token, ptr %fld, align 8
-  %call = call i1 @is_op(%Token %fldval, ptr @.str.75)
+  %call = call i1 @is_op(%Token %fldval, ptr @.str.114)
   %not = icmp eq i1 %call, false
   br i1 %not, label %if.then, label %if.else
 
@@ -5589,15 +6956,15 @@ entry:
   br i1 %ne, label %sc.end, label %sc.rhs
 
 if.end:                                           ; preds = %if.else, %if.then
-  %objptr23 = load ptr, ptr %pr, align 8
-  %fld24 = getelementptr inbounds nuw %Parser, ptr %objptr23, i32 0, i32 1
-  %fld25 = getelementptr inbounds nuw %Token, ptr %fld24, i32 0, i32 1
-  %fldval26 = load ptr, ptr %fld25, align 8
-  %padd = getelementptr i8, ptr %fldval26, i64 1
-  %deref27 = load i8, ptr %padd, align 1
-  %sext = sext i8 %deref27 to i32
+  %objptr15 = load ptr, ptr %pr, align 8
+  %fld16 = getelementptr inbounds nuw %Parser, ptr %objptr15, i32 0, i32 1
+  %fld17 = getelementptr inbounds nuw %Token, ptr %fld16, i32 0, i32 1
+  %fldval18 = load ptr, ptr %fld17, align 8
+  %padd = getelementptr i8, ptr %fldval18, i64 1
+  %deref19 = load i8, ptr %padd, align 1
+  %sext = sext i8 %deref19 to i32
   %eq = icmp eq i32 %sext, 0
-  br i1 %eq, label %if.then28, label %if.else29
+  br i1 %eq, label %if.then20, label %if.else21
 
 sc.rhs:                                           ; preds = %entry
   %objptr2 = load ptr, ptr %pr, align 8
@@ -5616,55 +6983,47 @@ if.then:                                          ; preds = %sc.end
   %objptr7 = load ptr, ptr %pr, align 8
   %fld8 = getelementptr inbounds nuw %Parser, ptr %objptr7, i32 0, i32 1
   %fld9 = getelementptr inbounds nuw %Token, ptr %fld8, i32 0, i32 3
-  %fld10 = getelementptr inbounds nuw %Location, ptr %fld9, i32 0, i32 0
-  %fldval11 = load i32, ptr %fld10, align 4
-  %objptr12 = load ptr, ptr %pr, align 8
-  %fld13 = getelementptr inbounds nuw %Parser, ptr %objptr12, i32 0, i32 1
-  %fld14 = getelementptr inbounds nuw %Token, ptr %fld13, i32 0, i32 3
-  %fld15 = getelementptr inbounds nuw %Location, ptr %fld14, i32 0, i32 1
-  %fldval16 = load i32, ptr %fld15, align 4
-  %objptr17 = load ptr, ptr %pr, align 8
-  %fld18 = getelementptr inbounds nuw %Parser, ptr %objptr17, i32 0, i32 1
-  %fld19 = getelementptr inbounds nuw %Token, ptr %fld18, i32 0, i32 0
-  %fldval20 = load i32, ptr %fld19, align 4
-  %call = call ptr @token_str(i32 %fldval20)
-  %call21 = call i32 (ptr, ...) @printf(ptr @.str.78, i32 %fldval11, i32 %fldval16, ptr %call)
-  call void @exit(i32 1)
+  %fldval10 = load %Location, ptr %fld9, align 8
+  %objptr11 = load ptr, ptr %pr, align 8
+  %fld12 = getelementptr inbounds nuw %Parser, ptr %objptr11, i32 0, i32 1
+  %fldval13 = load %Token, ptr %fld12, align 8
+  %call = call ptr @tok_desc(%Token %fldval13)
+  call void @diag_fatal(%Location %fldval10, ptr @.str.117, ptr %call, ptr @.str.72)
   br label %if.end
 
 if.else:                                          ; preds = %sc.end
   br label %if.end
 
-if.end22:                                         ; preds = %if.else29
+if.end14:                                         ; preds = %if.else21
+  %objptr23 = load ptr, ptr %pr, align 8
+  %fld24 = getelementptr inbounds nuw %Parser, ptr %objptr23, i32 0, i32 1
+  %fld25 = getelementptr inbounds nuw %Token, ptr %fld24, i32 0, i32 1
+  %objptr26 = load ptr, ptr %pr, align 8
+  %fld27 = getelementptr inbounds nuw %Parser, ptr %objptr26, i32 0, i32 1
+  %fld28 = getelementptr inbounds nuw %Token, ptr %fld27, i32 0, i32 1
+  %fldval29 = load ptr, ptr %fld28, align 8
+  %padd30 = getelementptr i8, ptr %fldval29, i64 1
+  store ptr %padd30, ptr %fld25, align 8
   %objptr31 = load ptr, ptr %pr, align 8
   %fld32 = getelementptr inbounds nuw %Parser, ptr %objptr31, i32 0, i32 1
-  %fld33 = getelementptr inbounds nuw %Token, ptr %fld32, i32 0, i32 1
-  %objptr34 = load ptr, ptr %pr, align 8
-  %fld35 = getelementptr inbounds nuw %Parser, ptr %objptr34, i32 0, i32 1
-  %fld36 = getelementptr inbounds nuw %Token, ptr %fld35, i32 0, i32 1
-  %fldval37 = load ptr, ptr %fld36, align 8
-  %padd38 = getelementptr i8, ptr %fldval37, i64 1
-  store ptr %padd38, ptr %fld33, align 8
-  %objptr39 = load ptr, ptr %pr, align 8
-  %fld40 = getelementptr inbounds nuw %Parser, ptr %objptr39, i32 0, i32 1
-  %fld41 = getelementptr inbounds nuw %Token, ptr %fld40, i32 0, i32 3
-  %fld42 = getelementptr inbounds nuw %Location, ptr %fld41, i32 0, i32 1
-  %objptr43 = load ptr, ptr %pr, align 8
-  %fld44 = getelementptr inbounds nuw %Parser, ptr %objptr43, i32 0, i32 1
-  %fld45 = getelementptr inbounds nuw %Token, ptr %fld44, i32 0, i32 3
-  %fld46 = getelementptr inbounds nuw %Location, ptr %fld45, i32 0, i32 1
-  %fldval47 = load i32, ptr %fld46, align 4
-  %add = add i32 %fldval47, 1
-  store i32 %add, ptr %fld42, align 4
+  %fld33 = getelementptr inbounds nuw %Token, ptr %fld32, i32 0, i32 3
+  %fld34 = getelementptr inbounds nuw %Location, ptr %fld33, i32 0, i32 1
+  %objptr35 = load ptr, ptr %pr, align 8
+  %fld36 = getelementptr inbounds nuw %Parser, ptr %objptr35, i32 0, i32 1
+  %fld37 = getelementptr inbounds nuw %Token, ptr %fld36, i32 0, i32 3
+  %fld38 = getelementptr inbounds nuw %Location, ptr %fld37, i32 0, i32 1
+  %fldval39 = load i32, ptr %fld38, align 4
+  %add = add i32 %fldval39, 1
+  store i32 %add, ptr %fld34, align 4
   ret void
 
-if.then28:                                        ; preds = %if.end
-  %pr30 = load ptr, ptr %pr, align 8
-  call void @parser_next(ptr %pr30)
+if.then20:                                        ; preds = %if.end
+  %pr22 = load ptr, ptr %pr, align 8
+  call void @parser_next(ptr %pr22)
   ret void
 
-if.else29:                                        ; preds = %if.end
-  br label %if.end22
+if.else21:                                        ; preds = %if.end
+  br label %if.end14
 }
 
 define ptr @parse_type(ptr %0) {
@@ -5902,8 +7261,8 @@ if.else100:                                       ; preds = %if.end
   br label %if.end97
 
 if.end124:                                        ; preds = %if.else137, %if.end138
-  %type157 = load ptr, ptr %type, align 8
-  ret ptr %type157
+  %type152 = load ptr, ptr %type, align 8
+  ret ptr %type152
 
 sc.rhs:                                           ; preds = %if.end97
   %objptr127 = load ptr, ptr %pr, align 8
@@ -5934,25 +7293,20 @@ if.else137:                                       ; preds = %sc.end132
   br label %if.end124
 
 if.end138:                                        ; preds = %if.else142, %if.then141
-  %objptr152 = load ptr, ptr %type, align 8
-  %fld153 = getelementptr inbounds nuw %ASTNode, ptr %objptr152, i32 0, i32 2
-  %fld154 = getelementptr inbounds nuw %N_Type, ptr %fld153, i32 0, i32 3
-  %pr155 = load ptr, ptr %pr, align 8
-  %call156 = call ptr @parse_type_args(ptr %pr155)
-  store ptr %call156, ptr %fld154, align 8
+  %objptr147 = load ptr, ptr %type, align 8
+  %fld148 = getelementptr inbounds nuw %ASTNode, ptr %objptr147, i32 0, i32 2
+  %fld149 = getelementptr inbounds nuw %N_Type, ptr %fld148, i32 0, i32 3
+  %pr150 = load ptr, ptr %pr, align 8
+  %call151 = call ptr @parse_type_args(ptr %pr150)
+  store ptr %call151, ptr %fld149, align 8
   br label %if.end124
 
 if.then141:                                       ; preds = %if.then136
   %fld143 = getelementptr inbounds nuw %Token, ptr %ident, i32 0, i32 3
-  %fld144 = getelementptr inbounds nuw %Location, ptr %fld143, i32 0, i32 0
-  %fldval145 = load i32, ptr %fld144, align 4
-  %fld146 = getelementptr inbounds nuw %Token, ptr %ident, i32 0, i32 3
-  %fld147 = getelementptr inbounds nuw %Location, ptr %fld146, i32 0, i32 1
-  %fldval148 = load i32, ptr %fld147, align 4
-  %fld149 = getelementptr inbounds nuw %Token, ptr %ident, i32 0, i32 1
-  %fldval150 = load ptr, ptr %fld149, align 8
-  %call151 = call i32 (ptr, ...) @printf(ptr @.str.79, i32 %fldval145, i32 %fldval148, ptr %fldval150)
-  call void @exit(i32 1)
+  %fldval144 = load %Location, ptr %fld143, align 8
+  %fld145 = getelementptr inbounds nuw %Token, ptr %ident, i32 0, i32 1
+  %fldval146 = load ptr, ptr %fld145, align 8
+  call void @diag_fatal(%Location %fldval144, ptr @.str.118, ptr %fldval146, ptr @.str.72)
   br label %if.end138
 
 if.else142:                                       ; preds = %if.then136
@@ -5969,7 +7323,7 @@ entry:
   %objptr = load ptr, ptr %pr, align 8
   %fld = getelementptr inbounds nuw %Parser, ptr %objptr, i32 0, i32 1
   %fldval = load %Token, ptr %fld, align 8
-  %call = call i1 @is_op(%Token %fldval, ptr @.str.75)
+  %call = call i1 @is_op(%Token %fldval, ptr @.str.114)
   %not = icmp eq i1 %call, false
   br i1 %not, label %if.then, label %if.else
 
@@ -6290,24 +7644,19 @@ if.else:                                          ; preds = %entry
   br label %if.end
 
 if.end6:                                          ; preds = %if.else9, %if.then8
-  %objptr17 = load ptr, ptr %type, align 8
-  %fld18 = getelementptr inbounds nuw %ASTNode, ptr %objptr17, i32 0, i32 2
-  %fld19 = getelementptr inbounds nuw %N_Type, ptr %fld18, i32 0, i32 4
-  %len20 = load i64, ptr %len, align 8
-  store i64 %len20, ptr %fld19, align 8
-  %pr21 = load ptr, ptr %pr, align 8
-  call void @expect(ptr %pr21, i32 40)
+  %objptr12 = load ptr, ptr %type, align 8
+  %fld13 = getelementptr inbounds nuw %ASTNode, ptr %objptr12, i32 0, i32 2
+  %fld14 = getelementptr inbounds nuw %N_Type, ptr %fld13, i32 0, i32 4
+  %len15 = load i64, ptr %len, align 8
+  store i64 %len15, ptr %fld14, align 8
+  %pr16 = load ptr, ptr %pr, align 8
+  call void @expect(ptr %pr16, i32 40)
   ret void
 
 if.then8:                                         ; preds = %if.end
   %fld10 = getelementptr inbounds nuw %Token, ptr %n, i32 0, i32 3
-  %fld11 = getelementptr inbounds nuw %Location, ptr %fld10, i32 0, i32 0
-  %fldval12 = load i32, ptr %fld11, align 4
-  %fld13 = getelementptr inbounds nuw %Token, ptr %n, i32 0, i32 3
-  %fld14 = getelementptr inbounds nuw %Location, ptr %fld13, i32 0, i32 1
-  %fldval15 = load i32, ptr %fld14, align 4
-  %call16 = call i32 (ptr, ...) @printf(ptr @.str.80, i32 %fldval12, i32 %fldval15)
-  call void @exit(i32 1)
+  %fldval11 = load %Location, ptr %fld10, align 8
+  call void @diag_fatal(%Location %fldval11, ptr @.str.119, ptr @.str.72, ptr @.str.72)
   br label %if.end6
 
 if.else9:                                         ; preds = %if.end
@@ -6936,7 +8285,7 @@ if.then13:                                        ; preds = %if.end
   %fldval18 = load ptr, ptr %fld17, align 8
   store ptr %fldval18, ptr %op, align 8
   %op20 = load ptr, ptr %op, align 8
-  %call = call i32 @strcmp(ptr %op20, ptr @.str.81)
+  %call = call i32 @strcmp(ptr %op20, ptr @.str.120)
   %eq21 = icmp eq i32 %call, 0
   br i1 %eq21, label %sc.end23, label %sc.rhs22
 
@@ -6948,7 +8297,7 @@ if.end19:                                         ; preds = %if.else35
 
 sc.rhs22:                                         ; preds = %if.then13
   %op24 = load ptr, ptr %op, align 8
-  %call25 = call i32 @strcmp(ptr %op24, ptr @.str.82)
+  %call25 = call i32 @strcmp(ptr %op24, ptr @.str.121)
   %eq26 = icmp eq i32 %call25, 0
   br label %sc.end23
 
@@ -6958,7 +8307,7 @@ sc.end23:                                         ; preds = %sc.rhs22, %if.then1
 
 sc.rhs28:                                         ; preds = %sc.end23
   %op30 = load ptr, ptr %op, align 8
-  %call31 = call i32 @strcmp(ptr %op30, ptr @.str.83)
+  %call31 = call i32 @strcmp(ptr %op30, ptr @.str.122)
   %eq32 = icmp eq i32 %call31, 0
   br label %sc.end29
 
@@ -7047,7 +8396,7 @@ if.end23:                                         ; preds = %if.else29
   %fldval33 = load ptr, ptr %fld32, align 8
   store ptr %fldval33, ptr %op, align 8
   %op35 = load ptr, ptr %op, align 8
-  %call = call i32 @strcmp(ptr %op35, ptr @.str.84)
+  %call = call i32 @strcmp(ptr %op35, ptr @.str.123)
   %eq36 = icmp eq i32 %call, 0
   br i1 %eq36, label %sc.end38, label %sc.rhs37
 
@@ -7059,13 +8408,13 @@ if.else29:                                        ; preds = %if.end15
 
 if.end34:                                         ; preds = %if.else50
   %op52 = load ptr, ptr %op, align 8
-  %call53 = call i32 @strcmp(ptr %op52, ptr @.str.87)
+  %call53 = call i32 @strcmp(ptr %op52, ptr @.str.126)
   %eq54 = icmp eq i32 %call53, 0
   br i1 %eq54, label %sc.end56, label %sc.rhs55
 
 sc.rhs37:                                         ; preds = %if.end23
   %op39 = load ptr, ptr %op, align 8
-  %call40 = call i32 @strcmp(ptr %op39, ptr @.str.85)
+  %call40 = call i32 @strcmp(ptr %op39, ptr @.str.124)
   %eq41 = icmp eq i32 %call40, 0
   br label %sc.end38
 
@@ -7075,7 +8424,7 @@ sc.end38:                                         ; preds = %sc.rhs37, %if.end23
 
 sc.rhs43:                                         ; preds = %sc.end38
   %op45 = load ptr, ptr %op, align 8
-  %call46 = call i32 @strcmp(ptr %op45, ptr @.str.86)
+  %call46 = call i32 @strcmp(ptr %op45, ptr @.str.125)
   %eq47 = icmp eq i32 %call46, 0
   br label %sc.end44
 
@@ -7091,13 +8440,13 @@ if.else50:                                        ; preds = %sc.end44
 
 if.end51:                                         ; preds = %if.else62
   %op64 = load ptr, ptr %op, align 8
-  %call65 = call i32 @strcmp(ptr %op64, ptr @.str.88)
+  %call65 = call i32 @strcmp(ptr %op64, ptr @.str.127)
   %eq66 = icmp eq i32 %call65, 0
   br i1 %eq66, label %sc.end68, label %sc.rhs67
 
 sc.rhs55:                                         ; preds = %if.end34
   %op57 = load ptr, ptr %op, align 8
-  %call58 = call i32 @strcmp(ptr %op57, ptr @.str.81)
+  %call58 = call i32 @strcmp(ptr %op57, ptr @.str.120)
   %eq59 = icmp eq i32 %call58, 0
   br label %sc.end56
 
@@ -7113,13 +8462,13 @@ if.else62:                                        ; preds = %sc.end56
 
 if.end63:                                         ; preds = %if.else74
   %op76 = load ptr, ptr %op, align 8
-  %call77 = call i32 @strcmp(ptr %op76, ptr @.str.75)
+  %call77 = call i32 @strcmp(ptr %op76, ptr @.str.114)
   %eq78 = icmp eq i32 %call77, 0
   br i1 %eq78, label %sc.end80, label %sc.rhs79
 
 sc.rhs67:                                         ; preds = %if.end51
   %op69 = load ptr, ptr %op, align 8
-  %call70 = call i32 @strcmp(ptr %op69, ptr @.str.77)
+  %call70 = call i32 @strcmp(ptr %op69, ptr @.str.116)
   %eq71 = icmp eq i32 %call70, 0
   br label %sc.end68
 
@@ -7135,13 +8484,13 @@ if.else74:                                        ; preds = %sc.end68
 
 if.end75:                                         ; preds = %if.else86
   %op88 = load ptr, ptr %op, align 8
-  %call89 = call i32 @strcmp(ptr %op88, ptr @.str.76)
+  %call89 = call i32 @strcmp(ptr %op88, ptr @.str.115)
   %eq90 = icmp eq i32 %call89, 0
   br i1 %eq90, label %sc.end92, label %sc.rhs91
 
 sc.rhs79:                                         ; preds = %if.end63
   %op81 = load ptr, ptr %op, align 8
-  %call82 = call i32 @strcmp(ptr %op81, ptr @.str.89)
+  %call82 = call i32 @strcmp(ptr %op81, ptr @.str.128)
   %eq83 = icmp eq i32 %call82, 0
   br label %sc.end80
 
@@ -7157,13 +8506,13 @@ if.else86:                                        ; preds = %sc.end80
 
 if.end87:                                         ; preds = %if.else98
   %op100 = load ptr, ptr %op, align 8
-  %call101 = call i32 @strcmp(ptr %op100, ptr @.str.91)
+  %call101 = call i32 @strcmp(ptr %op100, ptr @.str.130)
   %eq102 = icmp eq i32 %call101, 0
   br i1 %eq102, label %sc.end104, label %sc.rhs103
 
 sc.rhs91:                                         ; preds = %if.end75
   %op93 = load ptr, ptr %op, align 8
-  %call94 = call i32 @strcmp(ptr %op93, ptr @.str.90)
+  %call94 = call i32 @strcmp(ptr %op93, ptr @.str.129)
   %eq95 = icmp eq i32 %call94, 0
   br label %sc.end92
 
@@ -7179,13 +8528,13 @@ if.else98:                                        ; preds = %sc.end92
 
 if.end99:                                         ; preds = %if.else110
   %op112 = load ptr, ptr %op, align 8
-  %call113 = call i32 @strcmp(ptr %op112, ptr @.str.93)
+  %call113 = call i32 @strcmp(ptr %op112, ptr @.str.132)
   %eq114 = icmp eq i32 %call113, 0
   br i1 %eq114, label %if.then115, label %if.else116
 
 sc.rhs103:                                        ; preds = %if.end87
   %op105 = load ptr, ptr %op, align 8
-  %call106 = call i32 @strcmp(ptr %op105, ptr @.str.92)
+  %call106 = call i32 @strcmp(ptr %op105, ptr @.str.131)
   %eq107 = icmp eq i32 %call106, 0
   br label %sc.end104
 
@@ -7201,7 +8550,7 @@ if.else110:                                       ; preds = %sc.end104
 
 if.end111:                                        ; preds = %if.else116
   %op118 = load ptr, ptr %op, align 8
-  %call119 = call i32 @strcmp(ptr %op118, ptr @.str.94)
+  %call119 = call i32 @strcmp(ptr %op118, ptr @.str.133)
   %eq120 = icmp eq i32 %call119, 0
   br i1 %eq120, label %if.then121, label %if.else122
 
@@ -7213,7 +8562,7 @@ if.else116:                                       ; preds = %if.end99
 
 if.end117:                                        ; preds = %if.else122
   %op124 = load ptr, ptr %op, align 8
-  %call125 = call i32 @strcmp(ptr %op124, ptr @.str.95)
+  %call125 = call i32 @strcmp(ptr %op124, ptr @.str.134)
   %eq126 = icmp eq i32 %call125, 0
   br i1 %eq126, label %if.then127, label %if.else128
 
@@ -7225,7 +8574,7 @@ if.else122:                                       ; preds = %if.end111
 
 if.end123:                                        ; preds = %if.else128
   %op130 = load ptr, ptr %op, align 8
-  %call131 = call i32 @strcmp(ptr %op130, ptr @.str.96)
+  %call131 = call i32 @strcmp(ptr %op130, ptr @.str.135)
   %eq132 = icmp eq i32 %call131, 0
   br i1 %eq132, label %if.then133, label %if.else134
 
@@ -7237,7 +8586,7 @@ if.else128:                                       ; preds = %if.end117
 
 if.end129:                                        ; preds = %if.else134
   %op136 = load ptr, ptr %op, align 8
-  %call137 = call i32 @strcmp(ptr %op136, ptr @.str.97)
+  %call137 = call i32 @strcmp(ptr %op136, ptr @.str.136)
   %eq138 = icmp eq i32 %call137, 0
   br i1 %eq138, label %if.then139, label %if.else140
 
@@ -7770,8 +9119,9 @@ elif.then65:                                      ; preds = %elif.else59
 
 elif.else66:                                      ; preds = %elif.else59
   %k70 = load i32, ptr %k, align 4
-  %call71 = call i32 (ptr, ...) @printf(ptr @.str.98, i32 %k70)
-  call void @exit(i32 1)
+  %sext = sext i32 %k70 to i64
+  %call71 = call ptr @itoa(i64 %sext)
+  call void @diag_internal(ptr @.str.137, ptr %call71)
   br label %if.end
 }
 
@@ -7872,7 +9222,7 @@ elif.then:                                        ; preds = %if.else22
 elif.else:                                        ; preds = %if.else22
   %fld32 = getelementptr inbounds nuw %Token, ptr %op_tok, i32 0, i32 1
   %fldval33 = load ptr, ptr %fld32, align 8
-  %call34 = call i32 @strcmp(ptr %fldval33, ptr @.str.82)
+  %call34 = call i32 @strcmp(ptr %fldval33, ptr @.str.121)
   %eq35 = icmp eq i32 %call34, 0
   br i1 %eq35, label %elif.then36, label %elif.else37
 
@@ -7886,7 +9236,7 @@ elif.then36:                                      ; preds = %elif.else
 elif.else37:                                      ; preds = %elif.else
   %fld41 = getelementptr inbounds nuw %Token, ptr %op_tok, i32 0, i32 1
   %fldval42 = load ptr, ptr %fld41, align 8
-  %call43 = call i32 @strcmp(ptr %fldval42, ptr @.str.83)
+  %call43 = call i32 @strcmp(ptr %fldval42, ptr @.str.122)
   %eq44 = icmp eq i32 %call43, 0
   br i1 %eq44, label %elif.then45, label %elif.else46
 
@@ -9105,7 +10455,7 @@ if.end1:                                          ; preds = %if.else6
   %fldval8 = load ptr, ptr %fld7, align 8
   store ptr %fldval8, ptr %op, align 8
   %op10 = load ptr, ptr %op, align 8
-  %call = call i32 @strcmp(ptr %op10, ptr @.str.87)
+  %call = call i32 @strcmp(ptr %op10, ptr @.str.126)
   %eq11 = icmp eq i32 %call, 0
   br i1 %eq11, label %if.then12, label %if.else13
 
@@ -9117,7 +10467,7 @@ if.else6:                                         ; preds = %if.end
 
 if.end9:                                          ; preds = %if.else13
   %op15 = load ptr, ptr %op, align 8
-  %call16 = call i32 @strcmp(ptr %op15, ptr @.str.81)
+  %call16 = call i32 @strcmp(ptr %op15, ptr @.str.120)
   %eq17 = icmp eq i32 %call16, 0
   br i1 %eq17, label %if.then18, label %if.else19
 
@@ -9129,7 +10479,7 @@ if.else13:                                        ; preds = %if.end1
 
 if.end14:                                         ; preds = %if.else19
   %op21 = load ptr, ptr %op, align 8
-  %call22 = call i32 @strcmp(ptr %op21, ptr @.str.84)
+  %call22 = call i32 @strcmp(ptr %op21, ptr @.str.123)
   %eq23 = icmp eq i32 %call22, 0
   br i1 %eq23, label %if.then24, label %if.else25
 
@@ -9141,7 +10491,7 @@ if.else19:                                        ; preds = %if.end9
 
 if.end20:                                         ; preds = %if.else25
   %op27 = load ptr, ptr %op, align 8
-  %call28 = call i32 @strcmp(ptr %op27, ptr @.str.85)
+  %call28 = call i32 @strcmp(ptr %op27, ptr @.str.124)
   %eq29 = icmp eq i32 %call28, 0
   br i1 %eq29, label %if.then30, label %if.else31
 
@@ -9153,7 +10503,7 @@ if.else25:                                        ; preds = %if.end14
 
 if.end26:                                         ; preds = %if.else31
   %op33 = load ptr, ptr %op, align 8
-  %call34 = call i32 @strcmp(ptr %op33, ptr @.str.86)
+  %call34 = call i32 @strcmp(ptr %op33, ptr @.str.125)
   %eq35 = icmp eq i32 %call34, 0
   br i1 %eq35, label %if.then36, label %if.else37
 
@@ -9165,7 +10515,7 @@ if.else31:                                        ; preds = %if.end20
 
 if.end32:                                         ; preds = %if.else37
   %op39 = load ptr, ptr %op, align 8
-  %call40 = call i32 @strcmp(ptr %op39, ptr @.str.91)
+  %call40 = call i32 @strcmp(ptr %op39, ptr @.str.130)
   %eq41 = icmp eq i32 %call40, 0
   br i1 %eq41, label %if.then42, label %if.else43
 
@@ -9177,7 +10527,7 @@ if.else37:                                        ; preds = %if.end26
 
 if.end38:                                         ; preds = %if.else43
   %op45 = load ptr, ptr %op, align 8
-  %call46 = call i32 @strcmp(ptr %op45, ptr @.str.92)
+  %call46 = call i32 @strcmp(ptr %op45, ptr @.str.131)
   %eq47 = icmp eq i32 %call46, 0
   br i1 %eq47, label %if.then48, label %if.else49
 
@@ -9189,7 +10539,7 @@ if.else43:                                        ; preds = %if.end32
 
 if.end44:                                         ; preds = %if.else49
   %op51 = load ptr, ptr %op, align 8
-  %call52 = call i32 @strcmp(ptr %op51, ptr @.str.75)
+  %call52 = call i32 @strcmp(ptr %op51, ptr @.str.114)
   %eq53 = icmp eq i32 %call52, 0
   br i1 %eq53, label %if.then54, label %if.else55
 
@@ -9201,7 +10551,7 @@ if.else49:                                        ; preds = %if.end38
 
 if.end50:                                         ; preds = %if.else55
   %op57 = load ptr, ptr %op, align 8
-  %call58 = call i32 @strcmp(ptr %op57, ptr @.str.89)
+  %call58 = call i32 @strcmp(ptr %op57, ptr @.str.128)
   %eq59 = icmp eq i32 %call58, 0
   br i1 %eq59, label %if.then60, label %if.else61
 
@@ -9213,7 +10563,7 @@ if.else55:                                        ; preds = %if.end44
 
 if.end56:                                         ; preds = %if.else61
   %op63 = load ptr, ptr %op, align 8
-  %call64 = call i32 @strcmp(ptr %op63, ptr @.str.76)
+  %call64 = call i32 @strcmp(ptr %op63, ptr @.str.115)
   %eq65 = icmp eq i32 %call64, 0
   br i1 %eq65, label %if.then66, label %if.else67
 
@@ -9225,7 +10575,7 @@ if.else61:                                        ; preds = %if.end50
 
 if.end62:                                         ; preds = %if.else67
   %op69 = load ptr, ptr %op, align 8
-  %call70 = call i32 @strcmp(ptr %op69, ptr @.str.90)
+  %call70 = call i32 @strcmp(ptr %op69, ptr @.str.129)
   %eq71 = icmp eq i32 %call70, 0
   br i1 %eq71, label %if.then72, label %if.else73
 
@@ -9237,7 +10587,7 @@ if.else67:                                        ; preds = %if.end56
 
 if.end68:                                         ; preds = %if.else73
   %op75 = load ptr, ptr %op, align 8
-  %call76 = call i32 @strcmp(ptr %op75, ptr @.str.95)
+  %call76 = call i32 @strcmp(ptr %op75, ptr @.str.134)
   %eq77 = icmp eq i32 %call76, 0
   br i1 %eq77, label %if.then78, label %if.else79
 
@@ -9249,7 +10599,7 @@ if.else73:                                        ; preds = %if.end62
 
 if.end74:                                         ; preds = %if.else79
   %op81 = load ptr, ptr %op, align 8
-  %call82 = call i32 @strcmp(ptr %op81, ptr @.str.96)
+  %call82 = call i32 @strcmp(ptr %op81, ptr @.str.135)
   %eq83 = icmp eq i32 %call82, 0
   br i1 %eq83, label %if.then84, label %if.else85
 
@@ -9261,7 +10611,7 @@ if.else79:                                        ; preds = %if.end68
 
 if.end80:                                         ; preds = %if.else85
   %op87 = load ptr, ptr %op, align 8
-  %call88 = call i32 @strcmp(ptr %op87, ptr @.str.93)
+  %call88 = call i32 @strcmp(ptr %op87, ptr @.str.132)
   %eq89 = icmp eq i32 %call88, 0
   br i1 %eq89, label %if.then90, label %if.else91
 
@@ -9273,7 +10623,7 @@ if.else85:                                        ; preds = %if.end74
 
 if.end86:                                         ; preds = %if.else91
   %op93 = load ptr, ptr %op, align 8
-  %call94 = call i32 @strcmp(ptr %op93, ptr @.str.94)
+  %call94 = call i32 @strcmp(ptr %op93, ptr @.str.133)
   %eq95 = icmp eq i32 %call94, 0
   br i1 %eq95, label %if.then96, label %if.else97
 
@@ -9285,7 +10635,7 @@ if.else91:                                        ; preds = %if.end80
 
 if.end92:                                         ; preds = %if.else97
   %op99 = load ptr, ptr %op, align 8
-  %call100 = call i32 @strcmp(ptr %op99, ptr @.str.88)
+  %call100 = call i32 @strcmp(ptr %op99, ptr @.str.127)
   %eq101 = icmp eq i32 %call100, 0
   br i1 %eq101, label %if.then102, label %if.else103
 
@@ -9297,7 +10647,7 @@ if.else97:                                        ; preds = %if.end86
 
 if.end98:                                         ; preds = %if.else103
   %op105 = load ptr, ptr %op, align 8
-  %call106 = call i32 @strcmp(ptr %op105, ptr @.str.77)
+  %call106 = call i32 @strcmp(ptr %op105, ptr @.str.116)
   %eq107 = icmp eq i32 %call106, 0
   br i1 %eq107, label %if.then108, label %if.else109
 
@@ -9309,7 +10659,7 @@ if.else103:                                       ; preds = %if.end92
 
 if.end104:                                        ; preds = %if.else109
   %op111 = load ptr, ptr %op, align 8
-  %call112 = call i32 @strcmp(ptr %op111, ptr @.str.97)
+  %call112 = call i32 @strcmp(ptr %op111, ptr @.str.136)
   %eq113 = icmp eq i32 %call112, 0
   br i1 %eq113, label %if.then114, label %if.else115
 
@@ -9751,7 +11101,7 @@ if.then:                                          ; preds = %entry
   %fld31 = getelementptr inbounds nuw %Parser, ptr %objptr30, i32 0, i32 1
   %fld32 = getelementptr inbounds nuw %Token, ptr %fld31, i32 0, i32 1
   %fldval33 = load ptr, ptr %fld32, align 8
-  %call34 = call i32 @strcmp(ptr %fldval33, ptr @.str.97)
+  %call34 = call i32 @strcmp(ptr %fldval33, ptr @.str.136)
   %eq35 = icmp eq i32 %call34, 0
   br i1 %eq35, label %if.then36, label %if.else37
 
@@ -10306,6 +11656,7 @@ entry:
   %decl = alloca ptr, align 8
   %m = alloca ptr, align 8
   %sec = alloca %Token, align 8
+  %at60 = alloca %Location, align 8
   %tail = alloca ptr, align 8
   %private = alloca i1, align 1
   %recv = alloca ptr, align 8
@@ -10354,16 +11705,16 @@ entry:
   br i1 %eq, label %sc.end, label %sc.rhs
 
 if.end:                                           ; preds = %if.else, %if.then
-  %objptr43 = load ptr, ptr %ifc, align 8
-  %fld44 = getelementptr inbounds nuw %ASTNode, ptr %objptr43, i32 0, i32 2
-  %fld45 = getelementptr inbounds nuw %N_Iface, ptr %fld44, i32 0, i32 2
-  %recv46 = load ptr, ptr %recv, align 8
-  store ptr %recv46, ptr %fld45, align 8
+  %objptr38 = load ptr, ptr %ifc, align 8
+  %fld39 = getelementptr inbounds nuw %ASTNode, ptr %objptr38, i32 0, i32 2
+  %fld40 = getelementptr inbounds nuw %N_Iface, ptr %fld39, i32 0, i32 2
+  %recv41 = load ptr, ptr %recv, align 8
+  store ptr %recv41, ptr %fld40, align 8
   store i1 false, ptr %private, align 1
-  %objptr47 = load ptr, ptr %ifc, align 8
-  %fld48 = getelementptr inbounds nuw %ASTNode, ptr %objptr47, i32 0, i32 2
-  %fld49 = getelementptr inbounds nuw %N_Iface, ptr %fld48, i32 0, i32 3
-  store ptr %fld49, ptr %tail, align 8
+  %objptr42 = load ptr, ptr %ifc, align 8
+  %fld43 = getelementptr inbounds nuw %ASTNode, ptr %objptr42, i32 0, i32 2
+  %fld44 = getelementptr inbounds nuw %N_Iface, ptr %fld43, i32 0, i32 3
+  store ptr %fld44, ptr %tail, align 8
   br label %loop.body
 
 sc.rhs:                                           ; preds = %entry
@@ -10391,281 +11742,269 @@ sc.end30:                                         ; preds = %sc.rhs29, %sc.end
 
 if.then:                                          ; preds = %sc.end30
   %fld36 = getelementptr inbounds nuw %Token, ptr %at, i32 0, i32 3
-  %fld37 = getelementptr inbounds nuw %Location, ptr %fld36, i32 0, i32 0
-  %fldval38 = load i32, ptr %fld37, align 4
-  %fld39 = getelementptr inbounds nuw %Token, ptr %at, i32 0, i32 3
-  %fld40 = getelementptr inbounds nuw %Location, ptr %fld39, i32 0, i32 1
-  %fldval41 = load i32, ptr %fld40, align 4
-  %call42 = call i32 (ptr, ...) @printf(ptr @.str.99, i32 %fldval38, i32 %fldval41)
-  call void @exit(i32 1)
+  %fldval37 = load %Location, ptr %fld36, align 8
+  call void @diag_fatal(%Location %fldval37, ptr @.str.138, ptr @.str.72, ptr @.str.72)
   br label %if.end
 
 if.else:                                          ; preds = %sc.end30
   br label %if.end
 
 loop.body:                                        ; preds = %loop.cont, %if.end
-  br label %loop.body50
+  br label %loop.body45
 
-loop.cont:                                        ; preds = %if.end164, %if.end98
+loop.cont:                                        ; preds = %if.end154, %if.end93
   br label %loop.body
 
-loop.end:                                         ; preds = %if.then84
-  %ifc216 = load ptr, ptr %ifc, align 8
-  ret ptr %ifc216
+loop.end:                                         ; preds = %if.then79
+  %ifc200 = load ptr, ptr %ifc, align 8
+  ret ptr %ifc200
 
-loop.body50:                                      ; preds = %loop.cont51, %loop.body
-  %objptr53 = load ptr, ptr %pr, align 8
-  %fld54 = getelementptr inbounds nuw %Parser, ptr %objptr53, i32 0, i32 1
-  %fld55 = getelementptr inbounds nuw %Token, ptr %fld54, i32 0, i32 0
-  %fldval56 = load i32, ptr %fld55, align 4
-  %eq57 = icmp eq i32 %fldval56, 1
-  br i1 %eq57, label %while.body, label %loop.end52
+loop.body45:                                      ; preds = %loop.cont46, %loop.body
+  %objptr48 = load ptr, ptr %pr, align 8
+  %fld49 = getelementptr inbounds nuw %Parser, ptr %objptr48, i32 0, i32 1
+  %fld50 = getelementptr inbounds nuw %Token, ptr %fld49, i32 0, i32 0
+  %fldval51 = load i32, ptr %fld50, align 4
+  %eq52 = icmp eq i32 %fldval51, 1
+  br i1 %eq52, label %while.body, label %loop.end47
 
-loop.cont51:                                      ; preds = %if.end58
-  br label %loop.body50
+loop.cont46:                                      ; preds = %if.end53
+  br label %loop.body45
 
-loop.end52:                                       ; preds = %loop.body50
-  %pr82 = load ptr, ptr %pr, align 8
-  %call83 = call i1 @match(ptr %pr82, i32 14)
-  br i1 %call83, label %if.then84, label %if.else85
+loop.end47:                                       ; preds = %loop.body45
+  %pr77 = load ptr, ptr %pr, align 8
+  %call78 = call i1 @match(ptr %pr77, i32 14)
+  br i1 %call78, label %if.then79, label %if.else80
 
-while.body:                                       ; preds = %loop.body50
-  %objptr59 = load ptr, ptr %pr, align 8
-  %fld60 = getelementptr inbounds nuw %Parser, ptr %objptr59, i32 0, i32 1
-  %fld61 = getelementptr inbounds nuw %Token, ptr %fld60, i32 0, i32 2
-  %fldval62 = load i32, ptr %fld61, align 4
-  %gt = icmp sgt i32 %fldval62, 1
-  br i1 %gt, label %if.then63, label %if.else64
+while.body:                                       ; preds = %loop.body45
+  %objptr54 = load ptr, ptr %pr, align 8
+  %fld55 = getelementptr inbounds nuw %Parser, ptr %objptr54, i32 0, i32 1
+  %fld56 = getelementptr inbounds nuw %Token, ptr %fld55, i32 0, i32 2
+  %fldval57 = load i32, ptr %fld56, align 4
+  %gt = icmp sgt i32 %fldval57, 1
+  br i1 %gt, label %if.then58, label %if.else59
 
-if.end58:                                         ; preds = %if.else64, %if.then63
-  %pr80 = load ptr, ptr %pr, align 8
-  call void @parser_next(ptr %pr80)
-  br label %loop.cont51
+if.end53:                                         ; preds = %if.else59, %if.then58
+  %pr75 = load ptr, ptr %pr, align 8
+  call void @parser_next(ptr %pr75)
+  br label %loop.cont46
 
-if.then63:                                        ; preds = %while.body
-  %objptr65 = load ptr, ptr %pr, align 8
-  %fld66 = getelementptr inbounds nuw %Parser, ptr %objptr65, i32 0, i32 1
-  %fld67 = getelementptr inbounds nuw %Token, ptr %fld66, i32 0, i32 3
-  %fld68 = getelementptr inbounds nuw %Location, ptr %fld67, i32 0, i32 0
-  %fldval69 = load i32, ptr %fld68, align 4
+if.then58:                                        ; preds = %while.body
+  %objptr61 = load ptr, ptr %pr, align 8
+  %fld62 = getelementptr inbounds nuw %Parser, ptr %objptr61, i32 0, i32 1
+  %fld63 = getelementptr inbounds nuw %Token, ptr %fld62, i32 0, i32 3
+  %fldval64 = load %Location, ptr %fld63, align 8
+  store %Location %fldval64, ptr %at60, align 8
+  %fld65 = getelementptr inbounds nuw %Location, ptr %at60, i32 0, i32 0
+  %fld66 = getelementptr inbounds nuw %Location, ptr %at60, i32 0, i32 0
+  %fldval67 = load i32, ptr %fld66, align 4
+  %add = add i32 %fldval67, 1
+  store i32 %add, ptr %fld65, align 4
+  %fld68 = getelementptr inbounds nuw %Location, ptr %at60, i32 0, i32 1
+  store i32 1, ptr %fld68, align 4
+  %at69 = load %Location, ptr %at60, align 8
   %objptr70 = load ptr, ptr %pr, align 8
   %fld71 = getelementptr inbounds nuw %Parser, ptr %objptr70, i32 0, i32 1
-  %fld72 = getelementptr inbounds nuw %Token, ptr %fld71, i32 0, i32 3
-  %fld73 = getelementptr inbounds nuw %Location, ptr %fld72, i32 0, i32 1
-  %fldval74 = load i32, ptr %fld73, align 4
-  %objptr75 = load ptr, ptr %pr, align 8
-  %fld76 = getelementptr inbounds nuw %Parser, ptr %objptr75, i32 0, i32 1
-  %fld77 = getelementptr inbounds nuw %Token, ptr %fld76, i32 0, i32 2
-  %fldval78 = load i32, ptr %fld77, align 4
-  %call79 = call i32 (ptr, ...) @printf(ptr @.str.100, i32 %fldval69, i32 %fldval74, i32 %fldval78)
-  call void @exit(i32 1)
-  br label %if.end58
+  %fld72 = getelementptr inbounds nuw %Token, ptr %fld71, i32 0, i32 2
+  %fldval73 = load i32, ptr %fld72, align 4
+  %sext = sext i32 %fldval73 to i64
+  %call74 = call ptr @itoa(i64 %sext)
+  call void @diag_fatal(%Location %at69, ptr @.str.139, ptr %call74, ptr @.str.72)
+  br label %if.end53
 
-if.else64:                                        ; preds = %while.body
-  br label %if.end58
+if.else59:                                        ; preds = %while.body
+  br label %if.end53
 
-if.end81:                                         ; preds = %if.else85
-  %objptr87 = load ptr, ptr %pr, align 8
-  %fld88 = getelementptr inbounds nuw %Parser, ptr %objptr87, i32 0, i32 1
-  %fldval89 = load %Token, ptr %fld88, align 8
-  %call90 = call i1 @is_op(%Token %fldval89, ptr @.str.87)
-  br i1 %call90, label %if.then91, label %if.else92
+if.end76:                                         ; preds = %if.else80
+  %objptr82 = load ptr, ptr %pr, align 8
+  %fld83 = getelementptr inbounds nuw %Parser, ptr %objptr82, i32 0, i32 1
+  %fldval84 = load %Token, ptr %fld83, align 8
+  %call85 = call i1 @is_op(%Token %fldval84, ptr @.str.126)
+  br i1 %call85, label %if.then86, label %if.else87
 
-if.then84:                                        ; preds = %loop.end52
+if.then79:                                        ; preds = %loop.end47
   br label %loop.end
 
-if.else85:                                        ; preds = %loop.end52
+if.else80:                                        ; preds = %loop.end47
+  br label %if.end76
+
+if.end81:                                         ; preds = %if.else87
+  %objptr109 = load ptr, ptr %pr, align 8
+  %fld110 = getelementptr inbounds nuw %Parser, ptr %objptr109, i32 0, i32 2
+  %fldval111 = load ptr, ptr %fld110, align 8
+  %call112 = call ptr @ast_node_new(ptr %fldval111)
+  store ptr %call112, ptr %m, align 8
+  %objptr113 = load ptr, ptr %m, align 8
+  %fld114 = getelementptr inbounds nuw %ASTNode, ptr %objptr113, i32 0, i32 0
+  store i32 33, ptr %fld114, align 4
+  %m115 = load ptr, ptr %m, align 8
+  %objptr116 = load ptr, ptr %pr, align 8
+  %fld117 = getelementptr inbounds nuw %Parser, ptr %objptr116, i32 0, i32 1
+  %fldval118 = load %Token, ptr %fld117, align 8
+  call void @set_loc(ptr %m115, %Token %fldval118)
+  %objptr119 = load ptr, ptr %m, align 8
+  %fld120 = getelementptr inbounds nuw %ASTNode, ptr %objptr119, i32 0, i32 2
+  %fld121 = getelementptr inbounds nuw %N_Method, ptr %fld120, i32 0, i32 0
+  %private122 = load i1, ptr %private, align 1
+  store i1 %private122, ptr %fld121, align 1
+  %pr123 = load ptr, ptr %pr, align 8
+  %call124 = call ptr @parse_fn_decl(ptr %pr123)
+  store ptr %call124, ptr %decl, align 8
+  %objptr125 = load ptr, ptr %pr, align 8
+  %fld126 = getelementptr inbounds nuw %Parser, ptr %objptr125, i32 0, i32 1
+  %fld127 = getelementptr inbounds nuw %Token, ptr %fld126, i32 0, i32 0
+  %fldval128 = load i32, ptr %fld127, align 4
+  %eq129 = icmp eq i32 %fldval128, 14
+  br i1 %eq129, label %sc.rhs130, label %sc.end131
+
+if.then86:                                        ; preds = %if.end76
+  %pr88 = load ptr, ptr %pr, align 8
+  call void @parser_next(ptr %pr88)
+  %objptr89 = load ptr, ptr %pr, align 8
+  %fld90 = getelementptr inbounds nuw %Parser, ptr %objptr89, i32 0, i32 1
+  %fldval91 = load %Token, ptr %fld90, align 8
+  store %Token %fldval91, ptr %sec, align 8
+  %pr92 = load ptr, ptr %pr, align 8
+  call void @expect(ptr %pr92, i32 15)
+  %fld94 = getelementptr inbounds nuw %Token, ptr %sec, i32 0, i32 1
+  %fldval95 = load ptr, ptr %fld94, align 8
+  %call96 = call i32 @strcmp(ptr %fldval95, ptr @.str.140)
+  %eq97 = icmp eq i32 %call96, 0
+  br i1 %eq97, label %if.then98, label %if.else99
+
+if.else87:                                        ; preds = %if.end76
   br label %if.end81
 
-if.end86:                                         ; preds = %if.else92
-  %objptr119 = load ptr, ptr %pr, align 8
-  %fld120 = getelementptr inbounds nuw %Parser, ptr %objptr119, i32 0, i32 2
-  %fldval121 = load ptr, ptr %fld120, align 8
-  %call122 = call ptr @ast_node_new(ptr %fldval121)
-  store ptr %call122, ptr %m, align 8
-  %objptr123 = load ptr, ptr %m, align 8
-  %fld124 = getelementptr inbounds nuw %ASTNode, ptr %objptr123, i32 0, i32 0
-  store i32 33, ptr %fld124, align 4
-  %m125 = load ptr, ptr %m, align 8
-  %objptr126 = load ptr, ptr %pr, align 8
-  %fld127 = getelementptr inbounds nuw %Parser, ptr %objptr126, i32 0, i32 1
-  %fldval128 = load %Token, ptr %fld127, align 8
-  call void @set_loc(ptr %m125, %Token %fldval128)
-  %objptr129 = load ptr, ptr %m, align 8
-  %fld130 = getelementptr inbounds nuw %ASTNode, ptr %objptr129, i32 0, i32 2
-  %fld131 = getelementptr inbounds nuw %N_Method, ptr %fld130, i32 0, i32 0
-  %private132 = load i1, ptr %private, align 1
-  store i1 %private132, ptr %fld131, align 1
-  %pr133 = load ptr, ptr %pr, align 8
-  %call134 = call ptr @parse_fn_decl(ptr %pr133)
-  store ptr %call134, ptr %decl, align 8
-  %objptr135 = load ptr, ptr %pr, align 8
-  %fld136 = getelementptr inbounds nuw %Parser, ptr %objptr135, i32 0, i32 1
-  %fld137 = getelementptr inbounds nuw %Token, ptr %fld136, i32 0, i32 0
-  %fldval138 = load i32, ptr %fld137, align 4
-  %eq139 = icmp eq i32 %fldval138, 14
-  br i1 %eq139, label %sc.rhs140, label %sc.end141
-
-if.then91:                                        ; preds = %if.end81
-  %pr93 = load ptr, ptr %pr, align 8
-  call void @parser_next(ptr %pr93)
-  %objptr94 = load ptr, ptr %pr, align 8
-  %fld95 = getelementptr inbounds nuw %Parser, ptr %objptr94, i32 0, i32 1
-  %fldval96 = load %Token, ptr %fld95, align 8
-  store %Token %fldval96, ptr %sec, align 8
-  %pr97 = load ptr, ptr %pr, align 8
-  call void @expect(ptr %pr97, i32 15)
-  %fld99 = getelementptr inbounds nuw %Token, ptr %sec, i32 0, i32 1
-  %fldval100 = load ptr, ptr %fld99, align 8
-  %call101 = call i32 @strcmp(ptr %fldval100, ptr @.str.101)
-  %eq102 = icmp eq i32 %call101, 0
-  br i1 %eq102, label %if.then103, label %if.else104
-
-if.else92:                                        ; preds = %if.end81
-  br label %if.end86
-
-if.end98:                                         ; preds = %elif.else, %elif.then, %if.then103
-  %pr118 = load ptr, ptr %pr, align 8
-  call void @expect(ptr %pr118, i32 2)
+if.end93:                                         ; preds = %elif.else, %elif.then, %if.then98
+  %pr108 = load ptr, ptr %pr, align 8
+  call void @expect(ptr %pr108, i32 2)
   br label %loop.cont
 
-if.then103:                                       ; preds = %if.then91
+if.then98:                                        ; preds = %if.then86
   store i1 false, ptr %private, align 1
-  br label %if.end98
+  br label %if.end93
 
-if.else104:                                       ; preds = %if.then91
-  %fld105 = getelementptr inbounds nuw %Token, ptr %sec, i32 0, i32 1
-  %fldval106 = load ptr, ptr %fld105, align 8
-  %call107 = call i32 @strcmp(ptr %fldval106, ptr @.str.102)
-  %eq108 = icmp eq i32 %call107, 0
-  br i1 %eq108, label %elif.then, label %elif.else
+if.else99:                                        ; preds = %if.then86
+  %fld100 = getelementptr inbounds nuw %Token, ptr %sec, i32 0, i32 1
+  %fldval101 = load ptr, ptr %fld100, align 8
+  %call102 = call i32 @strcmp(ptr %fldval101, ptr @.str.141)
+  %eq103 = icmp eq i32 %call102, 0
+  br i1 %eq103, label %elif.then, label %elif.else
 
-elif.then:                                        ; preds = %if.else104
+elif.then:                                        ; preds = %if.else99
   store i1 true, ptr %private, align 1
-  br label %if.end98
+  br label %if.end93
 
-elif.else:                                        ; preds = %if.else104
-  %fld109 = getelementptr inbounds nuw %Token, ptr %sec, i32 0, i32 3
-  %fld110 = getelementptr inbounds nuw %Location, ptr %fld109, i32 0, i32 0
-  %fldval111 = load i32, ptr %fld110, align 4
-  %fld112 = getelementptr inbounds nuw %Token, ptr %sec, i32 0, i32 3
-  %fld113 = getelementptr inbounds nuw %Location, ptr %fld112, i32 0, i32 1
-  %fldval114 = load i32, ptr %fld113, align 4
-  %fld115 = getelementptr inbounds nuw %Token, ptr %sec, i32 0, i32 1
-  %fldval116 = load ptr, ptr %fld115, align 8
-  %call117 = call i32 (ptr, ...) @printf(ptr @.str.103, i32 %fldval111, i32 %fldval114, ptr %fldval116)
-  call void @exit(i32 1)
-  br label %if.end98
+elif.else:                                        ; preds = %if.else99
+  %fld104 = getelementptr inbounds nuw %Token, ptr %sec, i32 0, i32 3
+  %fldval105 = load %Location, ptr %fld104, align 8
+  %fld106 = getelementptr inbounds nuw %Token, ptr %sec, i32 0, i32 1
+  %fldval107 = load ptr, ptr %fld106, align 8
+  call void @diag_fatal(%Location %fldval105, ptr @.str.142, ptr %fldval107, ptr @.str.72)
+  br label %if.end93
 
-sc.rhs140:                                        ; preds = %if.end86
-  %objptr142 = load ptr, ptr %pr, align 8
-  %fld143 = getelementptr inbounds nuw %Parser, ptr %objptr142, i32 0, i32 1
-  %fld144 = getelementptr inbounds nuw %Token, ptr %fld143, i32 0, i32 2
-  %fldval145 = load i32, ptr %fld144, align 4
-  %eq146 = icmp eq i32 %fldval145, 1
-  br label %sc.end141
+sc.rhs130:                                        ; preds = %if.end81
+  %objptr132 = load ptr, ptr %pr, align 8
+  %fld133 = getelementptr inbounds nuw %Parser, ptr %objptr132, i32 0, i32 1
+  %fld134 = getelementptr inbounds nuw %Token, ptr %fld133, i32 0, i32 2
+  %fldval135 = load i32, ptr %fld134, align 4
+  %eq136 = icmp eq i32 %fldval135, 1
+  br label %sc.end131
 
-sc.end141:                                        ; preds = %sc.rhs140, %if.end86
-  %sc147 = phi i1 [ false, %if.end86 ], [ %eq146, %sc.rhs140 ]
-  store i1 %sc147, ptr %has_block, align 1
-  %objptr149 = load ptr, ptr %pr, align 8
-  %fld150 = getelementptr inbounds nuw %Parser, ptr %objptr149, i32 0, i32 1
-  %fld151 = getelementptr inbounds nuw %Token, ptr %fld150, i32 0, i32 0
-  %fldval152 = load i32, ptr %fld151, align 4
-  %eq153 = icmp eq i32 %fldval152, 1
-  br i1 %eq153, label %sc.rhs154, label %sc.end155
+sc.end131:                                        ; preds = %sc.rhs130, %if.end81
+  %sc137 = phi i1 [ false, %if.end81 ], [ %eq136, %sc.rhs130 ]
+  store i1 %sc137, ptr %has_block, align 1
+  %objptr139 = load ptr, ptr %pr, align 8
+  %fld140 = getelementptr inbounds nuw %Parser, ptr %objptr139, i32 0, i32 1
+  %fld141 = getelementptr inbounds nuw %Token, ptr %fld140, i32 0, i32 0
+  %fldval142 = load i32, ptr %fld141, align 4
+  %eq143 = icmp eq i32 %fldval142, 1
+  br i1 %eq143, label %sc.rhs144, label %sc.end145
 
-if.end148:                                        ; preds = %if.else163, %if.then162
-  %has_block165 = load i1, ptr %has_block, align 1
-  %not = icmp eq i1 %has_block165, false
-  br i1 %not, label %if.then166, label %if.else167
+if.end138:                                        ; preds = %if.else153, %if.then152
+  %has_block155 = load i1, ptr %has_block, align 1
+  %not = icmp eq i1 %has_block155, false
+  br i1 %not, label %if.then156, label %if.else157
 
-sc.rhs154:                                        ; preds = %sc.end141
-  %objptr156 = load ptr, ptr %pr, align 8
-  %fld157 = getelementptr inbounds nuw %Parser, ptr %objptr156, i32 0, i32 1
-  %fld158 = getelementptr inbounds nuw %Token, ptr %fld157, i32 0, i32 2
-  %fldval159 = load i32, ptr %fld158, align 4
-  %eq160 = icmp eq i32 %fldval159, 2
-  br label %sc.end155
+sc.rhs144:                                        ; preds = %sc.end131
+  %objptr146 = load ptr, ptr %pr, align 8
+  %fld147 = getelementptr inbounds nuw %Parser, ptr %objptr146, i32 0, i32 1
+  %fld148 = getelementptr inbounds nuw %Token, ptr %fld147, i32 0, i32 2
+  %fldval149 = load i32, ptr %fld148, align 4
+  %eq150 = icmp eq i32 %fldval149, 2
+  br label %sc.end145
 
-sc.end155:                                        ; preds = %sc.rhs154, %sc.end141
-  %sc161 = phi i1 [ false, %sc.end141 ], [ %eq160, %sc.rhs154 ]
-  br i1 %sc161, label %if.then162, label %if.else163
+sc.end145:                                        ; preds = %sc.rhs144, %sc.end131
+  %sc151 = phi i1 [ false, %sc.end131 ], [ %eq150, %sc.rhs144 ]
+  br i1 %sc151, label %if.then152, label %if.else153
 
-if.then162:                                       ; preds = %sc.end155
+if.then152:                                       ; preds = %sc.end145
   store i1 true, ptr %has_block, align 1
-  br label %if.end148
+  br label %if.end138
 
-if.else163:                                       ; preds = %sc.end155
-  br label %if.end148
+if.else153:                                       ; preds = %sc.end145
+  br label %if.end138
 
-if.end164:                                        ; preds = %if.else167, %if.then166
-  %objptr183 = load ptr, ptr %pr, align 8
-  %fld184 = getelementptr inbounds nuw %Parser, ptr %objptr183, i32 0, i32 2
-  %fldval185 = load ptr, ptr %fld184, align 8
-  %call186 = call ptr @ast_node_new(ptr %fldval185)
-  store ptr %call186, ptr %def, align 8
-  %objptr187 = load ptr, ptr %def, align 8
-  %fld188 = getelementptr inbounds nuw %ASTNode, ptr %objptr187, i32 0, i32 0
-  store i32 3, ptr %fld188, align 4
-  %objptr189 = load ptr, ptr %def, align 8
-  %fld190 = getelementptr inbounds nuw %ASTNode, ptr %objptr189, i32 0, i32 1
-  %objptr191 = load ptr, ptr %decl, align 8
-  %fld192 = getelementptr inbounds nuw %ASTNode, ptr %objptr191, i32 0, i32 1
-  %fldval193 = load %Location, ptr %fld192, align 4
-  store %Location %fldval193, ptr %fld190, align 4
-  %objptr194 = load ptr, ptr %def, align 8
-  %fld195 = getelementptr inbounds nuw %ASTNode, ptr %objptr194, i32 0, i32 2
-  %fld196 = getelementptr inbounds nuw %N_FnDef, ptr %fld195, i32 0, i32 0
-  %decl197 = load ptr, ptr %decl, align 8
-  store ptr %decl197, ptr %fld196, align 8
-  %objptr198 = load ptr, ptr %pr, align 8
-  %fld199 = getelementptr inbounds nuw %Parser, ptr %objptr198, i32 0, i32 3
-  store i32 2, ptr %fld199, align 4
-  %objptr200 = load ptr, ptr %def, align 8
-  %fld201 = getelementptr inbounds nuw %ASTNode, ptr %objptr200, i32 0, i32 2
-  %fld202 = getelementptr inbounds nuw %N_FnDef, ptr %fld201, i32 0, i32 1
-  %pr203 = load ptr, ptr %pr, align 8
-  %call204 = call ptr @parse_block(ptr %pr203)
-  store ptr %call204, ptr %fld202, align 8
-  %objptr205 = load ptr, ptr %pr, align 8
-  %fld206 = getelementptr inbounds nuw %Parser, ptr %objptr205, i32 0, i32 3
-  store i32 1, ptr %fld206, align 4
-  %objptr207 = load ptr, ptr %m, align 8
-  %fld208 = getelementptr inbounds nuw %ASTNode, ptr %objptr207, i32 0, i32 2
-  %fld209 = getelementptr inbounds nuw %N_Method, ptr %fld208, i32 0, i32 1
-  %def210 = load ptr, ptr %def, align 8
-  store ptr %def210, ptr %fld209, align 8
-  %tail211 = load ptr, ptr %tail, align 8
-  %m212 = load ptr, ptr %m, align 8
-  store ptr %m212, ptr %tail211, align 8
-  %objptr213 = load ptr, ptr %m, align 8
-  %fld214 = getelementptr inbounds nuw %ASTNode, ptr %objptr213, i32 0, i32 2
-  %fld215 = getelementptr inbounds nuw %N_Method, ptr %fld214, i32 0, i32 2
-  store ptr %fld215, ptr %tail, align 8
+if.end154:                                        ; preds = %if.else157, %if.then156
+  %objptr167 = load ptr, ptr %pr, align 8
+  %fld168 = getelementptr inbounds nuw %Parser, ptr %objptr167, i32 0, i32 2
+  %fldval169 = load ptr, ptr %fld168, align 8
+  %call170 = call ptr @ast_node_new(ptr %fldval169)
+  store ptr %call170, ptr %def, align 8
+  %objptr171 = load ptr, ptr %def, align 8
+  %fld172 = getelementptr inbounds nuw %ASTNode, ptr %objptr171, i32 0, i32 0
+  store i32 3, ptr %fld172, align 4
+  %objptr173 = load ptr, ptr %def, align 8
+  %fld174 = getelementptr inbounds nuw %ASTNode, ptr %objptr173, i32 0, i32 1
+  %objptr175 = load ptr, ptr %decl, align 8
+  %fld176 = getelementptr inbounds nuw %ASTNode, ptr %objptr175, i32 0, i32 1
+  %fldval177 = load %Location, ptr %fld176, align 8
+  store %Location %fldval177, ptr %fld174, align 8
+  %objptr178 = load ptr, ptr %def, align 8
+  %fld179 = getelementptr inbounds nuw %ASTNode, ptr %objptr178, i32 0, i32 2
+  %fld180 = getelementptr inbounds nuw %N_FnDef, ptr %fld179, i32 0, i32 0
+  %decl181 = load ptr, ptr %decl, align 8
+  store ptr %decl181, ptr %fld180, align 8
+  %objptr182 = load ptr, ptr %pr, align 8
+  %fld183 = getelementptr inbounds nuw %Parser, ptr %objptr182, i32 0, i32 3
+  store i32 2, ptr %fld183, align 4
+  %objptr184 = load ptr, ptr %def, align 8
+  %fld185 = getelementptr inbounds nuw %ASTNode, ptr %objptr184, i32 0, i32 2
+  %fld186 = getelementptr inbounds nuw %N_FnDef, ptr %fld185, i32 0, i32 1
+  %pr187 = load ptr, ptr %pr, align 8
+  %call188 = call ptr @parse_block(ptr %pr187)
+  store ptr %call188, ptr %fld186, align 8
+  %objptr189 = load ptr, ptr %pr, align 8
+  %fld190 = getelementptr inbounds nuw %Parser, ptr %objptr189, i32 0, i32 3
+  store i32 1, ptr %fld190, align 4
+  %objptr191 = load ptr, ptr %m, align 8
+  %fld192 = getelementptr inbounds nuw %ASTNode, ptr %objptr191, i32 0, i32 2
+  %fld193 = getelementptr inbounds nuw %N_Method, ptr %fld192, i32 0, i32 1
+  %def194 = load ptr, ptr %def, align 8
+  store ptr %def194, ptr %fld193, align 8
+  %tail195 = load ptr, ptr %tail, align 8
+  %m196 = load ptr, ptr %m, align 8
+  store ptr %m196, ptr %tail195, align 8
+  %objptr197 = load ptr, ptr %m, align 8
+  %fld198 = getelementptr inbounds nuw %ASTNode, ptr %objptr197, i32 0, i32 2
+  %fld199 = getelementptr inbounds nuw %N_Method, ptr %fld198, i32 0, i32 2
+  store ptr %fld199, ptr %tail, align 8
   br label %loop.cont
 
-if.then166:                                       ; preds = %if.end148
-  %objptr168 = load ptr, ptr %decl, align 8
-  %fld169 = getelementptr inbounds nuw %ASTNode, ptr %objptr168, i32 0, i32 1
-  %fld170 = getelementptr inbounds nuw %Location, ptr %fld169, i32 0, i32 0
-  %fldval171 = load i32, ptr %fld170, align 4
-  %objptr172 = load ptr, ptr %decl, align 8
-  %fld173 = getelementptr inbounds nuw %ASTNode, ptr %objptr172, i32 0, i32 1
-  %fld174 = getelementptr inbounds nuw %Location, ptr %fld173, i32 0, i32 1
-  %fldval175 = load i32, ptr %fld174, align 4
-  %objptr176 = load ptr, ptr %decl, align 8
-  %fld177 = getelementptr inbounds nuw %ASTNode, ptr %objptr176, i32 0, i32 2
-  %fld178 = getelementptr inbounds nuw %N_FnDecl, ptr %fld177, i32 0, i32 0
-  %objptr179 = load ptr, ptr %fld178, align 8
-  %fld180 = getelementptr inbounds nuw %ASTNode, ptr %objptr179, i32 0, i32 2
-  %fldval181 = load ptr, ptr %fld180, align 8
-  %call182 = call i32 (ptr, ...) @printf(ptr @.str.104, i32 %fldval171, i32 %fldval175, ptr %fldval181)
-  call void @exit(i32 1)
-  br label %if.end164
+if.then156:                                       ; preds = %if.end138
+  %objptr158 = load ptr, ptr %decl, align 8
+  %fld159 = getelementptr inbounds nuw %ASTNode, ptr %objptr158, i32 0, i32 1
+  %fldval160 = load %Location, ptr %fld159, align 8
+  %objptr161 = load ptr, ptr %decl, align 8
+  %fld162 = getelementptr inbounds nuw %ASTNode, ptr %objptr161, i32 0, i32 2
+  %fld163 = getelementptr inbounds nuw %N_FnDecl, ptr %fld162, i32 0, i32 0
+  %objptr164 = load ptr, ptr %fld163, align 8
+  %fld165 = getelementptr inbounds nuw %ASTNode, ptr %objptr164, i32 0, i32 2
+  %fldval166 = load ptr, ptr %fld165, align 8
+  call void @diag_fatal(%Location %fldval160, ptr @.str.143, ptr %fldval166, ptr @.str.72)
+  br label %if.end154
 
-if.else167:                                       ; preds = %if.end148
-  br label %if.end164
+if.else157:                                       ; preds = %if.end138
+  br label %if.end154
 }
 
 define ptr @parse_class(ptr %0) {
@@ -11043,8 +12382,8 @@ if.then133:                                       ; preds = %if.end110
   %fld142 = getelementptr inbounds nuw %ASTNode, ptr %objptr141, i32 0, i32 1
   %objptr143 = load ptr, ptr %decl, align 8
   %fld144 = getelementptr inbounds nuw %ASTNode, ptr %objptr143, i32 0, i32 1
-  %fldval145 = load %Location, ptr %fld144, align 4
-  store %Location %fldval145, ptr %fld142, align 4
+  %fldval145 = load %Location, ptr %fld144, align 8
+  store %Location %fldval145, ptr %fld142, align 8
   %objptr146 = load ptr, ptr %def, align 8
   %fld147 = getelementptr inbounds nuw %ASTNode, ptr %objptr146, i32 0, i32 2
   %fld148 = getelementptr inbounds nuw %N_FnDef, ptr %fld147, i32 0, i32 0
@@ -11080,7 +12419,7 @@ if.else134:                                       ; preds = %if.end110
   br label %if.end131
 }
 
-define void @parse_unit(ptr %0, ptr %1) {
+define void @parse_file(ptr %0, ptr %1, ptr %2) {
 entry:
   %ts = alloca ptr, align 8
   %line_indent = alloca i32, align 4
@@ -11090,6 +12429,8 @@ entry:
   store ptr %0, ptr %ast, align 8
   %source = alloca ptr, align 8
   store ptr %1, ptr %source, align 8
+  %name = alloca ptr, align 8
+  store ptr %2, ptr %name, align 8
   %fld = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 2
   %ast1 = load ptr, ptr %ast, align 8
   store ptr %ast1, ptr %fld, align 8
@@ -11100,79 +12441,88 @@ entry:
   %fld4 = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 0
   %source5 = load ptr, ptr %source, align 8
   call void @lexer_init(ptr %fld4, ptr %source5)
+  %fld6 = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 0
+  %name7 = load ptr, ptr %name, align 8
+  call void @lexer_set_file(ptr %fld6, ptr %name7)
   %objptr = load ptr, ptr %ast, align 8
-  %fld6 = getelementptr inbounds nuw %AST, ptr %objptr, i32 0, i32 1
-  %objptr7 = load ptr, ptr %fld6, align 8
-  %fld8 = getelementptr inbounds nuw %ASTNode, ptr %objptr7, i32 0, i32 2
-  %fld9 = getelementptr inbounds nuw %N_TransUnit, ptr %fld8, i32 0, i32 1
-  store ptr %fld9, ptr %tu_tail, align 8
+  %fld8 = getelementptr inbounds nuw %AST, ptr %objptr, i32 0, i32 1
+  %objptr9 = load ptr, ptr %fld8, align 8
+  %fld10 = getelementptr inbounds nuw %ASTNode, ptr %objptr9, i32 0, i32 2
+  %fld11 = getelementptr inbounds nuw %N_TransUnit, ptr %fld10, i32 0, i32 1
+  store ptr %fld11, ptr %tu_tail, align 8
   call void @parser_next(ptr %parser)
   store i32 0, ptr %line_indent, align 4
   br label %loop.body
 
 loop.body:                                        ; preds = %loop.cont, %entry
-  %fld10 = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 1
-  %fld11 = getelementptr inbounds nuw %Token, ptr %fld10, i32 0, i32 0
-  %fldval = load i32, ptr %fld11, align 4
+  %fld12 = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 1
+  %fld13 = getelementptr inbounds nuw %Token, ptr %fld12, i32 0, i32 0
+  %fldval = load i32, ptr %fld13, align 4
   %ne = icmp ne i32 %fldval, 0
   br i1 %ne, label %while.body, label %loop.end
 
-loop.cont:                                        ; preds = %if.end18, %if.then
+loop.cont:                                        ; preds = %if.end20, %if.then
   br label %loop.body
 
 loop.end:                                         ; preds = %loop.body
   ret void
 
 while.body:                                       ; preds = %loop.body
-  %fld12 = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 1
-  %fld13 = getelementptr inbounds nuw %Token, ptr %fld12, i32 0, i32 0
-  %fldval14 = load i32, ptr %fld13, align 4
-  %eq = icmp eq i32 %fldval14, 1
+  %fld14 = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 1
+  %fld15 = getelementptr inbounds nuw %Token, ptr %fld14, i32 0, i32 0
+  %fldval16 = load i32, ptr %fld15, align 4
+  %eq = icmp eq i32 %fldval16, 1
   br i1 %eq, label %if.then, label %if.else
 
 if.end:                                           ; preds = %if.else
-  %line_indent19 = load i32, ptr %line_indent, align 4
-  %ne20 = icmp ne i32 %line_indent19, 0
-  br i1 %ne20, label %if.then21, label %if.else22
+  %line_indent21 = load i32, ptr %line_indent, align 4
+  %ne22 = icmp ne i32 %line_indent21, 0
+  br i1 %ne22, label %if.then23, label %if.else24
 
 if.then:                                          ; preds = %while.body
-  %fld15 = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 1
-  %fld16 = getelementptr inbounds nuw %Token, ptr %fld15, i32 0, i32 2
-  %fldval17 = load i32, ptr %fld16, align 4
-  store i32 %fldval17, ptr %line_indent, align 4
+  %fld17 = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 1
+  %fld18 = getelementptr inbounds nuw %Token, ptr %fld17, i32 0, i32 2
+  %fldval19 = load i32, ptr %fld18, align 4
+  store i32 %fldval19, ptr %line_indent, align 4
   call void @parser_next(ptr %parser)
   br label %loop.cont
 
 if.else:                                          ; preds = %while.body
   br label %if.end
 
-if.end18:                                         ; preds = %if.else22, %if.then21
-  %call31 = call ptr @parse_tu_stmt(ptr %parser)
-  store ptr %call31, ptr %ts, align 8
-  %tu_tail32 = load ptr, ptr %tu_tail, align 8
-  %ts33 = load ptr, ptr %ts, align 8
-  store ptr %ts33, ptr %tu_tail32, align 8
-  %objptr34 = load ptr, ptr %ts, align 8
-  %fld35 = getelementptr inbounds nuw %ASTNode, ptr %objptr34, i32 0, i32 2
-  %fld36 = getelementptr inbounds nuw %N_TUStmt, ptr %fld35, i32 0, i32 2
-  store ptr %fld36, ptr %tu_tail, align 8
+if.end20:                                         ; preds = %if.else24, %if.then23
+  %call = call ptr @parse_tu_stmt(ptr %parser)
+  store ptr %call, ptr %ts, align 8
+  %tu_tail28 = load ptr, ptr %tu_tail, align 8
+  %ts29 = load ptr, ptr %ts, align 8
+  store ptr %ts29, ptr %tu_tail28, align 8
+  %objptr30 = load ptr, ptr %ts, align 8
+  %fld31 = getelementptr inbounds nuw %ASTNode, ptr %objptr30, i32 0, i32 2
+  %fld32 = getelementptr inbounds nuw %N_TUStmt, ptr %fld31, i32 0, i32 2
+  store ptr %fld32, ptr %tu_tail, align 8
   br label %loop.cont
 
-if.then21:                                        ; preds = %if.end
-  %fld23 = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 1
-  %fld24 = getelementptr inbounds nuw %Token, ptr %fld23, i32 0, i32 3
-  %fld25 = getelementptr inbounds nuw %Location, ptr %fld24, i32 0, i32 0
-  %fldval26 = load i32, ptr %fld25, align 4
-  %fld27 = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 1
-  %fld28 = getelementptr inbounds nuw %Token, ptr %fld27, i32 0, i32 3
-  %fld29 = getelementptr inbounds nuw %Location, ptr %fld28, i32 0, i32 1
-  %fldval30 = load i32, ptr %fld29, align 4
-  %call = call i32 (ptr, ...) @printf(ptr @.str.105, i32 %fldval26, i32 %fldval30)
-  call void @exit(i32 1)
-  br label %if.end18
+if.then23:                                        ; preds = %if.end
+  %fld25 = getelementptr inbounds nuw %Parser, ptr %parser, i32 0, i32 1
+  %fld26 = getelementptr inbounds nuw %Token, ptr %fld25, i32 0, i32 3
+  %fldval27 = load %Location, ptr %fld26, align 8
+  call void @diag_fatal(%Location %fldval27, ptr @.str.144, ptr @.str.72, ptr @.str.72)
+  br label %if.end20
 
-if.else22:                                        ; preds = %if.end
-  br label %if.end18
+if.else24:                                        ; preds = %if.end
+  br label %if.end20
+}
+
+define void @parse_unit(ptr %0, ptr %1) {
+entry:
+  %ast = alloca ptr, align 8
+  store ptr %0, ptr %ast, align 8
+  %source = alloca ptr, align 8
+  store ptr %1, ptr %source, align 8
+  %ast1 = load ptr, ptr %ast, align 8
+  %source2 = load ptr, ptr %source, align 8
+  call void @parse_file(ptr %ast1, ptr %source2, ptr null)
+  ret void
 }
 
 define i32 @vec_init(ptr %0, i64 %1, i64 %2) {
@@ -12043,7 +13393,7 @@ if.else16:                                        ; preds = %if.then
 
 define void @gn_error(ptr %0, ptr %1, ptr %2, ptr %3) {
 entry:
-  %buf = alloca ptr, align 8
+  %none = alloca %Location, align 8
   %at = alloca ptr, align 8
   store ptr %0, ptr %at, align 8
   %fmt = alloca ptr, align 8
@@ -12052,37 +13402,32 @@ entry:
   store ptr %2, ptr %a, align 8
   %b = alloca ptr, align 8
   store ptr %3, ptr %b, align 8
-  %call = call ptr @malloc(i64 512)
-  store ptr %call, ptr %buf, align 8
-  %buf1 = load ptr, ptr %buf, align 8
-  %fmt2 = load ptr, ptr %fmt, align 8
-  %a3 = load ptr, ptr %a, align 8
-  %b4 = load ptr, ptr %b, align 8
-  %call5 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf1, i64 512, ptr %fmt2, ptr %a3, ptr %b4)
-  %at6 = load ptr, ptr %at, align 8
-  %ne = icmp ne ptr %at6, null
+  %fld = getelementptr inbounds nuw %Location, ptr %none, i32 0, i32 2
+  store ptr null, ptr %fld, align 8
+  %fld1 = getelementptr inbounds nuw %Location, ptr %none, i32 0, i32 0
+  store i32 0, ptr %fld1, align 4
+  %fld2 = getelementptr inbounds nuw %Location, ptr %none, i32 0, i32 1
+  store i32 0, ptr %fld2, align 4
+  %at3 = load ptr, ptr %at, align 8
+  %ne = icmp ne ptr %at3, null
   br i1 %ne, label %if.then, label %if.else
 
 if.end:                                           ; preds = %if.else, %if.then
-  call void @exit(i32 1)
+  %none5 = load %Location, ptr %none, align 8
+  %fmt6 = load ptr, ptr %fmt, align 8
+  %a7 = load ptr, ptr %a, align 8
+  %b8 = load ptr, ptr %b, align 8
+  call void @diag_fatal(%Location %none5, ptr %fmt6, ptr %a7, ptr %b8)
   ret void
 
 if.then:                                          ; preds = %entry
   %objptr = load ptr, ptr %at, align 8
-  %fld = getelementptr inbounds nuw %ASTNode, ptr %objptr, i32 0, i32 1
-  %fld7 = getelementptr inbounds nuw %Location, ptr %fld, i32 0, i32 0
-  %fldval = load i32, ptr %fld7, align 4
-  %objptr8 = load ptr, ptr %at, align 8
-  %fld9 = getelementptr inbounds nuw %ASTNode, ptr %objptr8, i32 0, i32 1
-  %fld10 = getelementptr inbounds nuw %Location, ptr %fld9, i32 0, i32 1
-  %fldval11 = load i32, ptr %fld10, align 4
-  %buf12 = load ptr, ptr %buf, align 8
-  %call13 = call i32 (ptr, ...) @printf(ptr @.str.106, i32 %fldval, i32 %fldval11, ptr %buf12)
+  %fld4 = getelementptr inbounds nuw %ASTNode, ptr %objptr, i32 0, i32 1
+  %fldval = load %Location, ptr %fld4, align 8
+  store %Location %fldval, ptr %none, align 8
   br label %if.end
 
 if.else:                                          ; preds = %entry
-  %buf14 = load ptr, ptr %buf, align 8
-  %call15 = call i32 (ptr, ...) @printf(ptr @.str.107, ptr %buf14)
   br label %if.end
 }
 
@@ -12120,8 +13465,8 @@ if.then:                                          ; preds = %entry
   %fld8 = getelementptr inbounds nuw %ASTNode, ptr %objptr7, i32 0, i32 1
   %objptr9 = load ptr, ptr %at, align 8
   %fld10 = getelementptr inbounds nuw %ASTNode, ptr %objptr9, i32 0, i32 1
-  %fldval11 = load %Location, ptr %fld10, align 4
-  store %Location %fldval11, ptr %fld8, align 4
+  %fldval11 = load %Location, ptr %fld10, align 8
+  store %Location %fldval11, ptr %fld8, align 8
   br label %if.end
 
 if.else:                                          ; preds = %entry
@@ -12209,10 +13554,10 @@ entry:
   br i1 %eq, label %if.then, label %if.else
 
 if.end:                                           ; preds = %elif.else51
-  ret ptr @.str.74
+  ret ptr @.str.113
 
 if.then:                                          ; preds = %entry
-  ret ptr @.str.60
+  ret ptr @.str.99
 
 if.else:                                          ; preds = %entry
   %bt2 = load i32, ptr %bt, align 4
@@ -12220,7 +13565,7 @@ if.else:                                          ; preds = %entry
   br i1 %eq3, label %elif.then, label %elif.else
 
 elif.then:                                        ; preds = %if.else
-  ret ptr @.str.61
+  ret ptr @.str.100
 
 elif.else:                                        ; preds = %if.else
   %bt4 = load i32, ptr %bt, align 4
@@ -12228,7 +13573,7 @@ elif.else:                                        ; preds = %if.else
   br i1 %eq5, label %elif.then6, label %elif.else7
 
 elif.then6:                                       ; preds = %elif.else
-  ret ptr @.str.62
+  ret ptr @.str.101
 
 elif.else7:                                       ; preds = %elif.else
   %bt8 = load i32, ptr %bt, align 4
@@ -12236,7 +13581,7 @@ elif.else7:                                       ; preds = %elif.else
   br i1 %eq9, label %elif.then10, label %elif.else11
 
 elif.then10:                                      ; preds = %elif.else7
-  ret ptr @.str.63
+  ret ptr @.str.102
 
 elif.else11:                                      ; preds = %elif.else7
   %bt12 = load i32, ptr %bt, align 4
@@ -12244,7 +13589,7 @@ elif.else11:                                      ; preds = %elif.else7
   br i1 %eq13, label %elif.then14, label %elif.else15
 
 elif.then14:                                      ; preds = %elif.else11
-  ret ptr @.str.64
+  ret ptr @.str.103
 
 elif.else15:                                      ; preds = %elif.else11
   %bt16 = load i32, ptr %bt, align 4
@@ -12252,7 +13597,7 @@ elif.else15:                                      ; preds = %elif.else11
   br i1 %eq17, label %elif.then18, label %elif.else19
 
 elif.then18:                                      ; preds = %elif.else15
-  ret ptr @.str.65
+  ret ptr @.str.104
 
 elif.else19:                                      ; preds = %elif.else15
   %bt20 = load i32, ptr %bt, align 4
@@ -12260,7 +13605,7 @@ elif.else19:                                      ; preds = %elif.else15
   br i1 %eq21, label %elif.then22, label %elif.else23
 
 elif.then22:                                      ; preds = %elif.else19
-  ret ptr @.str.66
+  ret ptr @.str.105
 
 elif.else23:                                      ; preds = %elif.else19
   %bt24 = load i32, ptr %bt, align 4
@@ -12268,7 +13613,7 @@ elif.else23:                                      ; preds = %elif.else19
   br i1 %eq25, label %elif.then26, label %elif.else27
 
 elif.then26:                                      ; preds = %elif.else23
-  ret ptr @.str.67
+  ret ptr @.str.106
 
 elif.else27:                                      ; preds = %elif.else23
   %bt28 = load i32, ptr %bt, align 4
@@ -12276,7 +13621,7 @@ elif.else27:                                      ; preds = %elif.else23
   br i1 %eq29, label %elif.then30, label %elif.else31
 
 elif.then30:                                      ; preds = %elif.else27
-  ret ptr @.str.68
+  ret ptr @.str.107
 
 elif.else31:                                      ; preds = %elif.else27
   %bt32 = load i32, ptr %bt, align 4
@@ -12284,7 +13629,7 @@ elif.else31:                                      ; preds = %elif.else27
   br i1 %eq33, label %elif.then34, label %elif.else35
 
 elif.then34:                                      ; preds = %elif.else31
-  ret ptr @.str.69
+  ret ptr @.str.108
 
 elif.else35:                                      ; preds = %elif.else31
   %bt36 = load i32, ptr %bt, align 4
@@ -12292,7 +13637,7 @@ elif.else35:                                      ; preds = %elif.else31
   br i1 %eq37, label %elif.then38, label %elif.else39
 
 elif.then38:                                      ; preds = %elif.else35
-  ret ptr @.str.70
+  ret ptr @.str.109
 
 elif.else39:                                      ; preds = %elif.else35
   %bt40 = load i32, ptr %bt, align 4
@@ -12300,7 +13645,7 @@ elif.else39:                                      ; preds = %elif.else35
   br i1 %eq41, label %elif.then42, label %elif.else43
 
 elif.then42:                                      ; preds = %elif.else39
-  ret ptr @.str.71
+  ret ptr @.str.110
 
 elif.else43:                                      ; preds = %elif.else39
   %bt44 = load i32, ptr %bt, align 4
@@ -12308,7 +13653,7 @@ elif.else43:                                      ; preds = %elif.else39
   br i1 %eq45, label %elif.then46, label %elif.else47
 
 elif.then46:                                      ; preds = %elif.else43
-  ret ptr @.str.72
+  ret ptr @.str.111
 
 elif.else47:                                      ; preds = %elif.else43
   %bt48 = load i32, ptr %bt, align 4
@@ -12316,7 +13661,7 @@ elif.else47:                                      ; preds = %elif.else43
   br i1 %eq49, label %elif.then50, label %elif.else51
 
 elif.then50:                                      ; preds = %elif.else47
-  ret ptr @.str.73
+  ret ptr @.str.112
 
 elif.else51:                                      ; preds = %elif.else47
   br label %if.end
@@ -12386,7 +13731,7 @@ if.else:                                          ; preds = %loop.end
 
 elif.then:                                        ; preds = %if.else
   %s23 = load ptr, ptr %s, align 8
-  %call24 = call i32 @str_append_str(ptr %s23, ptr @.str.108)
+  %call24 = call i32 @str_append_str(ptr %s23, ptr @.str.145)
   %s25 = load ptr, ptr %s, align 8
   %objptr26 = load ptr, ptr %tn, align 8
   %fld27 = getelementptr inbounds nuw %ASTNode, ptr %objptr26, i32 0, i32 2
@@ -12394,7 +13739,7 @@ elif.then:                                        ; preds = %if.else
   %fldval29 = load ptr, ptr %fld28, align 8
   call void @append_type_name(ptr %s25, ptr %fldval29)
   %s30 = load ptr, ptr %s, align 8
-  %call31 = call i32 @str_append_str(ptr %s30, ptr @.str.109)
+  %call31 = call i32 @str_append_str(ptr %s30, ptr @.str.146)
   %objptr32 = load ptr, ptr %tn, align 8
   %fld33 = getelementptr inbounds nuw %ASTNode, ptr %objptr32, i32 0, i32 2
   %fld34 = getelementptr inbounds nuw %N_Type, ptr %fld33, i32 0, i32 3
@@ -12423,7 +13768,7 @@ loop.cont37:                                      ; preds = %if.end58
 
 loop.end38:                                       ; preds = %loop.body36
   %s72 = load ptr, ptr %s, align 8
-  %call73 = call i32 @str_append_str(ptr %s72, ptr @.str.112)
+  %call73 = call i32 @str_append_str(ptr %s72, ptr @.str.149)
   br label %if.end
 
 while.body40:                                     ; preds = %loop.body36
@@ -12446,7 +13791,7 @@ if.end43:                                         ; preds = %if.else50, %if.then
 
 if.then49:                                        ; preds = %while.body40
   %s51 = load ptr, ptr %s, align 8
-  %call52 = call i32 @str_append_str(ptr %s51, ptr @.str.110)
+  %call52 = call i32 @str_append_str(ptr %s51, ptr @.str.147)
   br label %if.end43
 
 if.else50:                                        ; preds = %while.body40
@@ -12468,7 +13813,7 @@ if.end58:                                         ; preds = %if.else65, %if.then
 
 if.then64:                                        ; preds = %if.end43
   %s66 = load ptr, ptr %s, align 8
-  %call67 = call i32 @str_append_str(ptr %s66, ptr @.str.111)
+  %call67 = call i32 @str_append_str(ptr %s66, ptr @.str.148)
   br label %if.end58
 
 if.else65:                                        ; preds = %if.end43
@@ -12526,7 +13871,7 @@ if.end:                                           ; preds = %if.else, %if.then
   br label %loop.cont
 
 if.then:                                          ; preds = %while.body
-  %call11 = call i32 @str_append_str(ptr %s, ptr @.str.113)
+  %call11 = call i32 @str_append_str(ptr %s, ptr @.str.150)
   br label %if.end
 
 if.else:                                          ; preds = %while.body
@@ -12641,7 +13986,7 @@ if.end:                                           ; preds = %if.else
   store ptr %call, ptr %c, align 8
   %c2 = load ptr, ptr %c, align 8
   %n3 = load ptr, ptr %n, align 8
-  %call4 = call ptr @memcpy(ptr %c2, ptr %n3, i64 56)
+  %call4 = call ptr @memcpy(ptr %c2, ptr %n3, i64 64)
   %objptr5 = load ptr, ptr %n, align 8
   %fld6 = getelementptr inbounds nuw %ASTNode, ptr %objptr5, i32 0, i32 0
   %fldval7 = load i32, ptr %fld6, align 4
@@ -13769,7 +15114,7 @@ if.then59:                                        ; preds = %sc.end
   %tn61 = load ptr, ptr %tn, align 8
   %tmpl62 = load ptr, ptr %tmpl, align 8
   %tmpl63 = load ptr, ptr %tmpl, align 8
-  call void @gn_error(ptr %tn61, ptr @.str.128, ptr %tmpl62, ptr %tmpl63)
+  call void @gn_error(ptr %tn61, ptr @.str.165, ptr %tmpl62, ptr %tmpl63)
   br label %if.end51
 
 if.else60:                                        ; preds = %sc.end
@@ -13867,8 +15212,8 @@ entry:
   %fld4 = getelementptr inbounds nuw %ASTNode, ptr %objptr3, i32 0, i32 1
   %objptr5 = load ptr, ptr %node, align 8
   %fld6 = getelementptr inbounds nuw %ASTNode, ptr %objptr5, i32 0, i32 1
-  %fldval7 = load %Location, ptr %fld6, align 4
-  store %Location %fldval7, ptr %fld4, align 4
+  %fldval7 = load %Location, ptr %fld6, align 8
+  store %Location %fldval7, ptr %fld4, align 8
   %objptr8 = load ptr, ptr %ts, align 8
   %fld9 = getelementptr inbounds nuw %ASTNode, ptr %objptr8, i32 0, i32 2
   %fld10 = getelementptr inbounds nuw %N_TUStmt, ptr %fld9, i32 0, i32 0
@@ -13898,6 +15243,7 @@ entry:
 
 define void @check_arity(ptr %0, ptr %1, ptr %2, ptr %3) {
 entry:
+  %plural = alloca ptr, align 8
   %buf = alloca ptr, align 8
   %got = alloca i32, align 4
   %want = alloca i32, align 4
@@ -13920,24 +15266,38 @@ entry:
   %ne = icmp ne i32 %want4, %got5
   br i1 %ne, label %if.then, label %if.else
 
-if.end:                                           ; preds = %if.else, %if.then
+if.end:                                           ; preds = %if.else, %if.end7
   ret void
 
 if.then:                                          ; preds = %entry
   %call6 = call ptr @malloc(i64 64)
   store ptr %call6, ptr %buf, align 8
-  %buf7 = load ptr, ptr %buf, align 8
+  store ptr @.str.151, ptr %plural, align 8
   %want8 = load i32, ptr %want, align 4
-  %got9 = load i32, ptr %got, align 4
-  %call10 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf7, i64 64, ptr @.str.114, i32 %want8, i32 %got9)
-  %at11 = load ptr, ptr %at, align 8
-  %what12 = load ptr, ptr %what, align 8
-  %buf13 = load ptr, ptr %buf, align 8
-  call void @gn_error(ptr %at11, ptr @.str.115, ptr %what12, ptr %buf13)
-  br label %if.end
+  %eq = icmp eq i32 %want8, 1
+  br i1 %eq, label %if.then9, label %if.else10
 
 if.else:                                          ; preds = %entry
   br label %if.end
+
+if.end7:                                          ; preds = %if.else10, %if.then9
+  %buf11 = load ptr, ptr %buf, align 8
+  %want12 = load i32, ptr %want, align 4
+  %plural13 = load ptr, ptr %plural, align 8
+  %got14 = load i32, ptr %got, align 4
+  %call15 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf11, i64 64, ptr @.str.152, i32 %want12, ptr %plural13, i32 %got14)
+  %at16 = load ptr, ptr %at, align 8
+  %what17 = load ptr, ptr %what, align 8
+  %buf18 = load ptr, ptr %buf, align 8
+  call void @gn_error(ptr %at16, ptr @.str.153, ptr %what17, ptr %buf18)
+  br label %if.end
+
+if.then9:                                         ; preds = %if.then
+  store ptr @.str.72, ptr %plural, align 8
+  br label %if.end7
+
+if.else10:                                        ; preds = %if.then
+  br label %if.end7
 }
 
 define ptr @class_base(ptr %0, ptr %1, ptr %2) {
@@ -14002,7 +15362,7 @@ sc.end:                                           ; preds = %sc.rhs, %loop.body
 
 if.then:                                          ; preds = %sc.end
   %at8 = load ptr, ptr %at, align 8
-  call void @gn_error(ptr %at8, ptr @.str.116, ptr @.str.117, ptr @.str.117)
+  call void @gn_error(ptr %at8, ptr @.str.154, ptr @.str.72, ptr @.str.72)
   br label %if.end
 
 if.else:                                          ; preds = %sc.end
@@ -14019,7 +15379,7 @@ if.end18:                                         ; preds = %if.else21, %if.then
 if.then20:                                        ; preds = %if.end
   %at22 = load ptr, ptr %at, align 8
   %nm23 = load ptr, ptr %nm, align 8
-  call void @gn_error(ptr %at22, ptr @.str.118, ptr %nm23, ptr @.str.117)
+  call void @gn_error(ptr %at22, ptr @.str.155, ptr %nm23, ptr @.str.72)
   br label %if.end18
 
 if.else21:                                        ; preds = %if.end
@@ -14054,7 +15414,7 @@ if.end32:                                         ; preds = %if.else42, %if.then
 if.then41:                                        ; preds = %if.then30
   %at43 = load ptr, ptr %at, align 8
   %nm44 = load ptr, ptr %nm, align 8
-  call void @gn_error(ptr %at43, ptr @.str.119, ptr %nm44, ptr @.str.117)
+  call void @gn_error(ptr %at43, ptr @.str.156, ptr %nm44, ptr @.str.72)
   br label %if.end32
 
 if.else42:                                        ; preds = %if.then30
@@ -14086,7 +15446,7 @@ sc.end53:                                         ; preds = %sc.rhs52, %if.end24
 if.then56:                                        ; preds = %sc.end53
   %at58 = load ptr, ptr %at, align 8
   %nm59 = load ptr, ptr %nm, align 8
-  call void @gn_error(ptr %at58, ptr @.str.120, ptr %nm59, ptr @.str.117)
+  call void @gn_error(ptr %at58, ptr @.str.157, ptr %nm59, ptr @.str.72)
   br label %if.end46
 
 if.else57:                                        ; preds = %sc.end53
@@ -14220,7 +15580,7 @@ sc.end:                                           ; preds = %sc.rhs, %entry
 
 if.then:                                          ; preds = %sc.end
   %fref7 = load ptr, ptr %fref, align 8
-  call void @gn_error(ptr %fref7, ptr @.str.121, ptr @.str.117, ptr @.str.117)
+  call void @gn_error(ptr %fref7, ptr @.str.158, ptr @.str.72, ptr @.str.72)
   br label %if.end
 
 if.else:                                          ; preds = %sc.end
@@ -14237,7 +15597,7 @@ if.end17:                                         ; preds = %if.else20, %if.then
 if.then19:                                        ; preds = %if.end
   %fref21 = load ptr, ptr %fref, align 8
   %fname22 = load ptr, ptr %fname, align 8
-  call void @gn_error(ptr %fref21, ptr @.str.122, ptr %fname22, ptr @.str.117)
+  call void @gn_error(ptr %fref21, ptr @.str.159, ptr %fname22, ptr @.str.72)
   br label %if.end17
 
 if.else20:                                        ; preds = %if.end
@@ -14382,14 +15742,14 @@ if.end110:                                        ; preds = %if.else113, %if.the
   br label %loop.body130
 
 if.then112:                                       ; preds = %if.end89
-  %call114 = call i32 @str_init_cstr(ptr %want, ptr @.str.117)
+  %call114 = call i32 @str_init_cstr(ptr %want, ptr @.str.72)
   %rt115 = load ptr, ptr %rt, align 8
   call void @append_type_name(ptr %want, ptr %rt115)
   %fref116 = load ptr, ptr %fref, align 8
   %fname117 = load ptr, ptr %fname, align 8
   %fld118 = getelementptr inbounds nuw %String, ptr %want, i32 0, i32 0
   %fldval119 = load ptr, ptr %fld118, align 8
-  call void @gn_error(ptr %fref116, ptr @.str.123, ptr %fname117, ptr %fldval119)
+  call void @gn_error(ptr %fref116, ptr @.str.160, ptr %fname117, ptr %fldval119)
   br label %if.end110
 
 if.else113:                                       ; preds = %if.end89
@@ -14476,8 +15836,8 @@ if.end154:                                        ; preds = %if.else160, %if.the
   %fld202 = getelementptr inbounds nuw %ASTNode, ptr %objptr201, i32 0, i32 1
   %objptr203 = load ptr, ptr %recv, align 8
   %fld204 = getelementptr inbounds nuw %ASTNode, ptr %objptr203, i32 0, i32 1
-  %fldval205 = load %Location, ptr %fld204, align 4
-  store %Location %fldval205, ptr %fld202, align 4
+  %fldval205 = load %Location, ptr %fld204, align 8
+  store %Location %fldval205, ptr %fld202, align 8
   %objptr206 = load ptr, ptr %ty, align 8
   %fld207 = getelementptr inbounds nuw %ASTNode, ptr %objptr206, i32 0, i32 2
   %fld208 = getelementptr inbounds nuw %N_Type, ptr %fld207, i32 0, i32 0
@@ -14506,8 +15866,8 @@ if.end154:                                        ; preds = %if.else160, %if.the
   %fld226 = getelementptr inbounds nuw %ASTNode, ptr %objptr225, i32 0, i32 1
   %objptr227 = load ptr, ptr %recv, align 8
   %fld228 = getelementptr inbounds nuw %ASTNode, ptr %objptr227, i32 0, i32 1
-  %fldval229 = load %Location, ptr %fld228, align 4
-  store %Location %fldval229, ptr %fld226, align 4
+  %fldval229 = load %Location, ptr %fld228, align 8
+  store %Location %fldval229, ptr %fld226, align 8
   %objptr230 = load ptr, ptr %self, align 8
   %fld231 = getelementptr inbounds nuw %ASTNode, ptr %objptr230, i32 0, i32 2
   %fld232 = getelementptr inbounds nuw %N_Parametre, ptr %fld231, i32 0, i32 1
@@ -14553,7 +15913,7 @@ if.then159:                                       ; preds = %while.body135
   %fld166 = getelementptr inbounds nuw %ASTNode, ptr %objptr165, i32 0, i32 2
   %fldval167 = load ptr, ptr %fld166, align 8
   %cls168 = load ptr, ptr %cls, align 8
-  call void @gn_error(ptr %decl161, ptr @.str.124, ptr %fldval167, ptr %cls168)
+  call void @gn_error(ptr %decl161, ptr @.str.161, ptr %fldval167, ptr %cls168)
   br label %if.end154
 
 if.else160:                                       ; preds = %while.body135
@@ -14627,8 +15987,8 @@ entry:
   %fld35 = getelementptr inbounds nuw %ASTNode, ptr %objptr34, i32 0, i32 1
   %objptr36 = load ptr, ptr %cls, align 8
   %fld37 = getelementptr inbounds nuw %ASTNode, ptr %objptr36, i32 0, i32 1
-  %fldval38 = load %Location, ptr %fld37, align 4
-  store %Location %fldval38, ptr %fld35, align 4
+  %fldval38 = load %Location, ptr %fld37, align 8
+  store %Location %fldval38, ptr %fld35, align 8
   %objptr39 = load ptr, ptr %td, align 8
   %fld40 = getelementptr inbounds nuw %ASTNode, ptr %objptr39, i32 0, i32 2
   %fld41 = getelementptr inbounds nuw %N_TypeDef, ptr %fld40, i32 0, i32 0
@@ -14745,7 +16105,7 @@ if.end:                                           ; preds = %if.else, %if.then
 if.then:                                          ; preds = %entry
   %at6 = load ptr, ptr %at, align 8
   %tmpl7 = load ptr, ptr %tmpl, align 8
-  call void @gn_error(ptr %at6, ptr @.str.125, ptr %tmpl7, ptr @.str.117)
+  call void @gn_error(ptr %at6, ptr @.str.162, ptr %tmpl7, ptr @.str.72)
   br label %if.end
 
 if.else:                                          ; preds = %entry
@@ -14795,13 +16155,13 @@ if.else33:                                        ; preds = %if.end16
 if.end39:                                         ; preds = %if.else45, %if.then44
   %at48 = load ptr, ptr %at, align 8
   %tmpl49 = load ptr, ptr %tmpl, align 8
-  call void @gn_error(ptr %at48, ptr @.str.127, ptr %tmpl49, ptr @.str.117)
+  call void @gn_error(ptr %at48, ptr @.str.164, ptr %tmpl49, ptr @.str.72)
   ret void
 
 if.then44:                                        ; preds = %if.end29
   %at46 = load ptr, ptr %at, align 8
   %tmpl47 = load ptr, ptr %tmpl, align 8
-  call void @gn_error(ptr %at46, ptr @.str.126, ptr %tmpl47, ptr @.str.117)
+  call void @gn_error(ptr %at46, ptr @.str.163, ptr %tmpl47, ptr @.str.72)
   br label %if.end39
 
 if.else45:                                        ; preds = %if.end29
@@ -15543,7 +16903,7 @@ if.then43:                                        ; preds = %if.then
   %objptr49 = load ptr, ptr %fld48, align 8
   %fld50 = getelementptr inbounds nuw %ASTNode, ptr %objptr49, i32 0, i32 2
   %fldval51 = load ptr, ptr %fld50, align 8
-  call void @gn_error(ptr %node45, ptr @.str.129, ptr %fldval51, ptr @.str.117)
+  call void @gn_error(ptr %node45, ptr @.str.166, ptr %fldval51, ptr @.str.72)
   br label %if.end37
 
 if.else44:                                        ; preds = %if.then
@@ -15714,7 +17074,7 @@ sc.end157:                                        ; preds = %sc.rhs156, %while.b
 if.then162:                                       ; preds = %sc.end157
   %cls164 = load ptr, ptr %cls, align 8
   %nm165 = load ptr, ptr %nm, align 8
-  call void @gn_error(ptr %cls164, ptr @.str.130, ptr %nm165, ptr @.str.117)
+  call void @gn_error(ptr %cls164, ptr @.str.167, ptr %nm165, ptr @.str.72)
   br label %if.end152
 
 if.else163:                                       ; preds = %sc.end157
@@ -16837,13 +18197,13 @@ entry:
   %sig = alloca ptr, align 8
   store ptr %1, ptr %sig, align 8
   %s1 = load ptr, ptr %s, align 8
-  %call = call i32 @str_append_str(ptr %s1, ptr @.str.108)
+  %call = call i32 @str_append_str(ptr %s1, ptr @.str.145)
   %s2 = load ptr, ptr %s, align 8
   %sig3 = load ptr, ptr %sig, align 8
   %call4 = call ptr @sig_ret(ptr %sig3)
   call void @append_tn(ptr %s2, ptr %call4)
   %s5 = load ptr, ptr %s, align 8
-  %call6 = call i32 @str_append_str(ptr %s5, ptr @.str.109)
+  %call6 = call i32 @str_append_str(ptr %s5, ptr @.str.146)
   %sig7 = load ptr, ptr %sig, align 8
   %call8 = call ptr @sig_params(ptr %sig7)
   store ptr %call8, ptr %p, align 8
@@ -16859,7 +18219,7 @@ loop.cont:                                        ; preds = %if.end21
 
 loop.end:                                         ; preds = %loop.body
   %s28 = load ptr, ptr %s, align 8
-  %call29 = call i32 @str_append_str(ptr %s28, ptr @.str.112)
+  %call29 = call i32 @str_append_str(ptr %s28, ptr @.str.149)
   ret void
 
 while.body:                                       ; preds = %loop.body
@@ -16879,7 +18239,7 @@ if.end:                                           ; preds = %if.else, %if.then
 
 if.then:                                          ; preds = %while.body
   %s14 = load ptr, ptr %s, align 8
-  %call15 = call i32 @str_append_str(ptr %s14, ptr @.str.110)
+  %call15 = call i32 @str_append_str(ptr %s14, ptr @.str.147)
   br label %if.end
 
 if.else:                                          ; preds = %while.body
@@ -16894,7 +18254,7 @@ if.end21:                                         ; preds = %if.else25, %if.then
 
 if.then24:                                        ; preds = %if.end
   %s26 = load ptr, ptr %s, align 8
-  %call27 = call i32 @str_append_str(ptr %s26, ptr @.str.111)
+  %call27 = call i32 @str_append_str(ptr %s26, ptr @.str.148)
   br label %if.end21
 
 if.else25:                                        ; preds = %if.end
@@ -16918,7 +18278,7 @@ if.end:                                           ; preds = %if.else
 
 if.then:                                          ; preds = %entry
   %s2 = load ptr, ptr %s, align 8
-  %call = call i32 @str_append_str(ptr %s2, ptr @.str.131)
+  %call = call i32 @str_append_str(ptr %s2, ptr @.str.168)
   ret void
 
 if.else:                                          ; preds = %entry
@@ -17003,21 +18363,21 @@ entry:
   store %Type %0, ptr %t, align 8
   %call = call ptr @malloc(i64 256)
   store ptr %call, ptr %buf, align 8
-  store ptr @.str.131, ptr %base, align 8
+  store ptr @.str.168, ptr %base, align 8
   %fld = getelementptr inbounds nuw %Type, ptr %t, i32 0, i32 0
   %fldval = load i32, ptr %fld, align 4
   %eq = icmp eq i32 %fldval, 1
   br i1 %eq, label %if.then, label %if.else
 
 if.end:                                           ; preds = %elif.else44, %if.end45, %elif.then38, %elif.then28, %elif.then21, %if.end9, %elif.then, %if.then
-  store ptr @.str.117, ptr %stars, align 8
+  store ptr @.str.72, ptr %stars, align 8
   %fld105 = getelementptr inbounds nuw %Type, ptr %t, i32 0, i32 1
   %fldval106 = load i64, ptr %fld105, align 8
   %eq107 = icmp eq i64 %fldval106, 1
   br i1 %eq107, label %if.then108, label %if.else109
 
 if.then:                                          ; preds = %entry
-  store ptr @.str.60, ptr %base, align 8
+  store ptr @.str.99, ptr %base, align 8
   br label %if.end
 
 if.else:                                          ; preds = %entry
@@ -17027,7 +18387,7 @@ if.else:                                          ; preds = %entry
   br i1 %eq3, label %elif.then, label %elif.else
 
 elif.then:                                        ; preds = %if.else
-  store ptr @.str.61, ptr %base, align 8
+  store ptr @.str.100, ptr %base, align 8
   br label %if.end
 
 elif.else:                                        ; preds = %if.else
@@ -17052,11 +18412,11 @@ if.end9:                                          ; preds = %if.else14, %if.then
   br label %if.end
 
 if.then13:                                        ; preds = %elif.then7
-  store ptr @.str.73, ptr %base, align 8
+  store ptr @.str.112, ptr %base, align 8
   br label %if.end9
 
 if.else14:                                        ; preds = %elif.then7
-  store ptr @.str.74, ptr %base, align 8
+  store ptr @.str.113, ptr %base, align 8
   br label %if.end9
 
 sc.rhs:                                           ; preds = %elif.else8
@@ -17082,7 +18442,7 @@ elif.else22:                                      ; preds = %sc.end
   br i1 %eq27, label %elif.then28, label %elif.else29
 
 elif.then28:                                      ; preds = %elif.else22
-  %call30 = call i32 @str_init_cstr(ptr %sig, ptr @.str.117)
+  %call30 = call i32 @str_init_cstr(ptr %sig, ptr @.str.72)
   %fld31 = getelementptr inbounds nuw %Type, ptr %t, i32 0, i32 5
   %fldval32 = load ptr, ptr %fld31, align 8
   call void @append_sig(ptr %sig, ptr %fldval32)
@@ -17098,7 +18458,7 @@ elif.else29:                                      ; preds = %elif.else22
   br i1 %eq37, label %elif.then38, label %elif.else39
 
 elif.then38:                                      ; preds = %elif.else29
-  store ptr @.str.132, ptr %base, align 8
+  store ptr @.str.169, ptr %base, align 8
   br label %if.end
 
 elif.else39:                                      ; preds = %elif.else29
@@ -17130,7 +18490,7 @@ sc.end50:                                         ; preds = %sc.rhs49, %elif.the
   br i1 %sc53, label %if.then54, label %if.else55
 
 if.then54:                                        ; preds = %sc.end50
-  store ptr @.str.63, ptr %base, align 8
+  store ptr @.str.102, ptr %base, align 8
   br label %if.end45
 
 if.else55:                                        ; preds = %sc.end50
@@ -17140,7 +18500,7 @@ if.else55:                                        ; preds = %sc.end50
   br i1 %eq58, label %elif.then59, label %elif.else60
 
 elif.then59:                                      ; preds = %if.else55
-  store ptr @.str.67, ptr %base, align 8
+  store ptr @.str.106, ptr %base, align 8
   br label %if.end45
 
 elif.else60:                                      ; preds = %if.else55
@@ -17160,7 +18520,7 @@ sc.end65:                                         ; preds = %sc.rhs64, %elif.els
   br i1 %sc69, label %elif.then70, label %elif.else71
 
 elif.then70:                                      ; preds = %sc.end65
-  store ptr @.str.64, ptr %base, align 8
+  store ptr @.str.103, ptr %base, align 8
   br label %if.end45
 
 elif.else71:                                      ; preds = %sc.end65
@@ -17170,7 +18530,7 @@ elif.else71:                                      ; preds = %sc.end65
   br i1 %eq74, label %elif.then75, label %elif.else76
 
 elif.then75:                                      ; preds = %elif.else71
-  store ptr @.str.68, ptr %base, align 8
+  store ptr @.str.107, ptr %base, align 8
   br label %if.end45
 
 elif.else76:                                      ; preds = %elif.else71
@@ -17190,7 +18550,7 @@ sc.end81:                                         ; preds = %sc.rhs80, %elif.els
   br i1 %sc85, label %elif.then86, label %elif.else87
 
 elif.then86:                                      ; preds = %sc.end81
-  store ptr @.str.65, ptr %base, align 8
+  store ptr @.str.104, ptr %base, align 8
   br label %if.end45
 
 elif.else87:                                      ; preds = %sc.end81
@@ -17200,7 +18560,7 @@ elif.else87:                                      ; preds = %sc.end81
   br i1 %eq90, label %elif.then91, label %elif.else92
 
 elif.then91:                                      ; preds = %elif.else87
-  store ptr @.str.69, ptr %base, align 8
+  store ptr @.str.108, ptr %base, align 8
   br label %if.end45
 
 elif.else92:                                      ; preds = %elif.else87
@@ -17220,23 +18580,23 @@ sc.end97:                                         ; preds = %sc.rhs96, %elif.els
   br i1 %sc101, label %elif.then102, label %elif.else103
 
 elif.then102:                                     ; preds = %sc.end97
-  store ptr @.str.66, ptr %base, align 8
+  store ptr @.str.105, ptr %base, align 8
   br label %if.end45
 
 elif.else103:                                     ; preds = %sc.end97
-  store ptr @.str.70, ptr %base, align 8
+  store ptr @.str.109, ptr %base, align 8
   br label %if.end45
 
 if.end104:                                        ; preds = %elif.else118, %elif.then117, %elif.then113, %if.then108
   %buf119 = load ptr, ptr %buf, align 8
   %stars120 = load ptr, ptr %stars, align 8
   %base121 = load ptr, ptr %base, align 8
-  %call122 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf119, i64 256, ptr @.str.136, ptr %stars120, ptr %base121)
+  %call122 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf119, i64 256, ptr @.str.173, ptr %stars120, ptr %base121)
   %buf123 = load ptr, ptr %buf, align 8
   ret ptr %buf123
 
 if.then108:                                       ; preds = %if.end
-  store ptr @.str.133, ptr %stars, align 8
+  store ptr @.str.170, ptr %stars, align 8
   br label %if.end104
 
 if.else109:                                       ; preds = %if.end
@@ -17246,7 +18606,7 @@ if.else109:                                       ; preds = %if.end
   br i1 %eq112, label %elif.then113, label %elif.else114
 
 elif.then113:                                     ; preds = %if.else109
-  store ptr @.str.134, ptr %stars, align 8
+  store ptr @.str.171, ptr %stars, align 8
   br label %if.end104
 
 elif.else114:                                     ; preds = %if.else109
@@ -17256,7 +18616,7 @@ elif.else114:                                     ; preds = %if.else109
   br i1 %ge, label %elif.then117, label %elif.else118
 
 elif.then117:                                     ; preds = %elif.else114
-  store ptr @.str.135, ptr %stars, align 8
+  store ptr @.str.172, ptr %stars, align 8
   br label %if.end104
 
 elif.else118:                                     ; preds = %elif.else114
@@ -17273,27 +18633,21 @@ entry:
   store ptr %2, ptr %msg, align 8
   %objptr = load ptr, ptr %at, align 8
   %fld = getelementptr inbounds nuw %ASTNode, ptr %objptr, i32 0, i32 1
-  %fld1 = getelementptr inbounds nuw %Location, ptr %fld, i32 0, i32 0
-  %fldval = load i32, ptr %fld1, align 4
-  %objptr2 = load ptr, ptr %at, align 8
-  %fld3 = getelementptr inbounds nuw %ASTNode, ptr %objptr2, i32 0, i32 1
-  %fld4 = getelementptr inbounds nuw %Location, ptr %fld3, i32 0, i32 1
-  %fldval5 = load i32, ptr %fld4, align 4
-  %msg6 = load ptr, ptr %msg, align 8
-  %call = call i32 (ptr, ...) @printf(ptr @.str.106, i32 %fldval, i32 %fldval5, ptr %msg6)
-  %objptr7 = load ptr, ptr %c, align 8
-  %fld8 = getelementptr inbounds nuw %Checker, ptr %objptr7, i32 0, i32 6
-  %objptr9 = load ptr, ptr %c, align 8
-  %fld10 = getelementptr inbounds nuw %Checker, ptr %objptr9, i32 0, i32 6
-  %fldval11 = load i32, ptr %fld10, align 4
-  %add = add i32 %fldval11, 1
-  store i32 %add, ptr %fld8, align 4
+  %fldval = load %Location, ptr %fld, align 8
+  %msg1 = load ptr, ptr %msg, align 8
+  call void @diag_at(%Location %fldval, ptr %msg1)
+  %objptr2 = load ptr, ptr %c, align 8
+  %fld3 = getelementptr inbounds nuw %Checker, ptr %objptr2, i32 0, i32 6
+  %objptr4 = load ptr, ptr %c, align 8
+  %fld5 = getelementptr inbounds nuw %Checker, ptr %objptr4, i32 0, i32 6
+  %fldval6 = load i32, ptr %fld5, align 4
+  %add = add i32 %fldval6, 1
+  store i32 %add, ptr %fld3, align 4
   ret void
 }
 
 define void @ck_error2(ptr %0, ptr %1, ptr %2, ptr %3, ptr %4) {
 entry:
-  %buf = alloca ptr, align 8
   %c = alloca ptr, align 8
   store ptr %0, ptr %c, align 8
   %at = alloca ptr, align 8
@@ -17304,32 +18658,20 @@ entry:
   store ptr %3, ptr %a, align 8
   %b = alloca ptr, align 8
   store ptr %4, ptr %b, align 8
-  %call = call ptr @malloc(i64 256)
-  store ptr %call, ptr %buf, align 8
-  %buf1 = load ptr, ptr %buf, align 8
-  %fmt2 = load ptr, ptr %fmt, align 8
-  %a3 = load ptr, ptr %a, align 8
-  %b4 = load ptr, ptr %b, align 8
-  %call5 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf1, i64 256, ptr %fmt2, ptr %a3, ptr %b4)
   %objptr = load ptr, ptr %at, align 8
   %fld = getelementptr inbounds nuw %ASTNode, ptr %objptr, i32 0, i32 1
-  %fld6 = getelementptr inbounds nuw %Location, ptr %fld, i32 0, i32 0
-  %fldval = load i32, ptr %fld6, align 4
-  %objptr7 = load ptr, ptr %at, align 8
-  %fld8 = getelementptr inbounds nuw %ASTNode, ptr %objptr7, i32 0, i32 1
-  %fld9 = getelementptr inbounds nuw %Location, ptr %fld8, i32 0, i32 1
-  %fldval10 = load i32, ptr %fld9, align 4
-  %buf11 = load ptr, ptr %buf, align 8
-  %call12 = call i32 (ptr, ...) @printf(ptr @.str.106, i32 %fldval, i32 %fldval10, ptr %buf11)
-  %buf13 = load ptr, ptr %buf, align 8
-  call void @free(ptr %buf13)
-  %objptr14 = load ptr, ptr %c, align 8
-  %fld15 = getelementptr inbounds nuw %Checker, ptr %objptr14, i32 0, i32 6
-  %objptr16 = load ptr, ptr %c, align 8
-  %fld17 = getelementptr inbounds nuw %Checker, ptr %objptr16, i32 0, i32 6
-  %fldval18 = load i32, ptr %fld17, align 4
-  %add = add i32 %fldval18, 1
-  store i32 %add, ptr %fld15, align 4
+  %fldval = load %Location, ptr %fld, align 8
+  %fmt1 = load ptr, ptr %fmt, align 8
+  %a2 = load ptr, ptr %a, align 8
+  %b3 = load ptr, ptr %b, align 8
+  call void @diag_at2(%Location %fldval, ptr %fmt1, ptr %a2, ptr %b3)
+  %objptr4 = load ptr, ptr %c, align 8
+  %fld5 = getelementptr inbounds nuw %Checker, ptr %objptr4, i32 0, i32 6
+  %objptr6 = load ptr, ptr %c, align 8
+  %fld7 = getelementptr inbounds nuw %Checker, ptr %objptr6, i32 0, i32 6
+  %fldval8 = load i32, ptr %fld7, align 4
+  %add = add i32 %fldval8, 1
+  store i32 %add, ptr %fld5, align 4
   ret void
 }
 
@@ -17629,7 +18971,7 @@ if.else46:                                        ; preds = %if.else23
   %c79 = load ptr, ptr %c, align 8
   %tn80 = load ptr, ptr %tn, align 8
   %nm81 = load ptr, ptr %nm, align 8
-  call void @ck_error2(ptr %c79, ptr %tn80, ptr @.str.118, ptr %nm81, ptr @.str.117)
+  call void @ck_error2(ptr %c79, ptr %tn80, ptr @.str.155, ptr %nm81, ptr @.str.72)
   br label %if.end37
 
 if.end48:                                         ; preds = %elif.else, %elif.then, %if.then54
@@ -18814,7 +20156,7 @@ if.end76:                                         ; preds = %if.else87
   %objptr94 = load ptr, ptr %n, align 8
   %fld95 = getelementptr inbounds nuw %ASTNode, ptr %objptr94, i32 0, i32 2
   %fldval96 = load ptr, ptr %fld95, align 8
-  call void @ck_error2(ptr %c92, ptr %n93, ptr @.str.164, ptr %fldval96, ptr @.str.117)
+  call void @ck_error2(ptr %c92, ptr %n93, ptr @.str.201, ptr %fldval96, ptr @.str.72)
   %call97 = call %Type @ty_unknown()
   ret %Type %call97
 
@@ -18907,7 +20249,7 @@ sc.end141:                                        ; preds = %sc.rhs140, %if.then
 if.then145:                                       ; preds = %sc.end141
   %c147 = load ptr, ptr %c, align 8
   %n148 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c147, ptr %n148, ptr @.str.165)
+  call void @ck_error(ptr %c147, ptr %n148, ptr @.str.202)
   br label %if.end137
 
 if.else146:                                       ; preds = %sc.end141
@@ -18953,7 +20295,7 @@ sc.end168:                                        ; preds = %sc.rhs167, %if.then
 if.then173:                                       ; preds = %sc.end168
   %c175 = load ptr, ptr %c, align 8
   %n176 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c175, ptr %n176, ptr @.str.166)
+  call void @ck_error(ptr %c175, ptr %n176, ptr @.str.203)
   br label %if.end163
 
 if.else174:                                       ; preds = %sc.end168
@@ -19023,7 +20365,7 @@ if.then212:                                       ; preds = %if.end201
   %c216 = load ptr, ptr %c, align 8
   %n217 = load ptr, ptr %n, align 8
   %s218 = load ptr, ptr %s, align 8
-  call void @ck_error2(ptr %c216, ptr %n217, ptr @.str.167, ptr %s218, ptr @.str.117)
+  call void @ck_error2(ptr %c216, ptr %n217, ptr @.str.204, ptr %s218, ptr @.str.72)
   %s219 = load ptr, ptr %s, align 8
   call void @free(ptr %s219)
   %call220 = call %Type @ty_unknown()
@@ -19056,7 +20398,7 @@ sc.end226:                                        ; preds = %sc.rhs225, %if.end2
 if.then231:                                       ; preds = %sc.end226
   %c233 = load ptr, ptr %c, align 8
   %n234 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c233, ptr %n234, ptr @.str.168)
+  call void @ck_error(ptr %c233, ptr %n234, ptr @.str.205)
   %call235 = call %Type @ty_unknown()
   ret %Type %call235
 
@@ -19121,7 +20463,7 @@ sc.end257:                                        ; preds = %sc.rhs256, %if.end2
 if.then265:                                       ; preds = %sc.end257
   %c267 = load ptr, ptr %c, align 8
   %n268 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c267, ptr %n268, ptr @.str.169)
+  call void @ck_error(ptr %c267, ptr %n268, ptr @.str.206)
   %call269 = call %Type @ty_unknown()
   ret %Type %call269
 
@@ -19164,7 +20506,7 @@ if.then296:                                       ; preds = %sc.end288
   %objptr300 = load ptr, ptr %on, align 8
   %fld301 = getelementptr inbounds nuw %ASTNode, ptr %objptr300, i32 0, i32 2
   %fldval302 = load ptr, ptr %fld301, align 8
-  call void @ck_error2(ptr %c298, ptr %n299, ptr @.str.170, ptr %fldval302, ptr @.str.117)
+  call void @ck_error2(ptr %c298, ptr %n299, ptr @.str.207, ptr %fldval302, ptr @.str.72)
   %t303 = load %Type, ptr %t189, align 8
   ret %Type %t303
 
@@ -19209,7 +20551,7 @@ if.end321:                                        ; preds = %if.else325, %if.the
 if.then324:                                       ; preds = %if.then319
   %c326 = load ptr, ptr %c, align 8
   %n327 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c326, ptr %n327, ptr @.str.157)
+  call void @ck_error(ptr %c326, ptr %n327, ptr @.str.194)
   br label %if.end321
 
 if.else325:                                       ; preds = %if.then319
@@ -19223,7 +20565,7 @@ if.end329:                                        ; preds = %if.else333, %if.the
 if.then332:                                       ; preds = %if.end316
   %c334 = load ptr, ptr %c, align 8
   %n335 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c334, ptr %n335, ptr @.str.159)
+  call void @ck_error(ptr %c334, ptr %n335, ptr @.str.196)
   br label %if.end329
 
 if.else333:                                       ; preds = %if.end316
@@ -19247,7 +20589,7 @@ sc.end340:                                        ; preds = %sc.rhs339, %if.end3
 if.then344:                                       ; preds = %sc.end340
   %c346 = load ptr, ptr %c, align 8
   %n347 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c346, ptr %n347, ptr @.str.160)
+  call void @ck_error(ptr %c346, ptr %n347, ptr @.str.197)
   br label %if.end336
 
 if.else345:                                       ; preds = %sc.end340
@@ -19272,7 +20614,7 @@ sc.end353:                                        ; preds = %sc.rhs352, %if.end3
 if.then358:                                       ; preds = %sc.end353
   %c360 = load ptr, ptr %c, align 8
   %n361 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c360, ptr %n361, ptr @.str.171)
+  call void @ck_error(ptr %c360, ptr %n361, ptr @.str.208)
   br label %if.end348
 
 if.else359:                                       ; preds = %sc.end353
@@ -19353,7 +20695,7 @@ sc.end:                                           ; preds = %sc.rhs, %entry
 if.then:                                          ; preds = %sc.end
   %c6 = load ptr, ptr %c, align 8
   %e7 = load ptr, ptr %e, align 8
-  call void @ck_error(ptr %c6, ptr %e7, ptr @.str.137)
+  call void @ck_error(ptr %c6, ptr %e7, ptr @.str.174)
   %call8 = call %Type @ty_unknown()
   ret %Type %call8
 
@@ -19587,7 +20929,7 @@ if.then7:                                         ; preds = %sc.end
   %c10 = load ptr, ptr %c, align 8
   %at11 = load ptr, ptr %at, align 8
   %s12 = load ptr, ptr %s, align 8
-  call void @ck_error2(ptr %c10, ptr %at11, ptr @.str.138, ptr %s12, ptr @.str.117)
+  call void @ck_error2(ptr %c10, ptr %at11, ptr @.str.175, ptr %s12, ptr @.str.72)
   %s13 = load ptr, ptr %s, align 8
   call void @free(ptr %s13)
   ret ptr null
@@ -19723,7 +21065,7 @@ if.then50:                                        ; preds = %if.end26
   %c52 = load ptr, ptr %c, align 8
   %n53 = load ptr, ptr %n, align 8
   %m54 = load ptr, ptr %m, align 8
-  call void @ck_error2(ptr %c52, ptr %n53, ptr @.str.139, ptr %m54, ptr @.str.117)
+  call void @ck_error2(ptr %c52, ptr %n53, ptr @.str.176, ptr %m54, ptr @.str.72)
   ret ptr null
 
 if.else51:                                        ; preds = %if.end26
@@ -19783,7 +21125,7 @@ if.then83:                                        ; preds = %sc.end78
   %n88 = load ptr, ptr %n, align 8
   %s89 = load ptr, ptr %s, align 8
   %m90 = load ptr, ptr %m, align 8
-  call void @ck_error2(ptr %c87, ptr %n88, ptr @.str.140, ptr %s89, ptr %m90)
+  call void @ck_error2(ptr %c87, ptr %n88, ptr @.str.177, ptr %s89, ptr %m90)
   %s91 = load ptr, ptr %s, align 8
   call void @free(ptr %s91)
   ret ptr null
@@ -19860,7 +21202,7 @@ if.then131:                                       ; preds = %sc.end120
   %fld137 = getelementptr inbounds nuw %ASTNode, ptr %objptr136, i32 0, i32 2
   %fld138 = getelementptr inbounds nuw %N_FnDecl, ptr %fld137, i32 0, i32 3
   %fldval139 = load ptr, ptr %fld138, align 8
-  call void @ck_error2(ptr %c133, ptr %n134, ptr @.str.141, ptr %m135, ptr %fldval139)
+  call void @ck_error2(ptr %c133, ptr %n134, ptr @.str.178, ptr %m135, ptr %fldval139)
   br label %if.end114
 
 if.else132:                                       ; preds = %sc.end120
@@ -19872,7 +21214,7 @@ if.end145:                                        ; preds = %if.else152
   %fld159 = getelementptr inbounds nuw %Type, ptr %rt, i32 0, i32 4
   %fldval160 = load ptr, ptr %fld159, align 8
   %m161 = load ptr, ptr %m, align 8
-  call void @ck_error2(ptr %c157, ptr %n158, ptr @.str.142, ptr %fldval160, ptr %m161)
+  call void @ck_error2(ptr %c157, ptr %n158, ptr @.str.179, ptr %fldval160, ptr %m161)
   ret ptr null
 
 if.then151:                                       ; preds = %if.end93
@@ -19906,7 +21248,7 @@ entry:
   store ptr %0, ptr %c, align 8
   %n = alloca ptr, align 8
   store ptr %1, ptr %n, align 8
-  store ptr @.str.143, ptr %name, align 8
+  store ptr @.str.180, ptr %name, align 8
   %objptr = load ptr, ptr %n, align 8
   %fld = getelementptr inbounds nuw %ASTNode, ptr %objptr, i32 0, i32 2
   %fld1 = getelementptr inbounds nuw %N_FnCall, ptr %fld, i32 0, i32 0
@@ -20117,7 +21459,7 @@ if.then88:                                        ; preds = %if.then76
   %a95 = load ptr, ptr %a, align 8
   %sw96 = load ptr, ptr %sw, align 8
   %sg97 = load ptr, ptr %sg, align 8
-  call void @ck_error2(ptr %c94, ptr %a95, ptr @.str.144, ptr %sw96, ptr %sg97)
+  call void @ck_error2(ptr %c94, ptr %a95, ptr @.str.181, ptr %sw96, ptr %sg97)
   %sw98 = load ptr, ptr %sw, align 8
   call void @free(ptr %sw98)
   %sg99 = load ptr, ptr %sg, align 8
@@ -20137,7 +21479,7 @@ if.then111:                                       ; preds = %loop.end61
   %c113 = load ptr, ptr %c, align 8
   %n114 = load ptr, ptr %n, align 8
   %name115 = load ptr, ptr %name, align 8
-  call void @ck_error2(ptr %c113, ptr %n114, ptr @.str.145, ptr %name115, ptr @.str.117)
+  call void @ck_error2(ptr %c113, ptr %n114, ptr @.str.182, ptr %name115, ptr @.str.72)
   br label %if.end108
 
 if.else112:                                       ; preds = %loop.end61
@@ -20163,7 +21505,7 @@ if.then124:                                       ; preds = %sc.end120
   %c126 = load ptr, ptr %c, align 8
   %n127 = load ptr, ptr %n, align 8
   %name128 = load ptr, ptr %name, align 8
-  call void @ck_error2(ptr %c126, ptr %n127, ptr @.str.146, ptr %name128, ptr @.str.117)
+  call void @ck_error2(ptr %c126, ptr %n127, ptr @.str.183, ptr %name128, ptr @.str.72)
   br label %if.end116
 
 if.else125:                                       ; preds = %sc.end120
@@ -20268,7 +21610,7 @@ if.end20:                                         ; preds = %if.else24
 if.then23:                                        ; preds = %if.end13
   %c25 = load ptr, ptr %c, align 8
   %n26 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c25, ptr %n26, ptr @.str.147)
+  call void @ck_error(ptr %c25, ptr %n26, ptr @.str.184)
   %call27 = call %Type @ty_unknown()
   ret %Type %call27
 
@@ -20301,7 +21643,7 @@ if.then39:                                        ; preds = %if.end29
   %c43 = load ptr, ptr %c, align 8
   %n44 = load ptr, ptr %n, align 8
   %s45 = load ptr, ptr %s, align 8
-  call void @ck_error2(ptr %c43, ptr %n44, ptr @.str.148, ptr %s45, ptr @.str.117)
+  call void @ck_error2(ptr %c43, ptr %n44, ptr @.str.185, ptr %s45, ptr @.str.72)
   %s46 = load ptr, ptr %s, align 8
   call void @free(ptr %s46)
   %call47 = call %Type @ty_unknown()
@@ -20337,7 +21679,7 @@ sc.end:                                           ; preds = %sc.rhs, %if.end36
 if.then54:                                        ; preds = %sc.end
   %c56 = load ptr, ptr %c, align 8
   %n57 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c56, ptr %n57, ptr @.str.149)
+  call void @ck_error(ptr %c56, ptr %n57, ptr @.str.186)
   %call58 = call %Type @ty_unknown()
   ret %Type %call58
 
@@ -20356,7 +21698,7 @@ if.then69:                                        ; preds = %if.end48
   %fldval75 = load ptr, ptr %fld74, align 8
   %fld76 = getelementptr inbounds nuw %Type, ptr %obj, i32 0, i32 4
   %fldval77 = load ptr, ptr %fld76, align 8
-  call void @ck_error2(ptr %c71, ptr %n72, ptr @.str.150, ptr %fldval75, ptr %fldval77)
+  call void @ck_error2(ptr %c71, ptr %n72, ptr @.str.187, ptr %fldval75, ptr %fldval77)
   %call78 = call %Type @ty_unknown()
   ret %Type %call78
 
@@ -20400,7 +21742,7 @@ if.then107:                                       ; preds = %sc.end102
   %c111 = load ptr, ptr %c, align 8
   %n112 = load ptr, ptr %n, align 8
   %si113 = load ptr, ptr %si, align 8
-  call void @ck_error2(ptr %c111, ptr %n112, ptr @.str.151, ptr %si113, ptr @.str.117)
+  call void @ck_error2(ptr %c111, ptr %n112, ptr @.str.188, ptr %si113, ptr @.str.72)
   %si114 = load ptr, ptr %si, align 8
   call void @free(ptr %si114)
   br label %if.end97
@@ -20434,7 +21776,7 @@ if.then126:                                       ; preds = %if.end115
   %c130 = load ptr, ptr %c, align 8
   %n131 = load ptr, ptr %n, align 8
   %sl132 = load ptr, ptr %sl, align 8
-  call void @ck_error2(ptr %c130, ptr %n131, ptr @.str.152, ptr %sl132, ptr @.str.117)
+  call void @ck_error2(ptr %c130, ptr %n131, ptr @.str.189, ptr %sl132, ptr @.str.72)
   %sl133 = load ptr, ptr %sl, align 8
   call void @free(ptr %sl133)
   %call134 = call %Type @ty_unknown()
@@ -20467,7 +21809,7 @@ sc.end140:                                        ; preds = %sc.rhs139, %if.end1
 if.then145:                                       ; preds = %sc.end140
   %c147 = load ptr, ptr %c, align 8
   %n148 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c147, ptr %n148, ptr @.str.153)
+  call void @ck_error(ptr %c147, ptr %n148, ptr @.str.190)
   %call149 = call %Type @ty_unknown()
   ret %Type %call149
 
@@ -20501,7 +21843,7 @@ if.end160:                                        ; preds = %if.else169
 if.then168:                                       ; preds = %if.then158
   %c170 = load ptr, ptr %c, align 8
   %n171 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c170, ptr %n171, ptr @.str.154)
+  call void @ck_error(ptr %c170, ptr %n171, ptr @.str.191)
   %lt172 = load %Type, ptr %lt, align 8
   ret %Type %lt172
 
@@ -20519,7 +21861,7 @@ if.end173:                                        ; preds = %if.else178
 if.then177:                                       ; preds = %if.end160
   %c179 = load ptr, ptr %c, align 8
   %n180 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c179, ptr %n180, ptr @.str.155)
+  call void @ck_error(ptr %c179, ptr %n180, ptr @.str.192)
   %lt181 = load %Type, ptr %lt, align 8
   ret %Type %lt181
 
@@ -20541,7 +21883,7 @@ if.then188:                                       ; preds = %if.end173
   %n196 = load ptr, ptr %n, align 8
   %sr197 = load ptr, ptr %sr, align 8
   %sl198 = load ptr, ptr %sl190, align 8
-  call void @ck_error2(ptr %c195, ptr %n196, ptr @.str.156, ptr %sr197, ptr %sl198)
+  call void @ck_error2(ptr %c195, ptr %n196, ptr @.str.193, ptr %sr197, ptr %sl198)
   %sl199 = load ptr, ptr %sl190, align 8
   call void @free(ptr %sl199)
   %sr200 = load ptr, ptr %sr, align 8
@@ -20589,7 +21931,7 @@ sc.end216:                                        ; preds = %sc.rhs215, %if.then
 if.then220:                                       ; preds = %sc.end216
   %c222 = load ptr, ptr %c, align 8
   %n223 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c222, ptr %n223, ptr @.str.157)
+  call void @ck_error(ptr %c222, ptr %n223, ptr @.str.194)
   br label %if.end212
 
 if.else221:                                       ; preds = %sc.end216
@@ -20676,7 +22018,7 @@ sc.end262:                                        ; preds = %sc.rhs261, %if.then
 if.then266:                                       ; preds = %sc.end262
   %c268 = load ptr, ptr %c, align 8
   %n269 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c268, ptr %n269, ptr @.str.158)
+  call void @ck_error(ptr %c268, ptr %n269, ptr @.str.195)
   br label %if.end258
 
 if.else267:                                       ; preds = %sc.end262
@@ -20703,7 +22045,7 @@ sc.end275:                                        ; preds = %sc.rhs274, %if.end2
 if.then279:                                       ; preds = %sc.end275
   %c281 = load ptr, ptr %c, align 8
   %n282 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c281, ptr %n282, ptr @.str.159)
+  call void @ck_error(ptr %c281, ptr %n282, ptr @.str.196)
   %call283 = call %Type @ty_unknown()
   ret %Type %call283
 
@@ -20780,7 +22122,7 @@ sc.end316:                                        ; preds = %sc.rhs315, %sc.end3
 if.then320:                                       ; preds = %sc.end316
   %c322 = load ptr, ptr %c, align 8
   %n323 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c322, ptr %n323, ptr @.str.160)
+  call void @ck_error(ptr %c322, ptr %n323, ptr @.str.197)
   %call324 = call %Type @ty_unknown()
   ret %Type %call324
 
@@ -20806,7 +22148,7 @@ sc.end330:                                        ; preds = %sc.rhs329, %if.end3
 if.then335:                                       ; preds = %sc.end330
   %c337 = load ptr, ptr %c, align 8
   %n338 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c337, ptr %n338, ptr @.str.161)
+  call void @ck_error(ptr %c337, ptr %n338, ptr @.str.198)
   %call339 = call %Type @ty_unknown()
   ret %Type %call339
 
@@ -20929,7 +22271,7 @@ if.then399:                                       ; preds = %if.then391
   %n408 = load ptr, ptr %n, align 8
   %sr409 = load ptr, ptr %sr404, align 8
   %sl410 = load ptr, ptr %sl401, align 8
-  call void @ck_error2(ptr %c407, ptr %n408, ptr @.str.162, ptr %sr409, ptr %sl410)
+  call void @ck_error2(ptr %c407, ptr %n408, ptr @.str.199, ptr %sr409, ptr %sl410)
   %sl411 = load ptr, ptr %sl401, align 8
   call void @free(ptr %sl411)
   %sr412 = load ptr, ptr %sr404, align 8
@@ -21000,7 +22342,7 @@ if.else442:                                       ; preds = %sc.end437
 if.end444:                                        ; preds = %if.else457
   %c459 = load ptr, ptr %c, align 8
   %n460 = load ptr, ptr %n, align 8
-  call void @ck_error(ptr %c459, ptr %n460, ptr @.str.163)
+  call void @ck_error(ptr %c459, ptr %n460, ptr @.str.200)
   %call461 = call %Type @ty_unknown()
   ret %Type %call461
 
@@ -21232,7 +22574,7 @@ if.then:                                          ; preds = %entry
   %c5 = load ptr, ptr %c, align 8
   %e6 = load ptr, ptr %e, align 8
   %what7 = load ptr, ptr %what, align 8
-  call void @ck_error2(ptr %c5, ptr %e6, ptr @.str.172, ptr %what7, ptr @.str.117)
+  call void @ck_error2(ptr %c5, ptr %e6, ptr @.str.209, ptr %what7, ptr @.str.72)
   br label %if.end
 
 if.else:                                          ; preds = %entry
@@ -21325,7 +22667,7 @@ if.then25:                                        ; preds = %sc.end
   %c27 = load ptr, ptr %c, align 8
   %d28 = load ptr, ptr %d, align 8
   %nm29 = load ptr, ptr %nm, align 8
-  call void @ck_error2(ptr %c27, ptr %d28, ptr @.str.173, ptr %nm29, ptr @.str.117)
+  call void @ck_error2(ptr %c27, ptr %d28, ptr @.str.210, ptr %nm29, ptr @.str.72)
   br label %if.end18
 
 if.else26:                                        ; preds = %sc.end
@@ -21343,7 +22685,7 @@ if.then34:                                        ; preds = %if.end18
   %c36 = load ptr, ptr %c, align 8
   %d37 = load ptr, ptr %d, align 8
   %nm38 = load ptr, ptr %nm, align 8
-  call void @ck_error2(ptr %c36, ptr %d37, ptr @.str.174, ptr %nm38, ptr @.str.117)
+  call void @ck_error2(ptr %c36, ptr %d37, ptr @.str.211, ptr %nm38, ptr @.str.72)
   br label %if.end30
 
 if.else35:                                        ; preds = %if.end18
@@ -21371,7 +22713,7 @@ if.then49:                                        ; preds = %sc.end45
   %c51 = load ptr, ptr %c, align 8
   %d52 = load ptr, ptr %d, align 8
   %nm53 = load ptr, ptr %nm, align 8
-  call void @ck_error2(ptr %c51, ptr %d52, ptr @.str.175, ptr %nm53, ptr @.str.117)
+  call void @ck_error2(ptr %c51, ptr %d52, ptr @.str.212, ptr %nm53, ptr @.str.72)
   %c54 = load ptr, ptr %c, align 8
   %nm55 = load ptr, ptr %nm, align 8
   %dt56 = load %Type, ptr %dt, align 8
@@ -21420,7 +22762,7 @@ if.then76:                                        ; preds = %if.then63
   %d83 = load ptr, ptr %d, align 8
   %sd84 = load ptr, ptr %sd, align 8
   %si85 = load ptr, ptr %si, align 8
-  call void @ck_error2(ptr %c82, ptr %d83, ptr @.str.176, ptr %sd84, ptr %si85)
+  call void @ck_error2(ptr %c82, ptr %d83, ptr @.str.213, ptr %sd84, ptr %si85)
   %sd86 = load ptr, ptr %sd, align 8
   call void @free(ptr %sd86)
   %si87 = load ptr, ptr %si, align 8
@@ -21500,7 +22842,7 @@ if.then124:                                       ; preds = %if.then119
   %c130 = load ptr, ptr %c, align 8
   %st131 = load ptr, ptr %st, align 8
   %s132 = load ptr, ptr %s, align 8
-  call void @ck_error2(ptr %c130, ptr %st131, ptr @.str.177, ptr %s132, ptr @.str.117)
+  call void @ck_error2(ptr %c130, ptr %st131, ptr @.str.214, ptr %s132, ptr @.str.72)
   %s133 = load ptr, ptr %s, align 8
   call void @free(ptr %s133)
   br label %if.end121
@@ -21514,7 +22856,7 @@ if.end140:                                        ; preds = %elif.else, %elif.th
 if.then142:                                       ; preds = %if.end113
   %c144 = load ptr, ptr %c, align 8
   %st145 = load ptr, ptr %st, align 8
-  call void @ck_error(ptr %c144, ptr %st145, ptr @.str.178)
+  call void @ck_error(ptr %c144, ptr %st145, ptr @.str.215)
   br label %if.end140
 
 if.else143:                                       ; preds = %if.end113
@@ -21540,7 +22882,7 @@ elif.then:                                        ; preds = %if.else143
   %st160 = load ptr, ptr %st, align 8
   %sg161 = load ptr, ptr %sg, align 8
   %sw162 = load ptr, ptr %sw, align 8
-  call void @ck_error2(ptr %c159, ptr %st160, ptr @.str.179, ptr %sg161, ptr %sw162)
+  call void @ck_error2(ptr %c159, ptr %st160, ptr @.str.216, ptr %sg161, ptr %sw162)
   %sw163 = load ptr, ptr %sw, align 8
   call void @free(ptr %sw163)
   %sg164 = load ptr, ptr %sg, align 8
@@ -21571,7 +22913,7 @@ if.then168:                                       ; preds = %if.end91
   %fld180 = getelementptr inbounds nuw %ASTNode, ptr %objptr179, i32 0, i32 2
   %fld181 = getelementptr inbounds nuw %N_If, ptr %fld180, i32 0, i32 0
   %fldval182 = load ptr, ptr %fld181, align 8
-  call void @ck_cond_expr(ptr %c178, ptr %fldval182, ptr @.str.34)
+  call void @ck_cond_expr(ptr %c178, ptr %fldval182, ptr @.str.26)
   %c183 = load ptr, ptr %c, align 8
   %objptr184 = load ptr, ptr %ifp, align 8
   %fld185 = getelementptr inbounds nuw %ASTNode, ptr %objptr184, i32 0, i32 2
@@ -21610,7 +22952,7 @@ while.body:                                       ; preds = %loop.body
   %fld196 = getelementptr inbounds nuw %ASTNode, ptr %objptr195, i32 0, i32 2
   %fld197 = getelementptr inbounds nuw %N_Elif, ptr %fld196, i32 0, i32 0
   %fldval198 = load ptr, ptr %fld197, align 8
-  call void @ck_cond_expr(ptr %c194, ptr %fldval198, ptr @.str.35)
+  call void @ck_cond_expr(ptr %c194, ptr %fldval198, ptr @.str.27)
   %c199 = load ptr, ptr %c, align 8
   %objptr200 = load ptr, ptr %el, align 8
   %fld201 = getelementptr inbounds nuw %ASTNode, ptr %objptr200, i32 0, i32 2
@@ -21692,7 +23034,7 @@ if.then239:                                       ; preds = %if.then227
   %fld243 = getelementptr inbounds nuw %ASTNode, ptr %objptr242, i32 0, i32 2
   %fld244 = getelementptr inbounds nuw %N_Loop, ptr %fld243, i32 0, i32 0
   %fldval245 = load ptr, ptr %fld244, align 8
-  call void @ck_cond_expr(ptr %c241, ptr %fldval245, ptr @.str.38)
+  call void @ck_cond_expr(ptr %c241, ptr %fldval245, ptr @.str.30)
   br label %if.end233
 
 if.else240:                                       ; preds = %if.then227
@@ -21726,7 +23068,7 @@ if.end271:                                        ; preds = %if.else277, %if.end
   ret void
 
 if.then276:                                       ; preds = %if.then269
-  store ptr @.str.39, ptr %what, align 8
+  store ptr @.str.31, ptr %what, align 8
   %k279 = load i32, ptr %k, align 4
   %eq280 = icmp eq i32 %k279, 2
   br i1 %eq280, label %if.then281, label %if.else282
@@ -21738,11 +23080,11 @@ if.end278:                                        ; preds = %if.else282, %if.the
   %c283 = load ptr, ptr %c, align 8
   %st284 = load ptr, ptr %st, align 8
   %what285 = load ptr, ptr %what, align 8
-  call void @ck_error2(ptr %c283, ptr %st284, ptr @.str.180, ptr %what285, ptr @.str.117)
+  call void @ck_error2(ptr %c283, ptr %st284, ptr @.str.217, ptr %what285, ptr @.str.72)
   br label %if.end271
 
 if.then281:                                       ; preds = %if.then276
-  store ptr @.str.40, ptr %what, align 8
+  store ptr @.str.32, ptr %what, align 8
   br label %if.end278
 
 if.else282:                                       ; preds = %if.then276
@@ -21840,7 +23182,7 @@ if.end:                                           ; preds = %if.else
   %fldval24 = load ptr, ptr %fld23, align 8
   store ptr %fldval24, ptr %nm, align 8
   %nm25 = load ptr, ptr %nm, align 8
-  %call26 = call i32 @strcmp(ptr %nm25, ptr @.str.181)
+  %call26 = call i32 @strcmp(ptr %nm25, ptr @.str.218)
   %eq27 = icmp eq i32 %call26, 0
   br i1 %eq27, label %sc.end29, label %sc.rhs28
 
@@ -21887,7 +23229,7 @@ if.else:                                          ; preds = %sc.end12
 
 sc.rhs28:                                         ; preds = %if.end
   %nm30 = load ptr, ptr %nm, align 8
-  %call31 = call i32 @strcmp(ptr %nm30, ptr @.str.182)
+  %call31 = call i32 @strcmp(ptr %nm30, ptr @.str.219)
   %eq32 = icmp eq i32 %call31, 0
   br label %sc.end29
 
@@ -21897,7 +23239,7 @@ sc.end29:                                         ; preds = %sc.rhs28, %if.end
 
 sc.rhs34:                                         ; preds = %sc.end29
   %nm36 = load ptr, ptr %nm, align 8
-  %call37 = call i32 @strcmp(ptr %nm36, ptr @.str.183)
+  %call37 = call i32 @strcmp(ptr %nm36, ptr @.str.220)
   %eq38 = icmp eq i32 %call37, 0
   br label %sc.end35
 
@@ -22373,7 +23715,7 @@ if.end66:                                         ; preds = %if.else85, %if.then
 
 sc.rhs69:                                         ; preds = %sc.end
   %fname71 = load ptr, ptr %fname, align 8
-  %call72 = call i32 @strcmp(ptr %fname71, ptr @.str.184)
+  %call72 = call i32 @strcmp(ptr %fname71, ptr @.str.221)
   %ne73 = icmp ne i32 %call72, 0
   br label %sc.end70
 
@@ -22398,7 +23740,7 @@ if.then84:                                        ; preds = %sc.end76
   %c86 = load ptr, ptr %c, align 8
   %def87 = load ptr, ptr %def, align 8
   %fname88 = load ptr, ptr %fname, align 8
-  call void @ck_error2(ptr %c86, ptr %def87, ptr @.str.185, ptr %fname88, ptr @.str.117)
+  call void @ck_error2(ptr %c86, ptr %def87, ptr @.str.222, ptr %fname88, ptr @.str.72)
   br label %if.end66
 
 if.else85:                                        ; preds = %sc.end76
@@ -22529,7 +23871,7 @@ if.then25:                                        ; preds = %if.then
   %c27 = load ptr, ptr %c, align 8
   %node28 = load ptr, ptr %node, align 8
   %nm29 = load ptr, ptr %nm, align 8
-  call void @ck_error2(ptr %c27, ptr %node28, ptr @.str.186, ptr %nm29, ptr @.str.117)
+  call void @ck_error2(ptr %c27, ptr %node28, ptr @.str.223, ptr %nm29, ptr @.str.72)
   br label %if.end21
 
 if.else26:                                        ; preds = %if.then
@@ -22566,7 +23908,7 @@ if.then49:                                        ; preds = %if.then36
   %c51 = load ptr, ptr %c, align 8
   %node52 = load ptr, ptr %node, align 8
   %nm53 = load ptr, ptr %nm38, align 8
-  call void @ck_error2(ptr %c51, ptr %node52, ptr @.str.187, ptr %nm53, ptr @.str.117)
+  call void @ck_error2(ptr %c51, ptr %node52, ptr @.str.224, ptr %nm53, ptr @.str.72)
   br label %if.end45
 
 if.else50:                                        ; preds = %if.then36
@@ -22643,7 +23985,7 @@ if.then84:                                        ; preds = %if.then68
   %c86 = load ptr, ptr %c, align 8
   %node87 = load ptr, ptr %node, align 8
   %dn88 = load ptr, ptr %dn, align 8
-  call void @ck_error2(ptr %c86, ptr %node87, ptr @.str.188, ptr %dn88, ptr @.str.117)
+  call void @ck_error2(ptr %c86, ptr %node87, ptr @.str.225, ptr %dn88, ptr @.str.72)
   br label %if.end80
 
 if.else85:                                        ; preds = %if.then68
@@ -22673,7 +24015,7 @@ if.then109:                                       ; preds = %if.then102
   %c111 = load ptr, ptr %c, align 8
   %decl112 = load ptr, ptr %decl, align 8
   %fn113 = load ptr, ptr %fn, align 8
-  call void @ck_error2(ptr %c111, ptr %decl112, ptr @.str.189, ptr %fn113, ptr @.str.117)
+  call void @ck_error2(ptr %c111, ptr %decl112, ptr @.str.226, ptr %fn113, ptr @.str.72)
   br label %if.end104
 
 if.else110:                                       ; preds = %if.then102
@@ -22787,7 +24129,7 @@ if.then35:                                        ; preds = %sc.end
   %c37 = load ptr, ptr %c, align 8
   %d38 = load ptr, ptr %d, align 8
   %nm39 = load ptr, ptr %nm, align 8
-  call void @ck_error2(ptr %c37, ptr %d38, ptr @.str.173, ptr %nm39, ptr @.str.117)
+  call void @ck_error2(ptr %c37, ptr %d38, ptr @.str.210, ptr %nm39, ptr @.str.72)
   br label %if.end28
 
 if.else36:                                        ; preds = %sc.end
@@ -22842,10 +24184,7 @@ if.end75:                                         ; preds = %if.else81
   ret i1 true
 
 if.then80:                                        ; preds = %loop.end53
-  %objptr82 = load ptr, ptr %c, align 8
-  %fld83 = getelementptr inbounds nuw %Checker, ptr %objptr82, i32 0, i32 6
-  %fldval84 = load i32, ptr %fld83, align 4
-  %call85 = call i32 (ptr, ...) @printf(ptr @.str.190, i32 %fldval84)
+  call void @diag_summary()
   ret i1 false
 
 if.else81:                                        ; preds = %loop.end53
@@ -23112,8 +24451,7 @@ entry:
   %msg = alloca ptr, align 8
   store ptr %0, ptr %msg, align 8
   %msg1 = load ptr, ptr %msg, align 8
-  %call = call i32 (ptr, ...) @printf(ptr @.str.191, ptr %msg1)
-  call void @exit(i32 1)
+  call void @diag_internal(ptr @.str.227, ptr %msg1)
   ret void
 }
 
@@ -23681,7 +25019,7 @@ if.else83:                                        ; preds = %if.end55
   br label %if.end79
 
 if.end88:                                         ; preds = %if.else92
-  call void @cg_fatal(ptr @.str.192)
+  call void @cg_fatal(ptr @.str.228)
   ret ptr null
 
 if.then91:                                        ; preds = %if.end79
@@ -23760,80 +25098,74 @@ elif.else:                                        ; preds = %if.else
   br i1 %eq29, label %if.then30, label %if.else31
 
 if.end27:                                         ; preds = %if.else31, %if.then30
-  %objptr47 = load ptr, ptr %ut, align 8
-  %fld48 = getelementptr inbounds nuw %CGType, ptr %objptr47, i32 0, i32 1
-  %fldval49 = load ptr, ptr %fld48, align 8
-  store ptr %fldval49, ptr %base, align 8
+  %objptr41 = load ptr, ptr %ut, align 8
+  %fld42 = getelementptr inbounds nuw %CGType, ptr %objptr41, i32 0, i32 1
+  %fldval43 = load ptr, ptr %fld42, align 8
+  store ptr %fldval43, ptr %base, align 8
   br label %if.end
 
 if.then30:                                        ; preds = %elif.else
   %objptr32 = load ptr, ptr %tn, align 8
-  %fld33 = getelementptr inbounds nuw %ASTNode, ptr %objptr32, i32 0, i32 2
-  %fld34 = getelementptr inbounds nuw %N_Type, ptr %fld33, i32 0, i32 2
-  %objptr35 = load ptr, ptr %fld34, align 8
+  %fld33 = getelementptr inbounds nuw %ASTNode, ptr %objptr32, i32 0, i32 1
+  %fldval34 = load %Location, ptr %fld33, align 8
+  %objptr35 = load ptr, ptr %tn, align 8
   %fld36 = getelementptr inbounds nuw %ASTNode, ptr %objptr35, i32 0, i32 2
-  %fldval37 = load ptr, ptr %fld36, align 8
-  %objptr38 = load ptr, ptr %tn, align 8
-  %fld39 = getelementptr inbounds nuw %ASTNode, ptr %objptr38, i32 0, i32 1
-  %fld40 = getelementptr inbounds nuw %Location, ptr %fld39, i32 0, i32 0
-  %fldval41 = load i32, ptr %fld40, align 4
-  %objptr42 = load ptr, ptr %tn, align 8
-  %fld43 = getelementptr inbounds nuw %ASTNode, ptr %objptr42, i32 0, i32 1
-  %fld44 = getelementptr inbounds nuw %Location, ptr %fld43, i32 0, i32 1
-  %fldval45 = load i32, ptr %fld44, align 4
-  %call46 = call i32 (ptr, ...) @printf(ptr @.str.193, ptr %fldval37, i32 %fldval41, i32 %fldval45)
-  call void @exit(i32 1)
+  %fld37 = getelementptr inbounds nuw %N_Type, ptr %fld36, i32 0, i32 2
+  %objptr38 = load ptr, ptr %fld37, align 8
+  %fld39 = getelementptr inbounds nuw %ASTNode, ptr %objptr38, i32 0, i32 2
+  %fldval40 = load ptr, ptr %fld39, align 8
+  call void @diag_fatal(%Location %fldval34, ptr @.str.155, ptr %fldval40, ptr @.str.72)
   br label %if.end27
 
 if.else31:                                        ; preds = %elif.else
   br label %if.end27
 
 loop.body:                                        ; preds = %loop.cont, %if.end
-  %i50 = load i64, ptr %i, align 8
-  %objptr51 = load ptr, ptr %tn, align 8
-  %fld52 = getelementptr inbounds nuw %ASTNode, ptr %objptr51, i32 0, i32 2
-  %fld53 = getelementptr inbounds nuw %N_Type, ptr %fld52, i32 0, i32 1
-  %fldval54 = load i64, ptr %fld53, align 8
-  %lt = icmp ult i64 %i50, %fldval54
+  %i44 = load i64, ptr %i, align 8
+  %objptr45 = load ptr, ptr %tn, align 8
+  %fld46 = getelementptr inbounds nuw %ASTNode, ptr %objptr45, i32 0, i32 2
+  %fld47 = getelementptr inbounds nuw %N_Type, ptr %fld46, i32 0, i32 1
+  %fldval48 = load i64, ptr %fld47, align 8
+  %lt = icmp ult i64 %i44, %fldval48
   br i1 %lt, label %while.body, label %loop.end
 
 loop.cont:                                        ; preds = %while.body
   br label %loop.body
 
 loop.end:                                         ; preds = %loop.body
-  %objptr59 = load ptr, ptr %tn, align 8
-  %fld60 = getelementptr inbounds nuw %ASTNode, ptr %objptr59, i32 0, i32 2
-  %fld61 = getelementptr inbounds nuw %N_Type, ptr %fld60, i32 0, i32 4
-  %fldval62 = load i64, ptr %fld61, align 8
-  %gt = icmp ugt i64 %fldval62, 0
-  br i1 %gt, label %if.then63, label %if.else64
+  %objptr53 = load ptr, ptr %tn, align 8
+  %fld54 = getelementptr inbounds nuw %ASTNode, ptr %objptr53, i32 0, i32 2
+  %fld55 = getelementptr inbounds nuw %N_Type, ptr %fld54, i32 0, i32 4
+  %fldval56 = load i64, ptr %fld55, align 8
+  %gt = icmp ugt i64 %fldval56, 0
+  br i1 %gt, label %if.then57, label %if.else58
 
 while.body:                                       ; preds = %loop.body
-  %base55 = load ptr, ptr %base, align 8
-  %call56 = call ptr @LLVMPointerType(ptr %base55, i32 0)
-  store ptr %call56, ptr %base, align 8
-  %i57 = load i64, ptr %i, align 8
-  %add = add i64 %i57, 1
+  %base49 = load ptr, ptr %base, align 8
+  %call50 = call ptr @LLVMPointerType(ptr %base49, i32 0)
+  store ptr %call50, ptr %base, align 8
+  %i51 = load i64, ptr %i, align 8
+  %add = add i64 %i51, 1
   store i64 %add, ptr %i, align 8
   br label %loop.cont
 
-if.end58:                                         ; preds = %if.else64, %if.then63
-  %base71 = load ptr, ptr %base, align 8
-  ret ptr %base71
-
-if.then63:                                        ; preds = %loop.end
+if.end52:                                         ; preds = %if.else58, %if.then57
   %base65 = load ptr, ptr %base, align 8
-  %objptr66 = load ptr, ptr %tn, align 8
-  %fld67 = getelementptr inbounds nuw %ASTNode, ptr %objptr66, i32 0, i32 2
-  %fld68 = getelementptr inbounds nuw %N_Type, ptr %fld67, i32 0, i32 4
-  %fldval69 = load i64, ptr %fld68, align 8
-  %cast = trunc i64 %fldval69 to i32
-  %call70 = call ptr @LLVMArrayType(ptr %base65, i32 %cast)
-  store ptr %call70, ptr %base, align 8
-  br label %if.end58
+  ret ptr %base65
 
-if.else64:                                        ; preds = %loop.end
-  br label %if.end58
+if.then57:                                        ; preds = %loop.end
+  %base59 = load ptr, ptr %base, align 8
+  %objptr60 = load ptr, ptr %tn, align 8
+  %fld61 = getelementptr inbounds nuw %ASTNode, ptr %objptr60, i32 0, i32 2
+  %fld62 = getelementptr inbounds nuw %N_Type, ptr %fld61, i32 0, i32 4
+  %fldval63 = load i64, ptr %fld62, align 8
+  %cast = trunc i64 %fldval63 to i32
+  %call64 = call ptr @LLVMArrayType(ptr %base59, i32 %cast)
+  store ptr %call64, ptr %base, align 8
+  br label %if.end52
+
+if.else58:                                        ; preds = %loop.end
+  br label %if.end52
 }
 
 define %TypeInfo @decl_info(ptr %0) {
@@ -24135,11 +25467,11 @@ entry:
   %fk = alloca i32, align 4
   %from = alloca ptr, align 8
   %to = alloca ptr, align 8
-  %v241 = alloca ptr, align 8
+  %v229 = alloca ptr, align 8
   %zero = alloca ptr, align 8
   %vt = alloca ptr, align 8
   %v = alloca ptr, align 8
-  %lv140 = alloca %LValue, align 8
+  %lv128 = alloca %LValue, align 8
   %lv = alloca %LValue, align 8
   %uk = alloca i32, align 4
   %fn = alloca ptr, align 8
@@ -24187,11 +25519,11 @@ if.else6:                                         ; preds = %if.end
   br label %if.end3
 
 if.end10:                                         ; preds = %if.else16, %if.end71
-  %objptr90 = load ptr, ptr %n, align 8
-  %fld91 = getelementptr inbounds nuw %ASTNode, ptr %objptr90, i32 0, i32 0
-  %fldval92 = load i32, ptr %fld91, align 4
-  %eq93 = icmp eq i32 %fldval92, 23
-  br i1 %eq93, label %if.then94, label %if.else95
+  %objptr84 = load ptr, ptr %n, align 8
+  %fld85 = getelementptr inbounds nuw %ASTNode, ptr %objptr84, i32 0, i32 0
+  %fldval86 = load i32, ptr %fld85, align 4
+  %eq87 = icmp eq i32 %fldval86, 23
+  br i1 %eq87, label %if.then88, label %if.else89
 
 if.then15:                                        ; preds = %if.end3
   %c17 = load ptr, ptr %c, align 8
@@ -24280,18 +25612,12 @@ if.else57:                                        ; preds = %if.end22
 
 if.end71:                                         ; preds = %if.else75
   %objptr77 = load ptr, ptr %n, align 8
-  %fld78 = getelementptr inbounds nuw %ASTNode, ptr %objptr77, i32 0, i32 2
-  %fldval79 = load ptr, ptr %fld78, align 8
+  %fld78 = getelementptr inbounds nuw %ASTNode, ptr %objptr77, i32 0, i32 1
+  %fldval79 = load %Location, ptr %fld78, align 8
   %objptr80 = load ptr, ptr %n, align 8
-  %fld81 = getelementptr inbounds nuw %ASTNode, ptr %objptr80, i32 0, i32 1
-  %fld82 = getelementptr inbounds nuw %Location, ptr %fld81, i32 0, i32 0
-  %fldval83 = load i32, ptr %fld82, align 4
-  %objptr84 = load ptr, ptr %n, align 8
-  %fld85 = getelementptr inbounds nuw %ASTNode, ptr %objptr84, i32 0, i32 1
-  %fld86 = getelementptr inbounds nuw %Location, ptr %fld85, i32 0, i32 1
-  %fldval87 = load i32, ptr %fld86, align 4
-  %call88 = call i32 (ptr, ...) @printf(ptr @.str.261, ptr %fldval79, i32 %fldval83, i32 %fldval87)
-  call void @exit(i32 1)
+  %fld81 = getelementptr inbounds nuw %ASTNode, ptr %objptr80, i32 0, i32 2
+  %fldval82 = load ptr, ptr %fld81, align 8
+  call void @diag_fatal(%Location %fldval79, ptr @.str.201, ptr %fldval82, ptr @.str.72)
   br label %if.end10
 
 if.then74:                                        ; preds = %if.end50
@@ -24301,681 +25627,671 @@ if.then74:                                        ; preds = %if.end50
 if.else75:                                        ; preds = %if.end50
   br label %if.end71
 
-if.end89:                                         ; preds = %if.else95
+if.end83:                                         ; preds = %if.else89
+  %objptr94 = load ptr, ptr %n, align 8
+  %fld95 = getelementptr inbounds nuw %ASTNode, ptr %objptr94, i32 0, i32 0
+  %fldval96 = load i32, ptr %fld95, align 4
+  %eq97 = icmp eq i32 %fldval96, 24
+  br i1 %eq97, label %if.then98, label %if.else99
+
+if.then88:                                        ; preds = %if.end10
+  %c90 = load ptr, ptr %c, align 8
+  %n91 = load ptr, ptr %n, align 8
+  %call92 = call ptr @gen_binop(ptr %c90, ptr %n91)
+  ret ptr %call92
+
+if.else89:                                        ; preds = %if.end10
+  br label %if.end83
+
+if.end93:                                         ; preds = %if.else99
+  %objptr213 = load ptr, ptr %n, align 8
+  %fld214 = getelementptr inbounds nuw %ASTNode, ptr %objptr213, i32 0, i32 0
+  %fldval215 = load i32, ptr %fld214, align 4
+  %eq216 = icmp eq i32 %fldval215, 25
+  br i1 %eq216, label %if.then217, label %if.else218
+
+if.then98:                                        ; preds = %if.end83
   %objptr100 = load ptr, ptr %n, align 8
-  %fld101 = getelementptr inbounds nuw %ASTNode, ptr %objptr100, i32 0, i32 0
-  %fldval102 = load i32, ptr %fld101, align 4
-  %eq103 = icmp eq i32 %fldval102, 24
-  br i1 %eq103, label %if.then104, label %if.else105
+  %fld101 = getelementptr inbounds nuw %ASTNode, ptr %objptr100, i32 0, i32 2
+  %fld102 = getelementptr inbounds nuw %N_UnyOp, ptr %fld101, i32 0, i32 0
+  %fldval103 = load i32, ptr %fld102, align 4
+  store i32 %fldval103, ptr %uk, align 4
+  %uk105 = load i32, ptr %uk, align 4
+  %eq106 = icmp eq i32 %uk105, 1
+  br i1 %eq106, label %if.then107, label %if.else108
 
-if.then94:                                        ; preds = %if.end10
-  %c96 = load ptr, ptr %c, align 8
-  %n97 = load ptr, ptr %n, align 8
-  %call98 = call ptr @gen_binop(ptr %c96, ptr %n97)
-  ret ptr %call98
+if.else99:                                        ; preds = %if.end83
+  br label %if.end93
 
-if.else95:                                        ; preds = %if.end10
-  br label %if.end89
+if.end104:                                        ; preds = %if.else108
+  %uk124 = load i32, ptr %uk, align 4
+  %eq125 = icmp eq i32 %uk124, 0
+  br i1 %eq125, label %if.then126, label %if.else127
 
-if.end99:                                         ; preds = %if.else105
-  %objptr225 = load ptr, ptr %n, align 8
-  %fld226 = getelementptr inbounds nuw %ASTNode, ptr %objptr225, i32 0, i32 0
-  %fldval227 = load i32, ptr %fld226, align 4
-  %eq228 = icmp eq i32 %fldval227, 25
-  br i1 %eq228, label %if.then229, label %if.else230
+if.then107:                                       ; preds = %if.then98
+  %c110 = load ptr, ptr %c, align 8
+  %objptr111 = load ptr, ptr %n, align 8
+  %fld112 = getelementptr inbounds nuw %ASTNode, ptr %objptr111, i32 0, i32 2
+  %fld113 = getelementptr inbounds nuw %N_UnyOp, ptr %fld112, i32 0, i32 1
+  %fldval114 = load ptr, ptr %fld113, align 8
+  %call115 = call i1 @gen_lvalue(ptr %c110, ptr %fldval114, ptr %lv)
+  %not = icmp eq i1 %call115, false
+  br i1 %not, label %if.then116, label %if.else117
 
-if.then104:                                       ; preds = %if.end89
-  %objptr106 = load ptr, ptr %n, align 8
-  %fld107 = getelementptr inbounds nuw %ASTNode, ptr %objptr106, i32 0, i32 2
-  %fld108 = getelementptr inbounds nuw %N_UnyOp, ptr %fld107, i32 0, i32 0
-  %fldval109 = load i32, ptr %fld108, align 4
-  store i32 %fldval109, ptr %uk, align 4
-  %uk111 = load i32, ptr %uk, align 4
-  %eq112 = icmp eq i32 %uk111, 1
-  br i1 %eq112, label %if.then113, label %if.else114
+if.else108:                                       ; preds = %if.then98
+  br label %if.end104
 
-if.else105:                                       ; preds = %if.end89
-  br label %if.end99
+if.end109:                                        ; preds = %if.else117, %if.then116
+  %fld121 = getelementptr inbounds nuw %LValue, ptr %lv, i32 0, i32 0
+  %fldval122 = load ptr, ptr %fld121, align 8
+  ret ptr %fldval122
 
-if.end110:                                        ; preds = %if.else114
-  %uk136 = load i32, ptr %uk, align 4
-  %eq137 = icmp eq i32 %uk136, 0
-  br i1 %eq137, label %if.then138, label %if.else139
+if.then116:                                       ; preds = %if.then107
+  %objptr118 = load ptr, ptr %n, align 8
+  %fld119 = getelementptr inbounds nuw %ASTNode, ptr %objptr118, i32 0, i32 1
+  %fldval120 = load %Location, ptr %fld119, align 8
+  call void @diag_fatal(%Location %fldval120, ptr @.str.294, ptr @.str.72, ptr @.str.72)
+  br label %if.end109
 
-if.then113:                                       ; preds = %if.then104
-  %c116 = load ptr, ptr %c, align 8
-  %objptr117 = load ptr, ptr %n, align 8
-  %fld118 = getelementptr inbounds nuw %ASTNode, ptr %objptr117, i32 0, i32 2
-  %fld119 = getelementptr inbounds nuw %N_UnyOp, ptr %fld118, i32 0, i32 1
-  %fldval120 = load ptr, ptr %fld119, align 8
-  %call121 = call i1 @gen_lvalue(ptr %c116, ptr %fldval120, ptr %lv)
-  %not = icmp eq i1 %call121, false
-  br i1 %not, label %if.then122, label %if.else123
+if.else117:                                       ; preds = %if.then107
+  br label %if.end109
 
-if.else114:                                       ; preds = %if.then104
-  br label %if.end110
+if.end123:                                        ; preds = %if.else127
+  %c143 = load ptr, ptr %c, align 8
+  %objptr144 = load ptr, ptr %n, align 8
+  %fld145 = getelementptr inbounds nuw %ASTNode, ptr %objptr144, i32 0, i32 2
+  %fld146 = getelementptr inbounds nuw %N_UnyOp, ptr %fld145, i32 0, i32 1
+  %fldval147 = load ptr, ptr %fld146, align 8
+  %call148 = call ptr @gen_expr(ptr %c143, ptr %fldval147)
+  store ptr %call148, ptr %v, align 8
+  %v150 = load ptr, ptr %v, align 8
+  %eq151 = icmp eq ptr %v150, null
+  br i1 %eq151, label %if.then152, label %if.else153
 
-if.end115:                                        ; preds = %if.else123, %if.then122
-  %fld133 = getelementptr inbounds nuw %LValue, ptr %lv, i32 0, i32 0
-  %fldval134 = load ptr, ptr %fld133, align 8
-  ret ptr %fldval134
+if.then126:                                       ; preds = %if.end104
+  %c130 = load ptr, ptr %c, align 8
+  %e131 = load ptr, ptr %e, align 8
+  %call132 = call i1 @gen_lvalue(ptr %c130, ptr %e131, ptr %lv128)
+  br i1 %call132, label %if.then133, label %if.else134
 
-if.then122:                                       ; preds = %if.then113
-  %objptr124 = load ptr, ptr %n, align 8
-  %fld125 = getelementptr inbounds nuw %ASTNode, ptr %objptr124, i32 0, i32 1
-  %fld126 = getelementptr inbounds nuw %Location, ptr %fld125, i32 0, i32 0
-  %fldval127 = load i32, ptr %fld126, align 4
-  %objptr128 = load ptr, ptr %n, align 8
-  %fld129 = getelementptr inbounds nuw %ASTNode, ptr %objptr128, i32 0, i32 1
-  %fld130 = getelementptr inbounds nuw %Location, ptr %fld129, i32 0, i32 1
-  %fldval131 = load i32, ptr %fld130, align 4
-  %call132 = call i32 (ptr, ...) @printf(ptr @.str.262, i32 %fldval127, i32 %fldval131)
-  call void @exit(i32 1)
-  br label %if.end115
+if.else127:                                       ; preds = %if.end104
+  br label %if.end123
 
-if.else123:                                       ; preds = %if.then113
-  br label %if.end115
+if.end129:                                        ; preds = %if.else134
+  ret ptr null
 
-if.end135:                                        ; preds = %if.else139
-  %c155 = load ptr, ptr %c, align 8
-  %objptr156 = load ptr, ptr %n, align 8
-  %fld157 = getelementptr inbounds nuw %ASTNode, ptr %objptr156, i32 0, i32 2
-  %fld158 = getelementptr inbounds nuw %N_UnyOp, ptr %fld157, i32 0, i32 1
-  %fldval159 = load ptr, ptr %fld158, align 8
-  %call160 = call ptr @gen_expr(ptr %c155, ptr %fldval159)
-  store ptr %call160, ptr %v, align 8
+if.then133:                                       ; preds = %if.then126
+  %objptr135 = load ptr, ptr %c, align 8
+  %fld136 = getelementptr inbounds nuw %CodegenContext, ptr %objptr135, i32 0, i32 2
+  %fldval137 = load ptr, ptr %fld136, align 8
+  %fld138 = getelementptr inbounds nuw %LValue, ptr %lv128, i32 0, i32 1
+  %fldval139 = load ptr, ptr %fld138, align 8
+  %fld140 = getelementptr inbounds nuw %LValue, ptr %lv128, i32 0, i32 0
+  %fldval141 = load ptr, ptr %fld140, align 8
+  %call142 = call ptr @LLVMBuildLoad2(ptr %fldval137, ptr %fldval139, ptr %fldval141, ptr @.str.295)
+  ret ptr %call142
+
+if.else134:                                       ; preds = %if.then126
+  br label %if.end129
+
+if.end149:                                        ; preds = %if.else153
+  %uk155 = load i32, ptr %uk, align 4
+  %eq156 = icmp eq i32 %uk155, 4
+  br i1 %eq156, label %if.then157, label %if.else158
+
+if.then152:                                       ; preds = %if.end123
+  ret ptr null
+
+if.else153:                                       ; preds = %if.end123
+  br label %if.end149
+
+if.end154:                                        ; preds = %if.else158
+  %uk165 = load i32, ptr %uk, align 4
+  %eq166 = icmp eq i32 %uk165, 3
+  br i1 %eq166, label %if.then167, label %if.else168
+
+if.then157:                                       ; preds = %if.end149
+  %objptr159 = load ptr, ptr %c, align 8
+  %fld160 = getelementptr inbounds nuw %CodegenContext, ptr %objptr159, i32 0, i32 2
+  %fldval161 = load ptr, ptr %fld160, align 8
   %v162 = load ptr, ptr %v, align 8
-  %eq163 = icmp eq ptr %v162, null
-  br i1 %eq163, label %if.then164, label %if.else165
+  %call163 = call ptr @LLVMBuildNot(ptr %fldval161, ptr %v162, ptr @.str.296)
+  ret ptr %call163
 
-if.then138:                                       ; preds = %if.end110
-  %c142 = load ptr, ptr %c, align 8
-  %e143 = load ptr, ptr %e, align 8
-  %call144 = call i1 @gen_lvalue(ptr %c142, ptr %e143, ptr %lv140)
-  br i1 %call144, label %if.then145, label %if.else146
+if.else158:                                       ; preds = %if.end149
+  br label %if.end154
 
-if.else139:                                       ; preds = %if.end110
-  br label %if.end135
+if.end164:                                        ; preds = %if.else168
+  %v197 = load ptr, ptr %v, align 8
+  %call198 = call ptr @LLVMTypeOf(ptr %v197)
+  %call199 = call i1 @is_float_ty(ptr %call198)
+  br i1 %call199, label %if.then200, label %if.else201
 
-if.end141:                                        ; preds = %if.else146
-  ret ptr null
-
-if.then145:                                       ; preds = %if.then138
-  %objptr147 = load ptr, ptr %c, align 8
-  %fld148 = getelementptr inbounds nuw %CodegenContext, ptr %objptr147, i32 0, i32 2
-  %fldval149 = load ptr, ptr %fld148, align 8
-  %fld150 = getelementptr inbounds nuw %LValue, ptr %lv140, i32 0, i32 1
-  %fldval151 = load ptr, ptr %fld150, align 8
-  %fld152 = getelementptr inbounds nuw %LValue, ptr %lv140, i32 0, i32 0
-  %fldval153 = load ptr, ptr %fld152, align 8
-  %call154 = call ptr @LLVMBuildLoad2(ptr %fldval149, ptr %fldval151, ptr %fldval153, ptr @.str.263)
-  ret ptr %call154
-
-if.else146:                                       ; preds = %if.then138
-  br label %if.end141
-
-if.end161:                                        ; preds = %if.else165
-  %uk167 = load i32, ptr %uk, align 4
-  %eq168 = icmp eq i32 %uk167, 4
-  br i1 %eq168, label %if.then169, label %if.else170
-
-if.then164:                                       ; preds = %if.end135
-  ret ptr null
-
-if.else165:                                       ; preds = %if.end135
-  br label %if.end161
-
-if.end166:                                        ; preds = %if.else170
-  %uk177 = load i32, ptr %uk, align 4
-  %eq178 = icmp eq i32 %uk177, 3
-  br i1 %eq178, label %if.then179, label %if.else180
-
-if.then169:                                       ; preds = %if.end161
-  %objptr171 = load ptr, ptr %c, align 8
-  %fld172 = getelementptr inbounds nuw %CodegenContext, ptr %objptr171, i32 0, i32 2
-  %fldval173 = load ptr, ptr %fld172, align 8
-  %v174 = load ptr, ptr %v, align 8
-  %call175 = call ptr @LLVMBuildNot(ptr %fldval173, ptr %v174, ptr @.str.264)
-  ret ptr %call175
-
-if.else170:                                       ; preds = %if.end161
-  br label %if.end166
-
-if.end176:                                        ; preds = %if.else180
-  %v209 = load ptr, ptr %v, align 8
-  %call210 = call ptr @LLVMTypeOf(ptr %v209)
-  %call211 = call i1 @is_float_ty(ptr %call210)
-  br i1 %call211, label %if.then212, label %if.else213
-
-if.then179:                                       ; preds = %if.end166
-  %v181 = load ptr, ptr %v, align 8
-  %call182 = call ptr @LLVMTypeOf(ptr %v181)
-  store ptr %call182, ptr %vt, align 8
+if.then167:                                       ; preds = %if.end154
+  %v169 = load ptr, ptr %v, align 8
+  %call170 = call ptr @LLVMTypeOf(ptr %v169)
+  store ptr %call170, ptr %vt, align 8
   store ptr null, ptr %zero, align 8
-  %vt184 = load ptr, ptr %vt, align 8
-  %call185 = call i32 @LLVMGetTypeKind(ptr %vt184)
+  %vt172 = load ptr, ptr %vt, align 8
+  %call173 = call i32 @LLVMGetTypeKind(ptr %vt172)
   %LLVMPointerTypeKind = load i32, ptr @LLVMPointerTypeKind, align 4
-  %eq186 = icmp eq i32 %call185, %LLVMPointerTypeKind
-  br i1 %eq186, label %if.then187, label %if.else188
+  %eq174 = icmp eq i32 %call173, %LLVMPointerTypeKind
+  br i1 %eq174, label %if.then175, label %if.else176
 
-if.else180:                                       ; preds = %if.end166
-  br label %if.end176
+if.else168:                                       ; preds = %if.end154
+  br label %if.end164
 
-if.end183:                                        ; preds = %elif.else, %if.then187
+if.end171:                                        ; preds = %elif.else, %if.then175
+  %objptr190 = load ptr, ptr %c, align 8
+  %fld191 = getelementptr inbounds nuw %CodegenContext, ptr %objptr190, i32 0, i32 2
+  %fldval192 = load ptr, ptr %fld191, align 8
+  %LLVMIntEQ = load i32, ptr @LLVMIntEQ, align 4
+  %v193 = load ptr, ptr %v, align 8
+  %zero194 = load ptr, ptr %zero, align 8
+  %call195 = call ptr @LLVMBuildICmp(ptr %fldval192, i32 %LLVMIntEQ, ptr %v193, ptr %zero194, ptr @.str.297)
+  ret ptr %call195
+
+if.then175:                                       ; preds = %if.then167
+  %vt177 = load ptr, ptr %vt, align 8
+  %call178 = call ptr @LLVMConstPointerNull(ptr %vt177)
+  store ptr %call178, ptr %zero, align 8
+  br label %if.end171
+
+if.else176:                                       ; preds = %if.then167
+  %vt179 = load ptr, ptr %vt, align 8
+  %call180 = call i1 @is_float_ty(ptr %vt179)
+  br i1 %call180, label %elif.then, label %elif.else
+
+elif.then:                                        ; preds = %if.else176
+  %objptr181 = load ptr, ptr %c, align 8
+  %fld182 = getelementptr inbounds nuw %CodegenContext, ptr %objptr181, i32 0, i32 2
+  %fldval183 = load ptr, ptr %fld182, align 8
+  %LLVMRealOEQ = load i32, ptr @LLVMRealOEQ, align 4
+  %v184 = load ptr, ptr %v, align 8
+  %vt185 = load ptr, ptr %vt, align 8
+  %call186 = call ptr @LLVMConstReal(ptr %vt185, double 0.000000e+00)
+  %call187 = call ptr @LLVMBuildFCmp(ptr %fldval183, i32 %LLVMRealOEQ, ptr %v184, ptr %call186, ptr @.str.297)
+  ret ptr %call187
+
+elif.else:                                        ; preds = %if.else176
+  %vt188 = load ptr, ptr %vt, align 8
+  %call189 = call ptr @LLVMConstInt(ptr %vt188, i64 0, i32 0)
+  store ptr %call189, ptr %zero, align 8
+  br label %if.end171
+
+if.end196:                                        ; preds = %if.else201
+  %objptr207 = load ptr, ptr %c, align 8
+  %fld208 = getelementptr inbounds nuw %CodegenContext, ptr %objptr207, i32 0, i32 2
+  %fldval209 = load ptr, ptr %fld208, align 8
+  %v210 = load ptr, ptr %v, align 8
+  %call211 = call ptr @LLVMBuildNeg(ptr %fldval209, ptr %v210, ptr @.str.274)
+  ret ptr %call211
+
+if.then200:                                       ; preds = %if.end164
   %objptr202 = load ptr, ptr %c, align 8
   %fld203 = getelementptr inbounds nuw %CodegenContext, ptr %objptr202, i32 0, i32 2
   %fldval204 = load ptr, ptr %fld203, align 8
-  %LLVMIntEQ = load i32, ptr @LLVMIntEQ, align 4
   %v205 = load ptr, ptr %v, align 8
-  %zero206 = load ptr, ptr %zero, align 8
-  %call207 = call ptr @LLVMBuildICmp(ptr %fldval204, i32 %LLVMIntEQ, ptr %v205, ptr %zero206, ptr @.str.265)
-  ret ptr %call207
+  %call206 = call ptr @LLVMBuildFNeg(ptr %fldval204, ptr %v205, ptr @.str.298)
+  ret ptr %call206
 
-if.then187:                                       ; preds = %if.then179
-  %vt189 = load ptr, ptr %vt, align 8
-  %call190 = call ptr @LLVMConstPointerNull(ptr %vt189)
-  store ptr %call190, ptr %zero, align 8
-  br label %if.end183
+if.else201:                                       ; preds = %if.end164
+  br label %if.end196
 
-if.else188:                                       ; preds = %if.then179
-  %vt191 = load ptr, ptr %vt, align 8
-  %call192 = call i1 @is_float_ty(ptr %vt191)
-  br i1 %call192, label %elif.then, label %elif.else
+if.end212:                                        ; preds = %if.else218
+  %objptr223 = load ptr, ptr %n, align 8
+  %fld224 = getelementptr inbounds nuw %ASTNode, ptr %objptr223, i32 0, i32 0
+  %fldval225 = load i32, ptr %fld224, align 4
+  %eq226 = icmp eq i32 %fldval225, 29
+  br i1 %eq226, label %if.then227, label %if.else228
 
-elif.then:                                        ; preds = %if.else188
-  %objptr193 = load ptr, ptr %c, align 8
-  %fld194 = getelementptr inbounds nuw %CodegenContext, ptr %objptr193, i32 0, i32 2
-  %fldval195 = load ptr, ptr %fld194, align 8
-  %LLVMRealOEQ = load i32, ptr @LLVMRealOEQ, align 4
-  %v196 = load ptr, ptr %v, align 8
-  %vt197 = load ptr, ptr %vt, align 8
-  %call198 = call ptr @LLVMConstReal(ptr %vt197, double 0.000000e+00)
-  %call199 = call ptr @LLVMBuildFCmp(ptr %fldval195, i32 %LLVMRealOEQ, ptr %v196, ptr %call198, ptr @.str.265)
-  ret ptr %call199
+if.then217:                                       ; preds = %if.end93
+  %c219 = load ptr, ptr %c, align 8
+  %n220 = load ptr, ptr %n, align 8
+  %call221 = call ptr @gen_call(ptr %c219, ptr %n220)
+  ret ptr %call221
 
-elif.else:                                        ; preds = %if.else188
-  %vt200 = load ptr, ptr %vt, align 8
-  %call201 = call ptr @LLVMConstInt(ptr %vt200, i64 0, i32 0)
-  store ptr %call201, ptr %zero, align 8
-  br label %if.end183
+if.else218:                                       ; preds = %if.end93
+  br label %if.end212
 
-if.end208:                                        ; preds = %if.else213
-  %objptr219 = load ptr, ptr %c, align 8
-  %fld220 = getelementptr inbounds nuw %CodegenContext, ptr %objptr219, i32 0, i32 2
-  %fldval221 = load ptr, ptr %fld220, align 8
-  %v222 = load ptr, ptr %v, align 8
-  %call223 = call ptr @LLVMBuildNeg(ptr %fldval221, ptr %v222, ptr @.str.241)
-  ret ptr %call223
+if.end222:                                        ; preds = %if.else228
+  %objptr464 = load ptr, ptr %n, align 8
+  %fld465 = getelementptr inbounds nuw %ASTNode, ptr %objptr464, i32 0, i32 0
+  %fldval466 = load i32, ptr %fld465, align 4
+  %eq467 = icmp eq i32 %fldval466, 28
+  br i1 %eq467, label %if.then468, label %if.else469
 
-if.then212:                                       ; preds = %if.end176
-  %objptr214 = load ptr, ptr %c, align 8
-  %fld215 = getelementptr inbounds nuw %CodegenContext, ptr %objptr214, i32 0, i32 2
-  %fldval216 = load ptr, ptr %fld215, align 8
-  %v217 = load ptr, ptr %v, align 8
-  %call218 = call ptr @LLVMBuildFNeg(ptr %fldval216, ptr %v217, ptr @.str.266)
-  ret ptr %call218
+if.then227:                                       ; preds = %if.end212
+  %c230 = load ptr, ptr %c, align 8
+  %objptr231 = load ptr, ptr %n, align 8
+  %fld232 = getelementptr inbounds nuw %ASTNode, ptr %objptr231, i32 0, i32 2
+  %fld233 = getelementptr inbounds nuw %N_Cast, ptr %fld232, i32 0, i32 1
+  %fldval234 = load ptr, ptr %fld233, align 8
+  %call235 = call ptr @gen_expr(ptr %c230, ptr %fldval234)
+  store ptr %call235, ptr %v229, align 8
+  %c236 = load ptr, ptr %c, align 8
+  %objptr237 = load ptr, ptr %n, align 8
+  %fld238 = getelementptr inbounds nuw %ASTNode, ptr %objptr237, i32 0, i32 2
+  %fld239 = getelementptr inbounds nuw %N_Cast, ptr %fld238, i32 0, i32 0
+  %fldval240 = load ptr, ptr %fld239, align 8
+  %call241 = call ptr @map_type(ptr %c236, ptr %fldval240)
+  store ptr %call241, ptr %to, align 8
+  %v243 = load ptr, ptr %v229, align 8
+  %eq244 = icmp eq ptr %v243, null
+  br i1 %eq244, label %sc.end, label %sc.rhs
 
-if.else213:                                       ; preds = %if.end176
-  br label %if.end208
+if.else228:                                       ; preds = %if.end212
+  br label %if.end222
 
-if.end224:                                        ; preds = %if.else230
-  %objptr235 = load ptr, ptr %n, align 8
-  %fld236 = getelementptr inbounds nuw %ASTNode, ptr %objptr235, i32 0, i32 0
-  %fldval237 = load i32, ptr %fld236, align 4
-  %eq238 = icmp eq i32 %fldval237, 29
-  br i1 %eq238, label %if.then239, label %if.else240
+if.end242:                                        ; preds = %if.else248, %if.then247
+  %v249 = load ptr, ptr %v229, align 8
+  %call250 = call ptr @LLVMTypeOf(ptr %v249)
+  store ptr %call250, ptr %from, align 8
+  %from252 = load ptr, ptr %from, align 8
+  %to253 = load ptr, ptr %to, align 8
+  %eq254 = icmp eq ptr %from252, %to253
+  br i1 %eq254, label %if.then255, label %if.else256
 
-if.then229:                                       ; preds = %if.end99
-  %c231 = load ptr, ptr %c, align 8
-  %n232 = load ptr, ptr %n, align 8
-  %call233 = call ptr @gen_call(ptr %c231, ptr %n232)
-  ret ptr %call233
-
-if.else230:                                       ; preds = %if.end99
-  br label %if.end224
-
-if.end234:                                        ; preds = %if.else240
-  %objptr476 = load ptr, ptr %n, align 8
-  %fld477 = getelementptr inbounds nuw %ASTNode, ptr %objptr476, i32 0, i32 0
-  %fldval478 = load i32, ptr %fld477, align 4
-  %eq479 = icmp eq i32 %fldval478, 28
-  br i1 %eq479, label %if.then480, label %if.else481
-
-if.then239:                                       ; preds = %if.end224
-  %c242 = load ptr, ptr %c, align 8
-  %objptr243 = load ptr, ptr %n, align 8
-  %fld244 = getelementptr inbounds nuw %ASTNode, ptr %objptr243, i32 0, i32 2
-  %fld245 = getelementptr inbounds nuw %N_Cast, ptr %fld244, i32 0, i32 1
-  %fldval246 = load ptr, ptr %fld245, align 8
-  %call247 = call ptr @gen_expr(ptr %c242, ptr %fldval246)
-  store ptr %call247, ptr %v241, align 8
-  %c248 = load ptr, ptr %c, align 8
-  %objptr249 = load ptr, ptr %n, align 8
-  %fld250 = getelementptr inbounds nuw %ASTNode, ptr %objptr249, i32 0, i32 2
-  %fld251 = getelementptr inbounds nuw %N_Cast, ptr %fld250, i32 0, i32 0
-  %fldval252 = load ptr, ptr %fld251, align 8
-  %call253 = call ptr @map_type(ptr %c248, ptr %fldval252)
-  store ptr %call253, ptr %to, align 8
-  %v255 = load ptr, ptr %v241, align 8
-  %eq256 = icmp eq ptr %v255, null
-  br i1 %eq256, label %sc.end, label %sc.rhs
-
-if.else240:                                       ; preds = %if.end224
-  br label %if.end234
-
-if.end254:                                        ; preds = %if.else260, %if.then259
-  %v261 = load ptr, ptr %v241, align 8
-  %call262 = call ptr @LLVMTypeOf(ptr %v261)
-  store ptr %call262, ptr %from, align 8
-  %from264 = load ptr, ptr %from, align 8
-  %to265 = load ptr, ptr %to, align 8
-  %eq266 = icmp eq ptr %from264, %to265
-  br i1 %eq266, label %if.then267, label %if.else268
-
-sc.rhs:                                           ; preds = %if.then239
-  %to257 = load ptr, ptr %to, align 8
-  %eq258 = icmp eq ptr %to257, null
+sc.rhs:                                           ; preds = %if.then227
+  %to245 = load ptr, ptr %to, align 8
+  %eq246 = icmp eq ptr %to245, null
   br label %sc.end
 
-sc.end:                                           ; preds = %sc.rhs, %if.then239
-  %sc = phi i1 [ true, %if.then239 ], [ %eq258, %sc.rhs ]
-  br i1 %sc, label %if.then259, label %if.else260
+sc.end:                                           ; preds = %sc.rhs, %if.then227
+  %sc = phi i1 [ true, %if.then227 ], [ %eq246, %sc.rhs ]
+  br i1 %sc, label %if.then247, label %if.else248
 
-if.then259:                                       ; preds = %sc.end
-  call void @cg_fatal(ptr @.str.267)
-  br label %if.end254
+if.then247:                                       ; preds = %sc.end
+  call void @cg_fatal(ptr @.str.299)
+  br label %if.end242
 
-if.else260:                                       ; preds = %sc.end
-  br label %if.end254
+if.else248:                                       ; preds = %sc.end
+  br label %if.end242
 
-if.end263:                                        ; preds = %if.else268
-  %from270 = load ptr, ptr %from, align 8
-  %call271 = call i32 @LLVMGetTypeKind(ptr %from270)
-  store i32 %call271, ptr %fk, align 4
-  %to272 = load ptr, ptr %to, align 8
-  %call273 = call i32 @LLVMGetTypeKind(ptr %to272)
-  store i32 %call273, ptr %tk, align 4
-  %fk275 = load i32, ptr %fk, align 4
+if.end251:                                        ; preds = %if.else256
+  %from258 = load ptr, ptr %from, align 8
+  %call259 = call i32 @LLVMGetTypeKind(ptr %from258)
+  store i32 %call259, ptr %fk, align 4
+  %to260 = load ptr, ptr %to, align 8
+  %call261 = call i32 @LLVMGetTypeKind(ptr %to260)
+  store i32 %call261, ptr %tk, align 4
+  %fk263 = load i32, ptr %fk, align 4
   %LLVMIntegerTypeKind = load i32, ptr @LLVMIntegerTypeKind, align 4
-  %eq276 = icmp eq i32 %fk275, %LLVMIntegerTypeKind
-  br i1 %eq276, label %sc.rhs277, label %sc.end278
+  %eq264 = icmp eq i32 %fk263, %LLVMIntegerTypeKind
+  br i1 %eq264, label %sc.rhs265, label %sc.end266
 
-if.then267:                                       ; preds = %if.end254
-  %v269 = load ptr, ptr %v241, align 8
-  ret ptr %v269
+if.then255:                                       ; preds = %if.end242
+  %v257 = load ptr, ptr %v229, align 8
+  ret ptr %v257
 
-if.else268:                                       ; preds = %if.end254
-  br label %if.end263
+if.else256:                                       ; preds = %if.end242
+  br label %if.end251
 
-if.end274:                                        ; preds = %if.else284
-  %fk292 = load i32, ptr %fk, align 4
-  %LLVMIntegerTypeKind293 = load i32, ptr @LLVMIntegerTypeKind, align 4
-  %eq294 = icmp eq i32 %fk292, %LLVMIntegerTypeKind293
-  br i1 %eq294, label %sc.rhs295, label %sc.end296
+if.end262:                                        ; preds = %if.else272
+  %fk280 = load i32, ptr %fk, align 4
+  %LLVMIntegerTypeKind281 = load i32, ptr @LLVMIntegerTypeKind, align 4
+  %eq282 = icmp eq i32 %fk280, %LLVMIntegerTypeKind281
+  br i1 %eq282, label %sc.rhs283, label %sc.end284
 
-sc.rhs277:                                        ; preds = %if.end263
-  %tk279 = load i32, ptr %tk, align 4
-  %LLVMIntegerTypeKind280 = load i32, ptr @LLVMIntegerTypeKind, align 4
-  %eq281 = icmp eq i32 %tk279, %LLVMIntegerTypeKind280
-  br label %sc.end278
+sc.rhs265:                                        ; preds = %if.end251
+  %tk267 = load i32, ptr %tk, align 4
+  %LLVMIntegerTypeKind268 = load i32, ptr @LLVMIntegerTypeKind, align 4
+  %eq269 = icmp eq i32 %tk267, %LLVMIntegerTypeKind268
+  br label %sc.end266
 
-sc.end278:                                        ; preds = %sc.rhs277, %if.end263
-  %sc282 = phi i1 [ false, %if.end263 ], [ %eq281, %sc.rhs277 ]
-  br i1 %sc282, label %if.then283, label %if.else284
+sc.end266:                                        ; preds = %sc.rhs265, %if.end251
+  %sc270 = phi i1 [ false, %if.end251 ], [ %eq269, %sc.rhs265 ]
+  br i1 %sc270, label %if.then271, label %if.else272
 
-if.then283:                                       ; preds = %sc.end278
-  %objptr285 = load ptr, ptr %c, align 8
-  %fld286 = getelementptr inbounds nuw %CodegenContext, ptr %objptr285, i32 0, i32 2
-  %fldval287 = load ptr, ptr %fld286, align 8
-  %v288 = load ptr, ptr %v241, align 8
-  %to289 = load ptr, ptr %to, align 8
-  %call290 = call ptr @LLVMBuildIntCast2(ptr %fldval287, ptr %v288, ptr %to289, i32 1, ptr @.str.268)
-  ret ptr %call290
+if.then271:                                       ; preds = %sc.end266
+  %objptr273 = load ptr, ptr %c, align 8
+  %fld274 = getelementptr inbounds nuw %CodegenContext, ptr %objptr273, i32 0, i32 2
+  %fldval275 = load ptr, ptr %fld274, align 8
+  %v276 = load ptr, ptr %v229, align 8
+  %to277 = load ptr, ptr %to, align 8
+  %call278 = call ptr @LLVMBuildIntCast2(ptr %fldval275, ptr %v276, ptr %to277, i32 1, ptr @.str.300)
+  ret ptr %call278
 
-if.else284:                                       ; preds = %sc.end278
-  br label %if.end274
+if.else272:                                       ; preds = %sc.end266
+  br label %if.end262
 
-if.end291:                                        ; preds = %if.else302
-  %fk310 = load i32, ptr %fk, align 4
-  %LLVMPointerTypeKind311 = load i32, ptr @LLVMPointerTypeKind, align 4
-  %eq312 = icmp eq i32 %fk310, %LLVMPointerTypeKind311
-  br i1 %eq312, label %sc.rhs313, label %sc.end314
+if.end279:                                        ; preds = %if.else290
+  %fk298 = load i32, ptr %fk, align 4
+  %LLVMPointerTypeKind299 = load i32, ptr @LLVMPointerTypeKind, align 4
+  %eq300 = icmp eq i32 %fk298, %LLVMPointerTypeKind299
+  br i1 %eq300, label %sc.rhs301, label %sc.end302
 
-sc.rhs295:                                        ; preds = %if.end274
-  %tk297 = load i32, ptr %tk, align 4
-  %LLVMPointerTypeKind298 = load i32, ptr @LLVMPointerTypeKind, align 4
-  %eq299 = icmp eq i32 %tk297, %LLVMPointerTypeKind298
-  br label %sc.end296
+sc.rhs283:                                        ; preds = %if.end262
+  %tk285 = load i32, ptr %tk, align 4
+  %LLVMPointerTypeKind286 = load i32, ptr @LLVMPointerTypeKind, align 4
+  %eq287 = icmp eq i32 %tk285, %LLVMPointerTypeKind286
+  br label %sc.end284
 
-sc.end296:                                        ; preds = %sc.rhs295, %if.end274
-  %sc300 = phi i1 [ false, %if.end274 ], [ %eq299, %sc.rhs295 ]
-  br i1 %sc300, label %if.then301, label %if.else302
+sc.end284:                                        ; preds = %sc.rhs283, %if.end262
+  %sc288 = phi i1 [ false, %if.end262 ], [ %eq287, %sc.rhs283 ]
+  br i1 %sc288, label %if.then289, label %if.else290
 
-if.then301:                                       ; preds = %sc.end296
-  %objptr303 = load ptr, ptr %c, align 8
-  %fld304 = getelementptr inbounds nuw %CodegenContext, ptr %objptr303, i32 0, i32 2
-  %fldval305 = load ptr, ptr %fld304, align 8
-  %v306 = load ptr, ptr %v241, align 8
-  %to307 = load ptr, ptr %to, align 8
-  %call308 = call ptr @LLVMBuildIntToPtr(ptr %fldval305, ptr %v306, ptr %to307, ptr @.str.268)
-  ret ptr %call308
+if.then289:                                       ; preds = %sc.end284
+  %objptr291 = load ptr, ptr %c, align 8
+  %fld292 = getelementptr inbounds nuw %CodegenContext, ptr %objptr291, i32 0, i32 2
+  %fldval293 = load ptr, ptr %fld292, align 8
+  %v294 = load ptr, ptr %v229, align 8
+  %to295 = load ptr, ptr %to, align 8
+  %call296 = call ptr @LLVMBuildIntToPtr(ptr %fldval293, ptr %v294, ptr %to295, ptr @.str.300)
+  ret ptr %call296
 
-if.else302:                                       ; preds = %sc.end296
-  br label %if.end291
+if.else290:                                       ; preds = %sc.end284
+  br label %if.end279
 
-if.end309:                                        ; preds = %if.else320
-  %fk328 = load i32, ptr %fk, align 4
-  %LLVMPointerTypeKind329 = load i32, ptr @LLVMPointerTypeKind, align 4
-  %eq330 = icmp eq i32 %fk328, %LLVMPointerTypeKind329
-  br i1 %eq330, label %sc.rhs331, label %sc.end332
+if.end297:                                        ; preds = %if.else308
+  %fk316 = load i32, ptr %fk, align 4
+  %LLVMPointerTypeKind317 = load i32, ptr @LLVMPointerTypeKind, align 4
+  %eq318 = icmp eq i32 %fk316, %LLVMPointerTypeKind317
+  br i1 %eq318, label %sc.rhs319, label %sc.end320
 
-sc.rhs313:                                        ; preds = %if.end291
-  %tk315 = load i32, ptr %tk, align 4
-  %LLVMIntegerTypeKind316 = load i32, ptr @LLVMIntegerTypeKind, align 4
-  %eq317 = icmp eq i32 %tk315, %LLVMIntegerTypeKind316
-  br label %sc.end314
+sc.rhs301:                                        ; preds = %if.end279
+  %tk303 = load i32, ptr %tk, align 4
+  %LLVMIntegerTypeKind304 = load i32, ptr @LLVMIntegerTypeKind, align 4
+  %eq305 = icmp eq i32 %tk303, %LLVMIntegerTypeKind304
+  br label %sc.end302
 
-sc.end314:                                        ; preds = %sc.rhs313, %if.end291
-  %sc318 = phi i1 [ false, %if.end291 ], [ %eq317, %sc.rhs313 ]
-  br i1 %sc318, label %if.then319, label %if.else320
+sc.end302:                                        ; preds = %sc.rhs301, %if.end279
+  %sc306 = phi i1 [ false, %if.end279 ], [ %eq305, %sc.rhs301 ]
+  br i1 %sc306, label %if.then307, label %if.else308
 
-if.then319:                                       ; preds = %sc.end314
-  %objptr321 = load ptr, ptr %c, align 8
-  %fld322 = getelementptr inbounds nuw %CodegenContext, ptr %objptr321, i32 0, i32 2
-  %fldval323 = load ptr, ptr %fld322, align 8
-  %v324 = load ptr, ptr %v241, align 8
-  %to325 = load ptr, ptr %to, align 8
-  %call326 = call ptr @LLVMBuildPtrToInt(ptr %fldval323, ptr %v324, ptr %to325, ptr @.str.268)
-  ret ptr %call326
+if.then307:                                       ; preds = %sc.end302
+  %objptr309 = load ptr, ptr %c, align 8
+  %fld310 = getelementptr inbounds nuw %CodegenContext, ptr %objptr309, i32 0, i32 2
+  %fldval311 = load ptr, ptr %fld310, align 8
+  %v312 = load ptr, ptr %v229, align 8
+  %to313 = load ptr, ptr %to, align 8
+  %call314 = call ptr @LLVMBuildPtrToInt(ptr %fldval311, ptr %v312, ptr %to313, ptr @.str.300)
+  ret ptr %call314
 
-if.else320:                                       ; preds = %sc.end314
-  br label %if.end309
+if.else308:                                       ; preds = %sc.end302
+  br label %if.end297
 
-if.end327:                                        ; preds = %if.else338
-  %fk341 = load i32, ptr %fk, align 4
-  %LLVMIntegerTypeKind342 = load i32, ptr @LLVMIntegerTypeKind, align 4
-  %eq343 = icmp eq i32 %fk341, %LLVMIntegerTypeKind342
-  br i1 %eq343, label %sc.rhs344, label %sc.end345
+if.end315:                                        ; preds = %if.else326
+  %fk329 = load i32, ptr %fk, align 4
+  %LLVMIntegerTypeKind330 = load i32, ptr @LLVMIntegerTypeKind, align 4
+  %eq331 = icmp eq i32 %fk329, %LLVMIntegerTypeKind330
+  br i1 %eq331, label %sc.rhs332, label %sc.end333
 
-sc.rhs331:                                        ; preds = %if.end309
-  %tk333 = load i32, ptr %tk, align 4
-  %LLVMPointerTypeKind334 = load i32, ptr @LLVMPointerTypeKind, align 4
-  %eq335 = icmp eq i32 %tk333, %LLVMPointerTypeKind334
-  br label %sc.end332
+sc.rhs319:                                        ; preds = %if.end297
+  %tk321 = load i32, ptr %tk, align 4
+  %LLVMPointerTypeKind322 = load i32, ptr @LLVMPointerTypeKind, align 4
+  %eq323 = icmp eq i32 %tk321, %LLVMPointerTypeKind322
+  br label %sc.end320
 
-sc.end332:                                        ; preds = %sc.rhs331, %if.end309
-  %sc336 = phi i1 [ false, %if.end309 ], [ %eq335, %sc.rhs331 ]
-  br i1 %sc336, label %if.then337, label %if.else338
+sc.end320:                                        ; preds = %sc.rhs319, %if.end297
+  %sc324 = phi i1 [ false, %if.end297 ], [ %eq323, %sc.rhs319 ]
+  br i1 %sc324, label %if.then325, label %if.else326
 
-if.then337:                                       ; preds = %sc.end332
-  %v339 = load ptr, ptr %v241, align 8
-  ret ptr %v339
+if.then325:                                       ; preds = %sc.end320
+  %v327 = load ptr, ptr %v229, align 8
+  ret ptr %v327
 
-if.else338:                                       ; preds = %sc.end332
-  br label %if.end327
+if.else326:                                       ; preds = %sc.end320
+  br label %if.end315
 
-if.end340:                                        ; preds = %if.else355
-  %fk365 = load i32, ptr %fk, align 4
-  %LLVMFloatTypeKind366 = load i32, ptr @LLVMFloatTypeKind, align 4
-  %eq367 = icmp eq i32 %fk365, %LLVMFloatTypeKind366
-  br i1 %eq367, label %sc.end369, label %sc.rhs368
+if.end328:                                        ; preds = %if.else343
+  %fk353 = load i32, ptr %fk, align 4
+  %LLVMFloatTypeKind354 = load i32, ptr @LLVMFloatTypeKind, align 4
+  %eq355 = icmp eq i32 %fk353, %LLVMFloatTypeKind354
+  br i1 %eq355, label %sc.end357, label %sc.rhs356
 
-sc.rhs344:                                        ; preds = %if.end327
-  %tk346 = load i32, ptr %tk, align 4
+sc.rhs332:                                        ; preds = %if.end315
+  %tk334 = load i32, ptr %tk, align 4
   %LLVMFloatTypeKind = load i32, ptr @LLVMFloatTypeKind, align 4
-  %eq347 = icmp eq i32 %tk346, %LLVMFloatTypeKind
-  br i1 %eq347, label %sc.end349, label %sc.rhs348
+  %eq335 = icmp eq i32 %tk334, %LLVMFloatTypeKind
+  br i1 %eq335, label %sc.end337, label %sc.rhs336
 
-sc.end345:                                        ; preds = %sc.end349, %if.end327
-  %sc353 = phi i1 [ false, %if.end327 ], [ %sc352, %sc.end349 ]
-  br i1 %sc353, label %if.then354, label %if.else355
+sc.end333:                                        ; preds = %sc.end337, %if.end315
+  %sc341 = phi i1 [ false, %if.end315 ], [ %sc340, %sc.end337 ]
+  br i1 %sc341, label %if.then342, label %if.else343
 
-sc.rhs348:                                        ; preds = %sc.rhs344
-  %tk350 = load i32, ptr %tk, align 4
+sc.rhs336:                                        ; preds = %sc.rhs332
+  %tk338 = load i32, ptr %tk, align 4
   %LLVMDoubleTypeKind = load i32, ptr @LLVMDoubleTypeKind, align 4
-  %eq351 = icmp eq i32 %tk350, %LLVMDoubleTypeKind
-  br label %sc.end349
+  %eq339 = icmp eq i32 %tk338, %LLVMDoubleTypeKind
+  br label %sc.end337
 
-sc.end349:                                        ; preds = %sc.rhs348, %sc.rhs344
-  %sc352 = phi i1 [ true, %sc.rhs344 ], [ %eq351, %sc.rhs348 ]
-  br label %sc.end345
+sc.end337:                                        ; preds = %sc.rhs336, %sc.rhs332
+  %sc340 = phi i1 [ true, %sc.rhs332 ], [ %eq339, %sc.rhs336 ]
+  br label %sc.end333
 
-if.then354:                                       ; preds = %sc.end345
-  %c356 = load ptr, ptr %c, align 8
-  %v357 = load ptr, ptr %v241, align 8
-  %objptr358 = load ptr, ptr %n, align 8
-  %fld359 = getelementptr inbounds nuw %ASTNode, ptr %objptr358, i32 0, i32 2
-  %fld360 = getelementptr inbounds nuw %N_Cast, ptr %fld359, i32 0, i32 1
-  %fldval361 = load ptr, ptr %fld360, align 8
-  %to362 = load ptr, ptr %to, align 8
-  %call363 = call ptr @to_float(ptr %c356, ptr %v357, ptr %fldval361, ptr %to362)
-  ret ptr %call363
+if.then342:                                       ; preds = %sc.end333
+  %c344 = load ptr, ptr %c, align 8
+  %v345 = load ptr, ptr %v229, align 8
+  %objptr346 = load ptr, ptr %n, align 8
+  %fld347 = getelementptr inbounds nuw %ASTNode, ptr %objptr346, i32 0, i32 2
+  %fld348 = getelementptr inbounds nuw %N_Cast, ptr %fld347, i32 0, i32 1
+  %fldval349 = load ptr, ptr %fld348, align 8
+  %to350 = load ptr, ptr %to, align 8
+  %call351 = call ptr @to_float(ptr %c344, ptr %v345, ptr %fldval349, ptr %to350)
+  ret ptr %call351
 
-if.else355:                                       ; preds = %sc.end345
-  br label %if.end340
+if.else343:                                       ; preds = %sc.end333
+  br label %if.end328
 
-if.end364:                                        ; preds = %if.else381
-  %fk446 = load i32, ptr %fk, align 4
-  %LLVMFloatTypeKind447 = load i32, ptr @LLVMFloatTypeKind, align 4
-  %eq448 = icmp eq i32 %fk446, %LLVMFloatTypeKind447
-  br i1 %eq448, label %sc.end450, label %sc.rhs449
+if.end352:                                        ; preds = %if.else369
+  %fk434 = load i32, ptr %fk, align 4
+  %LLVMFloatTypeKind435 = load i32, ptr @LLVMFloatTypeKind, align 4
+  %eq436 = icmp eq i32 %fk434, %LLVMFloatTypeKind435
+  br i1 %eq436, label %sc.end438, label %sc.rhs437
 
-sc.rhs368:                                        ; preds = %if.end340
-  %fk370 = load i32, ptr %fk, align 4
-  %LLVMDoubleTypeKind371 = load i32, ptr @LLVMDoubleTypeKind, align 4
-  %eq372 = icmp eq i32 %fk370, %LLVMDoubleTypeKind371
-  br label %sc.end369
+sc.rhs356:                                        ; preds = %if.end328
+  %fk358 = load i32, ptr %fk, align 4
+  %LLVMDoubleTypeKind359 = load i32, ptr @LLVMDoubleTypeKind, align 4
+  %eq360 = icmp eq i32 %fk358, %LLVMDoubleTypeKind359
+  br label %sc.end357
 
-sc.end369:                                        ; preds = %sc.rhs368, %if.end340
-  %sc373 = phi i1 [ true, %if.end340 ], [ %eq372, %sc.rhs368 ]
-  br i1 %sc373, label %sc.rhs374, label %sc.end375
+sc.end357:                                        ; preds = %sc.rhs356, %if.end328
+  %sc361 = phi i1 [ true, %if.end328 ], [ %eq360, %sc.rhs356 ]
+  br i1 %sc361, label %sc.rhs362, label %sc.end363
 
-sc.rhs374:                                        ; preds = %sc.end369
-  %tk376 = load i32, ptr %tk, align 4
-  %LLVMIntegerTypeKind377 = load i32, ptr @LLVMIntegerTypeKind, align 4
-  %eq378 = icmp eq i32 %tk376, %LLVMIntegerTypeKind377
-  br label %sc.end375
+sc.rhs362:                                        ; preds = %sc.end357
+  %tk364 = load i32, ptr %tk, align 4
+  %LLVMIntegerTypeKind365 = load i32, ptr @LLVMIntegerTypeKind, align 4
+  %eq366 = icmp eq i32 %tk364, %LLVMIntegerTypeKind365
+  br label %sc.end363
 
-sc.end375:                                        ; preds = %sc.rhs374, %sc.end369
-  %sc379 = phi i1 [ false, %sc.end369 ], [ %eq378, %sc.rhs374 ]
-  br i1 %sc379, label %if.then380, label %if.else381
+sc.end363:                                        ; preds = %sc.rhs362, %sc.end357
+  %sc367 = phi i1 [ false, %sc.end357 ], [ %eq366, %sc.rhs362 ]
+  br i1 %sc367, label %if.then368, label %if.else369
 
-if.then380:                                       ; preds = %sc.end375
-  %objptr382 = load ptr, ptr %n, align 8
+if.then368:                                       ; preds = %sc.end363
+  %objptr370 = load ptr, ptr %n, align 8
+  %fld371 = getelementptr inbounds nuw %ASTNode, ptr %objptr370, i32 0, i32 2
+  %fld372 = getelementptr inbounds nuw %N_Cast, ptr %fld371, i32 0, i32 0
+  %fldval373 = load ptr, ptr %fld372, align 8
+  store ptr %fldval373, ptr %ct, align 8
+  %objptr375 = load ptr, ptr %ct, align 8
+  %fld376 = getelementptr inbounds nuw %ASTNode, ptr %objptr375, i32 0, i32 2
+  %fld377 = getelementptr inbounds nuw %N_Type, ptr %fld376, i32 0, i32 0
+  %fldval378 = load i32, ptr %fld377, align 4
+  %eq379 = icmp eq i32 %fldval378, 0
+  br i1 %eq379, label %sc.rhs380, label %sc.end381
+
+if.else369:                                       ; preds = %sc.end363
+  br label %if.end352
+
+if.end374:                                        ; preds = %if.else389, %if.end396
+  %objptr427 = load ptr, ptr %c, align 8
+  %fld428 = getelementptr inbounds nuw %CodegenContext, ptr %objptr427, i32 0, i32 2
+  %fldval429 = load ptr, ptr %fld428, align 8
+  %v430 = load ptr, ptr %v229, align 8
+  %to431 = load ptr, ptr %to, align 8
+  %call432 = call ptr @LLVMBuildFPToSI(ptr %fldval429, ptr %v430, ptr %to431, ptr @.str.300)
+  ret ptr %call432
+
+sc.rhs380:                                        ; preds = %if.then368
+  %objptr382 = load ptr, ptr %ct, align 8
   %fld383 = getelementptr inbounds nuw %ASTNode, ptr %objptr382, i32 0, i32 2
-  %fld384 = getelementptr inbounds nuw %N_Cast, ptr %fld383, i32 0, i32 0
-  %fldval385 = load ptr, ptr %fld384, align 8
-  store ptr %fldval385, ptr %ct, align 8
-  %objptr387 = load ptr, ptr %ct, align 8
-  %fld388 = getelementptr inbounds nuw %ASTNode, ptr %objptr387, i32 0, i32 2
-  %fld389 = getelementptr inbounds nuw %N_Type, ptr %fld388, i32 0, i32 0
-  %fldval390 = load i32, ptr %fld389, align 4
-  %eq391 = icmp eq i32 %fldval390, 0
-  br i1 %eq391, label %sc.rhs392, label %sc.end393
+  %fld384 = getelementptr inbounds nuw %N_Type, ptr %fld383, i32 0, i32 1
+  %fldval385 = load i64, ptr %fld384, align 8
+  %eq386 = icmp eq i64 %fldval385, 0
+  br label %sc.end381
 
-if.else381:                                       ; preds = %sc.end375
-  br label %if.end364
+sc.end381:                                        ; preds = %sc.rhs380, %if.then368
+  %sc387 = phi i1 [ false, %if.then368 ], [ %eq386, %sc.rhs380 ]
+  br i1 %sc387, label %if.then388, label %if.else389
 
-if.end386:                                        ; preds = %if.else401, %if.end408
-  %objptr439 = load ptr, ptr %c, align 8
-  %fld440 = getelementptr inbounds nuw %CodegenContext, ptr %objptr439, i32 0, i32 2
-  %fldval441 = load ptr, ptr %fld440, align 8
-  %v442 = load ptr, ptr %v241, align 8
-  %to443 = load ptr, ptr %to, align 8
-  %call444 = call ptr @LLVMBuildFPToSI(ptr %fldval441, ptr %v442, ptr %to443, ptr @.str.268)
-  ret ptr %call444
+if.then388:                                       ; preds = %sc.end381
+  %objptr390 = load ptr, ptr %ct, align 8
+  %fld391 = getelementptr inbounds nuw %ASTNode, ptr %objptr390, i32 0, i32 2
+  %fld392 = getelementptr inbounds nuw %N_Type, ptr %fld391, i32 0, i32 2
+  %objptr393 = load ptr, ptr %fld392, align 8
+  %fld394 = getelementptr inbounds nuw %ASTNode, ptr %objptr393, i32 0, i32 2
+  %fldval395 = load i32, ptr %fld394, align 4
+  store i32 %fldval395, ptr %bt, align 4
+  %bt397 = load i32, ptr %bt, align 4
+  %eq398 = icmp eq i32 %bt397, 3
+  br i1 %eq398, label %sc.end400, label %sc.rhs399
 
-sc.rhs392:                                        ; preds = %if.then380
-  %objptr394 = load ptr, ptr %ct, align 8
-  %fld395 = getelementptr inbounds nuw %ASTNode, ptr %objptr394, i32 0, i32 2
-  %fld396 = getelementptr inbounds nuw %N_Type, ptr %fld395, i32 0, i32 1
-  %fldval397 = load i64, ptr %fld396, align 8
-  %eq398 = icmp eq i64 %fldval397, 0
-  br label %sc.end393
+if.else389:                                       ; preds = %sc.end381
+  br label %if.end374
 
-sc.end393:                                        ; preds = %sc.rhs392, %if.then380
-  %sc399 = phi i1 [ false, %if.then380 ], [ %eq398, %sc.rhs392 ]
-  br i1 %sc399, label %if.then400, label %if.else401
+if.end396:                                        ; preds = %if.else420
+  br label %if.end374
 
-if.then400:                                       ; preds = %sc.end393
-  %objptr402 = load ptr, ptr %ct, align 8
-  %fld403 = getelementptr inbounds nuw %ASTNode, ptr %objptr402, i32 0, i32 2
-  %fld404 = getelementptr inbounds nuw %N_Type, ptr %fld403, i32 0, i32 2
-  %objptr405 = load ptr, ptr %fld404, align 8
-  %fld406 = getelementptr inbounds nuw %ASTNode, ptr %objptr405, i32 0, i32 2
-  %fldval407 = load i32, ptr %fld406, align 4
-  store i32 %fldval407, ptr %bt, align 4
-  %bt409 = load i32, ptr %bt, align 4
-  %eq410 = icmp eq i32 %bt409, 3
-  br i1 %eq410, label %sc.end412, label %sc.rhs411
+sc.rhs399:                                        ; preds = %if.then388
+  %bt401 = load i32, ptr %bt, align 4
+  %eq402 = icmp eq i32 %bt401, 4
+  br label %sc.end400
 
-if.else401:                                       ; preds = %sc.end393
-  br label %if.end386
+sc.end400:                                        ; preds = %sc.rhs399, %if.then388
+  %sc403 = phi i1 [ true, %if.then388 ], [ %eq402, %sc.rhs399 ]
+  br i1 %sc403, label %sc.end405, label %sc.rhs404
 
-if.end408:                                        ; preds = %if.else432
-  br label %if.end386
+sc.rhs404:                                        ; preds = %sc.end400
+  %bt406 = load i32, ptr %bt, align 4
+  %eq407 = icmp eq i32 %bt406, 5
+  br label %sc.end405
 
-sc.rhs411:                                        ; preds = %if.then400
-  %bt413 = load i32, ptr %bt, align 4
-  %eq414 = icmp eq i32 %bt413, 4
-  br label %sc.end412
+sc.end405:                                        ; preds = %sc.rhs404, %sc.end400
+  %sc408 = phi i1 [ true, %sc.end400 ], [ %eq407, %sc.rhs404 ]
+  br i1 %sc408, label %sc.end410, label %sc.rhs409
 
-sc.end412:                                        ; preds = %sc.rhs411, %if.then400
-  %sc415 = phi i1 [ true, %if.then400 ], [ %eq414, %sc.rhs411 ]
-  br i1 %sc415, label %sc.end417, label %sc.rhs416
+sc.rhs409:                                        ; preds = %sc.end405
+  %bt411 = load i32, ptr %bt, align 4
+  %eq412 = icmp eq i32 %bt411, 6
+  br label %sc.end410
 
-sc.rhs416:                                        ; preds = %sc.end412
-  %bt418 = load i32, ptr %bt, align 4
-  %eq419 = icmp eq i32 %bt418, 5
-  br label %sc.end417
+sc.end410:                                        ; preds = %sc.rhs409, %sc.end405
+  %sc413 = phi i1 [ true, %sc.end405 ], [ %eq412, %sc.rhs409 ]
+  br i1 %sc413, label %sc.end415, label %sc.rhs414
 
-sc.end417:                                        ; preds = %sc.rhs416, %sc.end412
-  %sc420 = phi i1 [ true, %sc.end412 ], [ %eq419, %sc.rhs416 ]
-  br i1 %sc420, label %sc.end422, label %sc.rhs421
+sc.rhs414:                                        ; preds = %sc.end410
+  %bt416 = load i32, ptr %bt, align 4
+  %eq417 = icmp eq i32 %bt416, 11
+  br label %sc.end415
 
-sc.rhs421:                                        ; preds = %sc.end417
-  %bt423 = load i32, ptr %bt, align 4
-  %eq424 = icmp eq i32 %bt423, 6
-  br label %sc.end422
+sc.end415:                                        ; preds = %sc.rhs414, %sc.end410
+  %sc418 = phi i1 [ true, %sc.end410 ], [ %eq417, %sc.rhs414 ]
+  br i1 %sc418, label %if.then419, label %if.else420
 
-sc.end422:                                        ; preds = %sc.rhs421, %sc.end417
-  %sc425 = phi i1 [ true, %sc.end417 ], [ %eq424, %sc.rhs421 ]
-  br i1 %sc425, label %sc.end427, label %sc.rhs426
+if.then419:                                       ; preds = %sc.end415
+  %objptr421 = load ptr, ptr %c, align 8
+  %fld422 = getelementptr inbounds nuw %CodegenContext, ptr %objptr421, i32 0, i32 2
+  %fldval423 = load ptr, ptr %fld422, align 8
+  %v424 = load ptr, ptr %v229, align 8
+  %to425 = load ptr, ptr %to, align 8
+  %call426 = call ptr @LLVMBuildFPToUI(ptr %fldval423, ptr %v424, ptr %to425, ptr @.str.300)
+  ret ptr %call426
 
-sc.rhs426:                                        ; preds = %sc.end422
-  %bt428 = load i32, ptr %bt, align 4
-  %eq429 = icmp eq i32 %bt428, 11
-  br label %sc.end427
+if.else420:                                       ; preds = %sc.end415
+  br label %if.end396
 
-sc.end427:                                        ; preds = %sc.rhs426, %sc.end422
-  %sc430 = phi i1 [ true, %sc.end422 ], [ %eq429, %sc.rhs426 ]
-  br i1 %sc430, label %if.then431, label %if.else432
-
-if.then431:                                       ; preds = %sc.end427
-  %objptr433 = load ptr, ptr %c, align 8
-  %fld434 = getelementptr inbounds nuw %CodegenContext, ptr %objptr433, i32 0, i32 2
-  %fldval435 = load ptr, ptr %fld434, align 8
-  %v436 = load ptr, ptr %v241, align 8
-  %to437 = load ptr, ptr %to, align 8
-  %call438 = call ptr @LLVMBuildFPToUI(ptr %fldval435, ptr %v436, ptr %to437, ptr @.str.268)
-  ret ptr %call438
-
-if.else432:                                       ; preds = %sc.end427
-  br label %if.end408
-
-if.end445:                                        ; preds = %if.else468
-  call void @cg_fatal(ptr @.str.269)
+if.end433:                                        ; preds = %if.else456
+  call void @cg_fatal(ptr @.str.301)
   ret ptr null
 
-sc.rhs449:                                        ; preds = %if.end364
-  %fk451 = load i32, ptr %fk, align 4
-  %LLVMDoubleTypeKind452 = load i32, ptr @LLVMDoubleTypeKind, align 4
-  %eq453 = icmp eq i32 %fk451, %LLVMDoubleTypeKind452
-  br label %sc.end450
+sc.rhs437:                                        ; preds = %if.end352
+  %fk439 = load i32, ptr %fk, align 4
+  %LLVMDoubleTypeKind440 = load i32, ptr @LLVMDoubleTypeKind, align 4
+  %eq441 = icmp eq i32 %fk439, %LLVMDoubleTypeKind440
+  br label %sc.end438
 
-sc.end450:                                        ; preds = %sc.rhs449, %if.end364
-  %sc454 = phi i1 [ true, %if.end364 ], [ %eq453, %sc.rhs449 ]
-  br i1 %sc454, label %sc.rhs455, label %sc.end456
+sc.end438:                                        ; preds = %sc.rhs437, %if.end352
+  %sc442 = phi i1 [ true, %if.end352 ], [ %eq441, %sc.rhs437 ]
+  br i1 %sc442, label %sc.rhs443, label %sc.end444
 
-sc.rhs455:                                        ; preds = %sc.end450
-  %tk457 = load i32, ptr %tk, align 4
-  %LLVMFloatTypeKind458 = load i32, ptr @LLVMFloatTypeKind, align 4
-  %eq459 = icmp eq i32 %tk457, %LLVMFloatTypeKind458
-  br i1 %eq459, label %sc.end461, label %sc.rhs460
+sc.rhs443:                                        ; preds = %sc.end438
+  %tk445 = load i32, ptr %tk, align 4
+  %LLVMFloatTypeKind446 = load i32, ptr @LLVMFloatTypeKind, align 4
+  %eq447 = icmp eq i32 %tk445, %LLVMFloatTypeKind446
+  br i1 %eq447, label %sc.end449, label %sc.rhs448
 
-sc.end456:                                        ; preds = %sc.end461, %sc.end450
-  %sc466 = phi i1 [ false, %sc.end450 ], [ %sc465, %sc.end461 ]
-  br i1 %sc466, label %if.then467, label %if.else468
+sc.end444:                                        ; preds = %sc.end449, %sc.end438
+  %sc454 = phi i1 [ false, %sc.end438 ], [ %sc453, %sc.end449 ]
+  br i1 %sc454, label %if.then455, label %if.else456
 
-sc.rhs460:                                        ; preds = %sc.rhs455
-  %tk462 = load i32, ptr %tk, align 4
-  %LLVMDoubleTypeKind463 = load i32, ptr @LLVMDoubleTypeKind, align 4
-  %eq464 = icmp eq i32 %tk462, %LLVMDoubleTypeKind463
-  br label %sc.end461
+sc.rhs448:                                        ; preds = %sc.rhs443
+  %tk450 = load i32, ptr %tk, align 4
+  %LLVMDoubleTypeKind451 = load i32, ptr @LLVMDoubleTypeKind, align 4
+  %eq452 = icmp eq i32 %tk450, %LLVMDoubleTypeKind451
+  br label %sc.end449
 
-sc.end461:                                        ; preds = %sc.rhs460, %sc.rhs455
-  %sc465 = phi i1 [ true, %sc.rhs455 ], [ %eq464, %sc.rhs460 ]
-  br label %sc.end456
+sc.end449:                                        ; preds = %sc.rhs448, %sc.rhs443
+  %sc453 = phi i1 [ true, %sc.rhs443 ], [ %eq452, %sc.rhs448 ]
+  br label %sc.end444
 
-if.then467:                                       ; preds = %sc.end456
-  %objptr469 = load ptr, ptr %c, align 8
-  %fld470 = getelementptr inbounds nuw %CodegenContext, ptr %objptr469, i32 0, i32 2
-  %fldval471 = load ptr, ptr %fld470, align 8
-  %v472 = load ptr, ptr %v241, align 8
-  %to473 = load ptr, ptr %to, align 8
-  %call474 = call ptr @LLVMBuildFPCast(ptr %fldval471, ptr %v472, ptr %to473, ptr @.str.268)
-  ret ptr %call474
+if.then455:                                       ; preds = %sc.end444
+  %objptr457 = load ptr, ptr %c, align 8
+  %fld458 = getelementptr inbounds nuw %CodegenContext, ptr %objptr457, i32 0, i32 2
+  %fldval459 = load ptr, ptr %fld458, align 8
+  %v460 = load ptr, ptr %v229, align 8
+  %to461 = load ptr, ptr %to, align 8
+  %call462 = call ptr @LLVMBuildFPCast(ptr %fldval459, ptr %v460, ptr %to461, ptr @.str.300)
+  ret ptr %call462
 
-if.else468:                                       ; preds = %sc.end456
-  br label %if.end445
+if.else456:                                       ; preds = %sc.end444
+  br label %if.end433
 
-if.end475:                                        ; preds = %if.else481
-  %objptr500 = load ptr, ptr %n, align 8
-  %fld501 = getelementptr inbounds nuw %ASTNode, ptr %objptr500, i32 0, i32 0
-  %fldval502 = load i32, ptr %fld501, align 4
-  %objptr503 = load ptr, ptr %n, align 8
-  %fld504 = getelementptr inbounds nuw %ASTNode, ptr %objptr503, i32 0, i32 1
-  %fld505 = getelementptr inbounds nuw %Location, ptr %fld504, i32 0, i32 0
-  %fldval506 = load i32, ptr %fld505, align 4
-  %objptr507 = load ptr, ptr %n, align 8
-  %fld508 = getelementptr inbounds nuw %ASTNode, ptr %objptr507, i32 0, i32 1
-  %fld509 = getelementptr inbounds nuw %Location, ptr %fld508, i32 0, i32 1
-  %fldval510 = load i32, ptr %fld509, align 4
-  %call511 = call i32 (ptr, ...) @printf(ptr @.str.270, i32 %fldval502, i32 %fldval506, i32 %fldval510)
-  call void @exit(i32 1)
+if.end463:                                        ; preds = %if.else469
+  %objptr488 = load ptr, ptr %n, align 8
+  %fld489 = getelementptr inbounds nuw %ASTNode, ptr %objptr488, i32 0, i32 1
+  %fldval490 = load %Location, ptr %fld489, align 8
+  %objptr491 = load ptr, ptr %n, align 8
+  %fld492 = getelementptr inbounds nuw %ASTNode, ptr %objptr491, i32 0, i32 0
+  %fldval493 = load i32, ptr %fld492, align 4
+  %sext = sext i32 %fldval493 to i64
+  %call494 = call ptr @itoa(i64 %sext)
+  call void @diag_fatal(%Location %fldval490, ptr @.str.302, ptr %call494, ptr @.str.72)
   ret ptr null
 
-if.then480:                                       ; preds = %if.end234
-  %c482 = load ptr, ptr %c, align 8
-  %objptr483 = load ptr, ptr %n, align 8
-  %fld484 = getelementptr inbounds nuw %ASTNode, ptr %objptr483, i32 0, i32 2
-  %fld485 = getelementptr inbounds nuw %N_BuiltIn, ptr %fld484, i32 0, i32 1
-  %fldval486 = load ptr, ptr %fld485, align 8
-  %call487 = call ptr @map_type(ptr %c482, ptr %fldval486)
-  store ptr %call487, ptr %t, align 8
-  %objptr488 = load ptr, ptr %c, align 8
-  %fld489 = getelementptr inbounds nuw %CodegenContext, ptr %objptr488, i32 0, i32 1
-  %fldval490 = load ptr, ptr %fld489, align 8
-  %call491 = call ptr @LLVMGetModuleDataLayout(ptr %fldval490)
-  %t492 = load ptr, ptr %t, align 8
-  %call493 = call i64 @LLVMABISizeOfType(ptr %call491, ptr %t492)
-  store i64 %call493, ptr %sz, align 8
-  %objptr494 = load ptr, ptr %c, align 8
-  %fld495 = getelementptr inbounds nuw %CodegenContext, ptr %objptr494, i32 0, i32 0
-  %fldval496 = load ptr, ptr %fld495, align 8
-  %call497 = call ptr @LLVMInt64TypeInContext(ptr %fldval496)
-  %sz498 = load i64, ptr %sz, align 8
-  %call499 = call ptr @LLVMConstInt(ptr %call497, i64 %sz498, i32 0)
-  ret ptr %call499
+if.then468:                                       ; preds = %if.end222
+  %c470 = load ptr, ptr %c, align 8
+  %objptr471 = load ptr, ptr %n, align 8
+  %fld472 = getelementptr inbounds nuw %ASTNode, ptr %objptr471, i32 0, i32 2
+  %fld473 = getelementptr inbounds nuw %N_BuiltIn, ptr %fld472, i32 0, i32 1
+  %fldval474 = load ptr, ptr %fld473, align 8
+  %call475 = call ptr @map_type(ptr %c470, ptr %fldval474)
+  store ptr %call475, ptr %t, align 8
+  %objptr476 = load ptr, ptr %c, align 8
+  %fld477 = getelementptr inbounds nuw %CodegenContext, ptr %objptr476, i32 0, i32 1
+  %fldval478 = load ptr, ptr %fld477, align 8
+  %call479 = call ptr @LLVMGetModuleDataLayout(ptr %fldval478)
+  %t480 = load ptr, ptr %t, align 8
+  %call481 = call i64 @LLVMABISizeOfType(ptr %call479, ptr %t480)
+  store i64 %call481, ptr %sz, align 8
+  %objptr482 = load ptr, ptr %c, align 8
+  %fld483 = getelementptr inbounds nuw %CodegenContext, ptr %objptr482, i32 0, i32 0
+  %fldval484 = load ptr, ptr %fld483, align 8
+  %call485 = call ptr @LLVMInt64TypeInContext(ptr %fldval484)
+  %sz486 = load i64, ptr %sz, align 8
+  %call487 = call ptr @LLVMConstInt(ptr %call485, i64 %sz486, i32 0)
+  ret ptr %call487
 
-if.else481:                                       ; preds = %if.end234
-  br label %if.end475
+if.else469:                                       ; preds = %if.end222
+  br label %if.end463
 }
 
 define i1 @gen_lvalue(ptr %0, ptr %1, ptr %2) {
 entry:
   %ftype = alloca ptr, align 8
-  %idx384 = alloca i32, align 4
+  %idx378 = alloca i32, align 4
   %fname = alloca ptr, align 8
   %ut = alloca ptr, align 8
   %pointee321 = alloca ptr, align 8
@@ -25292,7 +26608,7 @@ if.end159:                                        ; preds = %if.else165, %if.end
   %elem193 = load ptr, ptr %elem, align 8
   %base194 = load ptr, ptr %base, align 8
   %idx195 = load ptr, ptr %idx, align 8
-  %call196 = call ptr @LLVMBuildGEP2(ptr %fldval192, ptr %elem193, ptr %base194, ptr %idx195, i32 1, ptr @.str.207)
+  %call196 = call ptr @LLVMBuildGEP2(ptr %fldval192, ptr %elem193, ptr %base194, ptr %idx195, i32 1, ptr @.str.242)
   store ptr %call196, ptr %fld189, align 8
   %objptr197 = load ptr, ptr %out, align 8
   %fld198 = getelementptr inbounds nuw %LValue, ptr %objptr197, i32 0, i32 1
@@ -25323,7 +26639,7 @@ if.then173:                                       ; preds = %if.then164
   %fldval177 = load ptr, ptr %fld176, align 8
   %iv178 = load ptr, ptr %iv, align 8
   %i64179 = load ptr, ptr %i64, align 8
-  %call180 = call ptr @LLVMBuildZExt(ptr %fldval177, ptr %iv178, ptr %i64179, ptr @.str.206)
+  %call180 = call ptr @LLVMBuildZExt(ptr %fldval177, ptr %iv178, ptr %i64179, ptr @.str.241)
   store ptr %call180, ptr %iv, align 8
   br label %if.end166
 
@@ -25434,7 +26750,7 @@ if.then258:                                       ; preds = %if.end249
   store ptr %call261, ptr %sty, align 8
   %c262 = load ptr, ptr %c, align 8
   %sty263 = load ptr, ptr %sty, align 8
-  %call264 = call ptr @entry_alloca(ptr %c262, ptr %sty263, ptr @.str.208)
+  %call264 = call ptr @entry_alloca(ptr %c262, ptr %sty263, ptr @.str.243)
   store ptr %call264, ptr %sptr, align 8
   %objptr265 = load ptr, ptr %c, align 8
   %fld266 = getelementptr inbounds nuw %CodegenContext, ptr %objptr265, i32 0, i32 2
@@ -25534,7 +26850,7 @@ if.end325:                                        ; preds = %if.else329
   %fldval332 = load ptr, ptr %fld331, align 8
   %sty333 = load ptr, ptr %sty, align 8
   %sptr334 = load ptr, ptr %sptr, align 8
-  %call335 = call ptr @LLVMBuildLoad2(ptr %fldval332, ptr %sty333, ptr %sptr334, ptr @.str.209)
+  %call335 = call ptr @LLVMBuildLoad2(ptr %fldval332, ptr %sty333, ptr %sptr334, ptr @.str.244)
   store ptr %call335, ptr %sptr, align 8
   %pointee336 = load ptr, ptr %pointee321, align 8
   store ptr %pointee336, ptr %sty, align 8
@@ -25547,142 +26863,138 @@ if.else329:                                       ; preds = %if.end301
   br label %if.end325
 
 if.end337:                                        ; preds = %if.else342, %if.then341
-  %c352 = load ptr, ptr %c, align 8
-  %sty353 = load ptr, ptr %sty, align 8
-  %call354 = call ptr @type_of_struct(ptr %c352, ptr %sty353)
-  store ptr %call354, ptr %ut, align 8
-  %ut356 = load ptr, ptr %ut, align 8
-  %eq357 = icmp eq ptr %ut356, null
-  br i1 %eq357, label %sc.end359, label %sc.rhs358
+  %c346 = load ptr, ptr %c, align 8
+  %sty347 = load ptr, ptr %sty, align 8
+  %call348 = call ptr @type_of_struct(ptr %c346, ptr %sty347)
+  store ptr %call348, ptr %ut, align 8
+  %ut350 = load ptr, ptr %ut, align 8
+  %eq351 = icmp eq ptr %ut350, null
+  br i1 %eq351, label %sc.end353, label %sc.rhs352
 
 if.then341:                                       ; preds = %if.end288
   %objptr343 = load ptr, ptr %n, align 8
   %fld344 = getelementptr inbounds nuw %ASTNode, ptr %objptr343, i32 0, i32 1
-  %fld345 = getelementptr inbounds nuw %Location, ptr %fld344, i32 0, i32 0
-  %fldval346 = load i32, ptr %fld345, align 4
-  %objptr347 = load ptr, ptr %n, align 8
-  %fld348 = getelementptr inbounds nuw %ASTNode, ptr %objptr347, i32 0, i32 1
-  %fld349 = getelementptr inbounds nuw %Location, ptr %fld348, i32 0, i32 1
-  %fldval350 = load i32, ptr %fld349, align 4
-  %call351 = call i32 (ptr, ...) @printf(ptr @.str.210, i32 %fldval346, i32 %fldval350)
-  call void @exit(i32 1)
+  %fldval345 = load %Location, ptr %fld344, align 8
+  call void @diag_fatal(%Location %fldval345, ptr @.str.245, ptr @.str.72, ptr @.str.72)
   br label %if.end337
 
 if.else342:                                       ; preds = %if.end288
   br label %if.end337
 
-if.end355:                                        ; preds = %if.else366
-  %objptr367 = load ptr, ptr %n, align 8
-  %fld368 = getelementptr inbounds nuw %ASTNode, ptr %objptr367, i32 0, i32 2
-  %fld369 = getelementptr inbounds nuw %N_BinOp, ptr %fld368, i32 0, i32 2
-  %fldval370 = load ptr, ptr %fld369, align 8
-  %call371 = call ptr @strip(ptr %fldval370)
-  store ptr %call371, ptr %fname, align 8
-  %fname373 = load ptr, ptr %fname, align 8
-  %eq374 = icmp eq ptr %fname373, null
-  br i1 %eq374, label %sc.end376, label %sc.rhs375
+if.end349:                                        ; preds = %if.else360
+  %objptr361 = load ptr, ptr %n, align 8
+  %fld362 = getelementptr inbounds nuw %ASTNode, ptr %objptr361, i32 0, i32 2
+  %fld363 = getelementptr inbounds nuw %N_BinOp, ptr %fld362, i32 0, i32 2
+  %fldval364 = load ptr, ptr %fld363, align 8
+  %call365 = call ptr @strip(ptr %fldval364)
+  store ptr %call365, ptr %fname, align 8
+  %fname367 = load ptr, ptr %fname, align 8
+  %eq368 = icmp eq ptr %fname367, null
+  br i1 %eq368, label %sc.end370, label %sc.rhs369
 
-sc.rhs358:                                        ; preds = %if.end337
-  %objptr360 = load ptr, ptr %ut, align 8
-  %fld361 = getelementptr inbounds nuw %CGType, ptr %objptr360, i32 0, i32 2
-  %fldval362 = load ptr, ptr %fld361, align 8
-  %eq363 = icmp eq ptr %fldval362, null
-  br label %sc.end359
+sc.rhs352:                                        ; preds = %if.end337
+  %objptr354 = load ptr, ptr %ut, align 8
+  %fld355 = getelementptr inbounds nuw %CGType, ptr %objptr354, i32 0, i32 2
+  %fldval356 = load ptr, ptr %fld355, align 8
+  %eq357 = icmp eq ptr %fldval356, null
+  br label %sc.end353
 
-sc.end359:                                        ; preds = %sc.rhs358, %if.end337
-  %sc364 = phi i1 [ true, %if.end337 ], [ %eq363, %sc.rhs358 ]
-  br i1 %sc364, label %if.then365, label %if.else366
+sc.end353:                                        ; preds = %sc.rhs352, %if.end337
+  %sc358 = phi i1 [ true, %if.end337 ], [ %eq357, %sc.rhs352 ]
+  br i1 %sc358, label %if.then359, label %if.else360
 
-if.then365:                                       ; preds = %sc.end359
+if.then359:                                       ; preds = %sc.end353
   ret i1 false
 
-if.else366:                                       ; preds = %sc.end359
-  br label %if.end355
+if.else360:                                       ; preds = %sc.end353
+  br label %if.end349
 
-if.end372:                                        ; preds = %if.else383
-  store i32 0, ptr %idx384, align 4
+if.end366:                                        ; preds = %if.else377
+  store i32 0, ptr %idx378, align 4
   store ptr null, ptr %ftype, align 8
-  %objptr386 = load ptr, ptr %ut, align 8
-  %fld387 = getelementptr inbounds nuw %CGType, ptr %objptr386, i32 0, i32 2
-  %fldval388 = load ptr, ptr %fld387, align 8
-  %objptr389 = load ptr, ptr %fname, align 8
-  %fld390 = getelementptr inbounds nuw %ASTNode, ptr %objptr389, i32 0, i32 2
-  %fldval391 = load ptr, ptr %fld390, align 8
-  %call392 = call i1 @field_index(ptr %fldval388, ptr %fldval391, ptr %idx384, ptr %ftype)
-  %not = icmp eq i1 %call392, false
-  br i1 %not, label %if.then393, label %if.else394
+  %objptr380 = load ptr, ptr %ut, align 8
+  %fld381 = getelementptr inbounds nuw %CGType, ptr %objptr380, i32 0, i32 2
+  %fldval382 = load ptr, ptr %fld381, align 8
+  %objptr383 = load ptr, ptr %fname, align 8
+  %fld384 = getelementptr inbounds nuw %ASTNode, ptr %objptr383, i32 0, i32 2
+  %fldval385 = load ptr, ptr %fld384, align 8
+  %call386 = call i1 @field_index(ptr %fldval382, ptr %fldval385, ptr %idx378, ptr %ftype)
+  %not = icmp eq i1 %call386, false
+  br i1 %not, label %if.then387, label %if.else388
 
-sc.rhs375:                                        ; preds = %if.end355
-  %objptr377 = load ptr, ptr %fname, align 8
-  %fld378 = getelementptr inbounds nuw %ASTNode, ptr %objptr377, i32 0, i32 0
-  %fldval379 = load i32, ptr %fld378, align 4
-  %ne380 = icmp ne i32 %fldval379, 12
-  br label %sc.end376
+sc.rhs369:                                        ; preds = %if.end349
+  %objptr371 = load ptr, ptr %fname, align 8
+  %fld372 = getelementptr inbounds nuw %ASTNode, ptr %objptr371, i32 0, i32 0
+  %fldval373 = load i32, ptr %fld372, align 4
+  %ne374 = icmp ne i32 %fldval373, 12
+  br label %sc.end370
 
-sc.end376:                                        ; preds = %sc.rhs375, %if.end355
-  %sc381 = phi i1 [ true, %if.end355 ], [ %ne380, %sc.rhs375 ]
-  br i1 %sc381, label %if.then382, label %if.else383
+sc.end370:                                        ; preds = %sc.rhs369, %if.end349
+  %sc375 = phi i1 [ true, %if.end349 ], [ %ne374, %sc.rhs369 ]
+  br i1 %sc375, label %if.then376, label %if.else377
 
-if.then382:                                       ; preds = %sc.end376
+if.then376:                                       ; preds = %sc.end370
   ret i1 false
 
-if.else383:                                       ; preds = %sc.end376
-  br label %if.end372
+if.else377:                                       ; preds = %sc.end370
+  br label %if.end366
 
-if.end385:                                        ; preds = %if.else394, %if.then393
-  %objptr403 = load ptr, ptr %ut, align 8
-  %fld404 = getelementptr inbounds nuw %CGType, ptr %objptr403, i32 0, i32 3
-  %fldval405 = load i1, ptr %fld404, align 1
-  br i1 %fldval405, label %if.then406, label %if.else407
+if.end379:                                        ; preds = %if.else388, %if.then387
+  %objptr399 = load ptr, ptr %ut, align 8
+  %fld400 = getelementptr inbounds nuw %CGType, ptr %objptr399, i32 0, i32 3
+  %fldval401 = load i1, ptr %fld400, align 1
+  br i1 %fldval401, label %if.then402, label %if.else403
 
-if.then393:                                       ; preds = %if.end372
-  %objptr395 = load ptr, ptr %fname, align 8
-  %fld396 = getelementptr inbounds nuw %ASTNode, ptr %objptr395, i32 0, i32 2
+if.then387:                                       ; preds = %if.end366
+  %objptr389 = load ptr, ptr %n, align 8
+  %fld390 = getelementptr inbounds nuw %ASTNode, ptr %objptr389, i32 0, i32 1
+  %fldval391 = load %Location, ptr %fld390, align 8
+  %objptr392 = load ptr, ptr %fname, align 8
+  %fld393 = getelementptr inbounds nuw %ASTNode, ptr %objptr392, i32 0, i32 2
+  %fldval394 = load ptr, ptr %fld393, align 8
+  %objptr395 = load ptr, ptr %ut, align 8
+  %fld396 = getelementptr inbounds nuw %CGType, ptr %objptr395, i32 0, i32 0
   %fldval397 = load ptr, ptr %fld396, align 8
-  %objptr398 = load ptr, ptr %ut, align 8
-  %fld399 = getelementptr inbounds nuw %CGType, ptr %objptr398, i32 0, i32 0
-  %fldval400 = load ptr, ptr %fld399, align 8
-  %call401 = call i32 (ptr, ...) @printf(ptr @.str.211, ptr %fldval397, ptr %fldval400)
-  call void @exit(i32 1)
-  br label %if.end385
+  call void @diag_fatal(%Location %fldval391, ptr @.str.187, ptr %fldval394, ptr %fldval397)
+  br label %if.end379
 
-if.else394:                                       ; preds = %if.end372
-  br label %if.end385
+if.else388:                                       ; preds = %if.end366
+  br label %if.end379
 
-if.end402:                                        ; preds = %if.else407
-  %objptr416 = load ptr, ptr %out, align 8
-  %fld417 = getelementptr inbounds nuw %LValue, ptr %objptr416, i32 0, i32 0
-  %objptr418 = load ptr, ptr %c, align 8
-  %fld419 = getelementptr inbounds nuw %CodegenContext, ptr %objptr418, i32 0, i32 2
-  %fldval420 = load ptr, ptr %fld419, align 8
-  %sty421 = load ptr, ptr %sty, align 8
-  %sptr422 = load ptr, ptr %sptr, align 8
-  %idx423 = load i32, ptr %idx384, align 4
-  %call424 = call ptr @LLVMBuildStructGEP2(ptr %fldval420, ptr %sty421, ptr %sptr422, i32 %idx423, ptr @.str.212)
-  store ptr %call424, ptr %fld417, align 8
-  %objptr425 = load ptr, ptr %out, align 8
-  %fld426 = getelementptr inbounds nuw %LValue, ptr %objptr425, i32 0, i32 1
-  %c427 = load ptr, ptr %c, align 8
-  %ftype428 = load ptr, ptr %ftype, align 8
-  %call429 = call ptr @map_type(ptr %c427, ptr %ftype428)
-  store ptr %call429, ptr %fld426, align 8
+if.end398:                                        ; preds = %if.else403
+  %objptr412 = load ptr, ptr %out, align 8
+  %fld413 = getelementptr inbounds nuw %LValue, ptr %objptr412, i32 0, i32 0
+  %objptr414 = load ptr, ptr %c, align 8
+  %fld415 = getelementptr inbounds nuw %CodegenContext, ptr %objptr414, i32 0, i32 2
+  %fldval416 = load ptr, ptr %fld415, align 8
+  %sty417 = load ptr, ptr %sty, align 8
+  %sptr418 = load ptr, ptr %sptr, align 8
+  %idx419 = load i32, ptr %idx378, align 4
+  %call420 = call ptr @LLVMBuildStructGEP2(ptr %fldval416, ptr %sty417, ptr %sptr418, i32 %idx419, ptr @.str.246)
+  store ptr %call420, ptr %fld413, align 8
+  %objptr421 = load ptr, ptr %out, align 8
+  %fld422 = getelementptr inbounds nuw %LValue, ptr %objptr421, i32 0, i32 1
+  %c423 = load ptr, ptr %c, align 8
+  %ftype424 = load ptr, ptr %ftype, align 8
+  %call425 = call ptr @map_type(ptr %c423, ptr %ftype424)
+  store ptr %call425, ptr %fld422, align 8
   ret i1 true
 
-if.then406:                                       ; preds = %if.end385
-  %objptr408 = load ptr, ptr %out, align 8
-  %fld409 = getelementptr inbounds nuw %LValue, ptr %objptr408, i32 0, i32 0
-  %sptr410 = load ptr, ptr %sptr, align 8
-  store ptr %sptr410, ptr %fld409, align 8
-  %objptr411 = load ptr, ptr %out, align 8
-  %fld412 = getelementptr inbounds nuw %LValue, ptr %objptr411, i32 0, i32 1
-  %c413 = load ptr, ptr %c, align 8
-  %ftype414 = load ptr, ptr %ftype, align 8
-  %call415 = call ptr @map_type(ptr %c413, ptr %ftype414)
-  store ptr %call415, ptr %fld412, align 8
+if.then402:                                       ; preds = %if.end379
+  %objptr404 = load ptr, ptr %out, align 8
+  %fld405 = getelementptr inbounds nuw %LValue, ptr %objptr404, i32 0, i32 0
+  %sptr406 = load ptr, ptr %sptr, align 8
+  store ptr %sptr406, ptr %fld405, align 8
+  %objptr407 = load ptr, ptr %out, align 8
+  %fld408 = getelementptr inbounds nuw %LValue, ptr %objptr407, i32 0, i32 1
+  %c409 = load ptr, ptr %c, align 8
+  %ftype410 = load ptr, ptr %ftype, align 8
+  %call411 = call ptr @map_type(ptr %c409, ptr %ftype410)
+  store ptr %call411, ptr %fld408, align 8
   ret i1 true
 
-if.else407:                                       ; preds = %if.end385
-  br label %if.end402
+if.else403:                                       ; preds = %if.end379
+  br label %if.end398
 }
 
 define void @gen_block(ptr %0, ptr %1) {
@@ -26336,7 +27648,7 @@ if.then42:                                        ; preds = %if.end32
   %v44 = load ptr, ptr %v, align 8
   %from45 = load ptr, ptr %from, align 8
   %call46 = call ptr @LLVMConstInt(ptr %from45, i64 0, i32 0)
-  %call47 = call ptr @LLVMBuildICmp(ptr %fldval, i32 %LLVMIntNE, ptr %v44, ptr %call46, ptr @.str.194)
+  %call47 = call ptr @LLVMBuildICmp(ptr %fldval, i32 %LLVMIntNE, ptr %v44, ptr %call46, ptr @.str.229)
   ret ptr %call47
 
 if.else43:                                        ; preds = %if.end32
@@ -26354,7 +27666,7 @@ if.then51:                                        ; preds = %if.end39
   %fldval55 = load ptr, ptr %fld54, align 8
   %v56 = load ptr, ptr %v, align 8
   %to57 = load ptr, ptr %to, align 8
-  %call58 = call ptr @LLVMBuildZExt(ptr %fldval55, ptr %v56, ptr %to57, ptr @.str.195)
+  %call58 = call ptr @LLVMBuildZExt(ptr %fldval55, ptr %v56, ptr %to57, ptr @.str.230)
   ret ptr %call58
 
 if.else52:                                        ; preds = %if.end39
@@ -26366,7 +27678,7 @@ if.end59:                                         ; preds = %if.else63
   %fldval72 = load ptr, ptr %fld71, align 8
   %v73 = load ptr, ptr %v, align 8
   %to74 = load ptr, ptr %to, align 8
-  %call75 = call ptr @LLVMBuildTrunc(ptr %fldval72, ptr %v73, ptr %to74, ptr @.str.197)
+  %call75 = call ptr @LLVMBuildTrunc(ptr %fldval72, ptr %v73, ptr %to74, ptr @.str.232)
   ret ptr %call75
 
 if.then62:                                        ; preds = %if.end48
@@ -26375,7 +27687,7 @@ if.then62:                                        ; preds = %if.end48
   %fldval66 = load ptr, ptr %fld65, align 8
   %v67 = load ptr, ptr %v, align 8
   %to68 = load ptr, ptr %to, align 8
-  %call69 = call ptr @LLVMBuildSExt(ptr %fldval66, ptr %v67, ptr %to68, ptr @.str.196)
+  %call69 = call ptr @LLVMBuildSExt(ptr %fldval66, ptr %v67, ptr %to68, ptr @.str.231)
   ret ptr %call69
 
 if.else63:                                        ; preds = %if.end48
@@ -26403,7 +27715,7 @@ if.then85:                                        ; preds = %sc.end81
   %fldval89 = load ptr, ptr %fld88, align 8
   %v90 = load ptr, ptr %v, align 8
   %to91 = load ptr, ptr %to, align 8
-  %call92 = call ptr @LLVMBuildIntToPtr(ptr %fldval89, ptr %v90, ptr %to91, ptr @.str.198)
+  %call92 = call ptr @LLVMBuildIntToPtr(ptr %fldval89, ptr %v90, ptr %to91, ptr @.str.233)
   ret ptr %call92
 
 if.else86:                                        ; preds = %sc.end81
@@ -26440,7 +27752,7 @@ if.end105:                                        ; preds = %if.else110
   %fldval121 = load ptr, ptr %fld120, align 8
   %v122 = load ptr, ptr %v, align 8
   %to123 = load ptr, ptr %to, align 8
-  %call124 = call ptr @LLVMBuildPtrToInt(ptr %fldval121, ptr %v122, ptr %to123, ptr @.str.199)
+  %call124 = call ptr @LLVMBuildPtrToInt(ptr %fldval121, ptr %v122, ptr %to123, ptr @.str.234)
   ret ptr %call124
 
 if.then109:                                       ; preds = %if.then103
@@ -26451,7 +27763,7 @@ if.then109:                                       ; preds = %if.then103
   %v115 = load ptr, ptr %v, align 8
   %from116 = load ptr, ptr %from, align 8
   %call117 = call ptr @LLVMConstPointerNull(ptr %from116)
-  %call118 = call ptr @LLVMBuildICmp(ptr %fldval113, i32 %LLVMIntNE114, ptr %v115, ptr %call117, ptr @.str.194)
+  %call118 = call ptr @LLVMBuildICmp(ptr %fldval113, i32 %LLVMIntNE114, ptr %v115, ptr %call117, ptr @.str.229)
   ret ptr %call118
 
 if.else110:                                       ; preds = %if.then103
@@ -26511,7 +27823,7 @@ if.then152:                                       ; preds = %sc.end143
   %fldval156 = load ptr, ptr %fld155, align 8
   %v157 = load ptr, ptr %v, align 8
   %to158 = load ptr, ptr %to, align 8
-  %call159 = call ptr @LLVMBuildSIToFP(ptr %fldval156, ptr %v157, ptr %to158, ptr @.str.200)
+  %call159 = call ptr @LLVMBuildSIToFP(ptr %fldval156, ptr %v157, ptr %to158, ptr @.str.235)
   ret ptr %call159
 
 if.else153:                                       ; preds = %sc.end143
@@ -26546,7 +27858,7 @@ if.end170:                                        ; preds = %if.else175
   %fldval184 = load ptr, ptr %fld183, align 8
   %v185 = load ptr, ptr %v, align 8
   %to186 = load ptr, ptr %to, align 8
-  %call187 = call ptr @LLVMBuildFPTrunc(ptr %fldval184, ptr %v185, ptr %to186, ptr @.str.202)
+  %call187 = call ptr @LLVMBuildFPTrunc(ptr %fldval184, ptr %v185, ptr %to186, ptr @.str.237)
   ret ptr %call187
 
 if.then174:                                       ; preds = %if.then168
@@ -26555,7 +27867,7 @@ if.then174:                                       ; preds = %if.then168
   %fldval178 = load ptr, ptr %fld177, align 8
   %v179 = load ptr, ptr %v, align 8
   %to180 = load ptr, ptr %to, align 8
-  %call181 = call ptr @LLVMBuildFPExt(ptr %fldval178, ptr %v179, ptr %to180, ptr @.str.201)
+  %call181 = call ptr @LLVMBuildFPExt(ptr %fldval178, ptr %v179, ptr %to180, ptr @.str.236)
   ret ptr %call181
 
 if.else175:                                       ; preds = %if.then168
@@ -26592,7 +27904,7 @@ if.end199:                                        ; preds = %if.else204
   %fldval214 = load ptr, ptr %fld213, align 8
   %v215 = load ptr, ptr %v, align 8
   %to216 = load ptr, ptr %to, align 8
-  %call217 = call ptr @LLVMBuildFPToSI(ptr %fldval214, ptr %v215, ptr %to216, ptr @.str.203)
+  %call217 = call ptr @LLVMBuildFPToSI(ptr %fldval214, ptr %v215, ptr %to216, ptr @.str.238)
   ret ptr %call217
 
 if.then203:                                       ; preds = %if.then197
@@ -26603,7 +27915,7 @@ if.then203:                                       ; preds = %if.then197
   %v208 = load ptr, ptr %v, align 8
   %from209 = load ptr, ptr %from, align 8
   %call210 = call ptr @LLVMConstReal(ptr %from209, double 0.000000e+00)
-  %call211 = call ptr @LLVMBuildFCmp(ptr %fldval207, i32 %LLVMRealUNE, ptr %v208, ptr %call210, ptr @.str.194)
+  %call211 = call ptr @LLVMBuildFCmp(ptr %fldval207, i32 %LLVMRealUNE, ptr %v208, ptr %call210, ptr @.str.229)
   ret ptr %call211
 
 if.else204:                                       ; preds = %if.then197
@@ -26624,7 +27936,7 @@ sc.end222:                                        ; preds = %sc.rhs221, %if.end1
   br i1 %sc226, label %if.then227, label %if.else228
 
 if.then227:                                       ; preds = %sc.end222
-  call void @cg_fatal(ptr @.str.204)
+  call void @cg_fatal(ptr @.str.239)
   br label %if.end218
 
 if.else228:                                       ; preds = %sc.end222
@@ -26732,7 +28044,7 @@ if.then35:                                        ; preds = %sc.end30
   %fldval = load ptr, ptr %fld, align 8
   %v37 = load ptr, ptr %v, align 8
   %to38 = load ptr, ptr %to, align 8
-  %call39 = call ptr @LLVMBuildZExt(ptr %fldval, ptr %v37, ptr %to38, ptr @.str.195)
+  %call39 = call ptr @LLVMBuildZExt(ptr %fldval, ptr %v37, ptr %to38, ptr @.str.230)
   ret ptr %call39
 
 if.else36:                                        ; preds = %sc.end30
@@ -27150,7 +28462,7 @@ loop.end:                                         ; preds = %loop.body
   %fld26 = getelementptr inbounds nuw %CodegenContext, ptr %objptr25, i32 0, i32 7
   %call27 = call i64 @vec_size(ptr %fld26)
   %cast28 = trunc i64 %call27 to i32
-  %call29 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %name24, i64 32, ptr @.str.205, i32 %cast28)
+  %call29 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %name24, i64 32, ptr @.str.240, i32 %cast28)
   %objptr30 = load ptr, ptr %c, align 8
   %fld31 = getelementptr inbounds nuw %CodegenContext, ptr %objptr30, i32 0, i32 1
   %fldval32 = load ptr, ptr %fld31, align 8
@@ -27972,7 +29284,7 @@ entry:
   %uns = alloca i1, align 1
   %i32 = alloca ptr, align 8
   %vt = alloca ptr, align 8
-  %v183 = alloca ptr, align 8
+  %v179 = alloca ptr, align 8
   %a = alloca ptr, align 8
   %v = alloca ptr, align 8
   %lv = alloca %LValue, align 8
@@ -27994,7 +29306,7 @@ entry:
   store ptr %0, ptr %c, align 8
   %call = alloca ptr, align 8
   store ptr %1, ptr %call, align 8
-  store ptr @.str.213, ptr %name, align 8
+  store ptr @.str.247, ptr %name, align 8
   store i64 0, ptr %rptrs, align 8
   store i1 false, ptr %is_method, align 1
   store ptr null, ptr %callee, align 8
@@ -28006,10 +29318,10 @@ entry:
   %eq = icmp eq ptr %fldval, null
   br i1 %eq, label %if.then, label %if.else
 
-if.end:                                           ; preds = %if.end89, %if.end65, %if.end8
-  %callee116 = load ptr, ptr %callee, align 8
-  %eq117 = icmp eq ptr %callee116, null
-  br i1 %eq117, label %if.then118, label %if.else119
+if.end:                                           ; preds = %if.end83, %if.end65, %if.end8
+  %callee110 = load ptr, ptr %callee, align 8
+  %eq111 = icmp eq ptr %callee110, null
+  br i1 %eq111, label %if.then112, label %if.else113
 
 if.then:                                          ; preds = %entry
   %c2 = load ptr, ptr %c, align 8
@@ -28064,20 +29376,20 @@ elif.then:                                        ; preds = %if.else
   br i1 %ne34, label %if.then35, label %if.else36
 
 elif.else:                                        ; preds = %if.else
-  %objptr80 = load ptr, ptr %call, align 8
-  %fld81 = getelementptr inbounds nuw %ASTNode, ptr %objptr80, i32 0, i32 2
-  %fld82 = getelementptr inbounds nuw %N_FnCall, ptr %fld81, i32 0, i32 0
-  %objptr83 = load ptr, ptr %fld82, align 8
-  %fld84 = getelementptr inbounds nuw %ASTNode, ptr %objptr83, i32 0, i32 2
-  %fldval85 = load ptr, ptr %fld84, align 8
-  store ptr %fldval85, ptr %name, align 8
-  %c86 = load ptr, ptr %c, align 8
-  %name87 = load ptr, ptr %name, align 8
-  %call88 = call ptr @fn_var(ptr %c86, ptr %name87)
-  store ptr %call88, ptr %s, align 8
-  %s90 = load ptr, ptr %s, align 8
-  %ne91 = icmp ne ptr %s90, null
-  br i1 %ne91, label %if.then92, label %if.else93
+  %objptr74 = load ptr, ptr %call, align 8
+  %fld75 = getelementptr inbounds nuw %ASTNode, ptr %objptr74, i32 0, i32 2
+  %fld76 = getelementptr inbounds nuw %N_FnCall, ptr %fld75, i32 0, i32 0
+  %objptr77 = load ptr, ptr %fld76, align 8
+  %fld78 = getelementptr inbounds nuw %ASTNode, ptr %objptr77, i32 0, i32 2
+  %fldval79 = load ptr, ptr %fld78, align 8
+  store ptr %fldval79, ptr %name, align 8
+  %c80 = load ptr, ptr %c, align 8
+  %name81 = load ptr, ptr %name, align 8
+  %call82 = call ptr @fn_var(ptr %c80, ptr %name81)
+  store ptr %call82, ptr %s, align 8
+  %s84 = load ptr, ptr %s, align 8
+  %ne85 = icmp ne ptr %s84, null
+  br i1 %ne85, label %if.then86, label %if.else87
 
 if.end32:                                         ; preds = %if.else36, %if.then35
   %callee43 = load ptr, ptr %callee, align 8
@@ -28139,174 +29451,170 @@ if.end65:                                         ; preds = %if.else69, %if.then
   br label %if.end
 
 if.then68:                                        ; preds = %if.end42
-  %name70 = load ptr, ptr %name, align 8
-  %objptr71 = load ptr, ptr %call, align 8
-  %fld72 = getelementptr inbounds nuw %ASTNode, ptr %objptr71, i32 0, i32 1
-  %fld73 = getelementptr inbounds nuw %Location, ptr %fld72, i32 0, i32 0
-  %fldval74 = load i32, ptr %fld73, align 4
-  %objptr75 = load ptr, ptr %call, align 8
-  %fld76 = getelementptr inbounds nuw %ASTNode, ptr %objptr75, i32 0, i32 1
-  %fld77 = getelementptr inbounds nuw %Location, ptr %fld76, i32 0, i32 1
-  %fldval78 = load i32, ptr %fld77, align 4
-  %call79 = call i32 (ptr, ...) @printf(ptr @.str.214, ptr %name70, i32 %fldval74, i32 %fldval78)
-  call void @exit(i32 1)
+  %objptr70 = load ptr, ptr %call, align 8
+  %fld71 = getelementptr inbounds nuw %ASTNode, ptr %objptr70, i32 0, i32 1
+  %fldval72 = load %Location, ptr %fld71, align 8
+  %name73 = load ptr, ptr %name, align 8
+  call void @diag_fatal(%Location %fldval72, ptr @.str.248, ptr %name73, ptr @.str.72)
   br label %if.end65
 
 if.else69:                                        ; preds = %if.end42
   br label %if.end65
 
-if.end89:                                         ; preds = %if.else93, %if.then92
+if.end83:                                         ; preds = %if.else87, %if.then86
   br label %if.end
 
-if.then92:                                        ; preds = %elif.else
-  %c94 = load ptr, ptr %c, align 8
-  %objptr95 = load ptr, ptr %s, align 8
-  %fld96 = getelementptr inbounds nuw %CGSym, ptr %objptr95, i32 0, i32 3
-  %fldval97 = load ptr, ptr %fld96, align 8
-  %call98 = call ptr @unalias(ptr %c94, ptr %fldval97)
-  store ptr %call98, ptr %ftn, align 8
-  %objptr99 = load ptr, ptr %c, align 8
-  %fld100 = getelementptr inbounds nuw %CodegenContext, ptr %objptr99, i32 0, i32 2
+if.then86:                                        ; preds = %elif.else
+  %c88 = load ptr, ptr %c, align 8
+  %objptr89 = load ptr, ptr %s, align 8
+  %fld90 = getelementptr inbounds nuw %CGSym, ptr %objptr89, i32 0, i32 3
+  %fldval91 = load ptr, ptr %fld90, align 8
+  %call92 = call ptr @unalias(ptr %c88, ptr %fldval91)
+  store ptr %call92, ptr %ftn, align 8
+  %objptr93 = load ptr, ptr %c, align 8
+  %fld94 = getelementptr inbounds nuw %CodegenContext, ptr %objptr93, i32 0, i32 2
+  %fldval95 = load ptr, ptr %fld94, align 8
+  %objptr96 = load ptr, ptr %s, align 8
+  %fld97 = getelementptr inbounds nuw %CGSym, ptr %objptr96, i32 0, i32 2
+  %fldval98 = load ptr, ptr %fld97, align 8
+  %objptr99 = load ptr, ptr %s, align 8
+  %fld100 = getelementptr inbounds nuw %CGSym, ptr %objptr99, i32 0, i32 1
   %fldval101 = load ptr, ptr %fld100, align 8
-  %objptr102 = load ptr, ptr %s, align 8
-  %fld103 = getelementptr inbounds nuw %CGSym, ptr %objptr102, i32 0, i32 2
-  %fldval104 = load ptr, ptr %fld103, align 8
-  %objptr105 = load ptr, ptr %s, align 8
-  %fld106 = getelementptr inbounds nuw %CGSym, ptr %objptr105, i32 0, i32 1
-  %fldval107 = load ptr, ptr %fld106, align 8
-  %name108 = load ptr, ptr %name, align 8
-  %call109 = call ptr @LLVMBuildLoad2(ptr %fldval101, ptr %fldval104, ptr %fldval107, ptr %name108)
-  store ptr %call109, ptr %callee, align 8
-  store ptr @.str.213, ptr %name, align 8
-  br label %if.end89
+  %name102 = load ptr, ptr %name, align 8
+  %call103 = call ptr @LLVMBuildLoad2(ptr %fldval95, ptr %fldval98, ptr %fldval101, ptr %name102)
+  store ptr %call103, ptr %callee, align 8
+  store ptr @.str.247, ptr %name, align 8
+  br label %if.end83
 
-if.else93:                                        ; preds = %elif.else
-  %objptr110 = load ptr, ptr %c, align 8
-  %fld111 = getelementptr inbounds nuw %CodegenContext, ptr %objptr110, i32 0, i32 1
-  %fldval112 = load ptr, ptr %fld111, align 8
-  %name113 = load ptr, ptr %name, align 8
-  %call114 = call ptr @LLVMGetNamedFunction(ptr %fldval112, ptr %name113)
-  store ptr %call114, ptr %callee, align 8
-  br label %if.end89
+if.else87:                                        ; preds = %elif.else
+  %objptr104 = load ptr, ptr %c, align 8
+  %fld105 = getelementptr inbounds nuw %CodegenContext, ptr %objptr104, i32 0, i32 1
+  %fldval106 = load ptr, ptr %fld105, align 8
+  %name107 = load ptr, ptr %name, align 8
+  %call108 = call ptr @LLVMGetNamedFunction(ptr %fldval106, ptr %name107)
+  store ptr %call108, ptr %callee, align 8
+  br label %if.end83
 
-if.end115:                                        ; preds = %if.else119, %if.then118
+if.end109:                                        ; preds = %if.else113, %if.then112
   store ptr null, ptr %fty, align 8
-  %ftn123 = load ptr, ptr %ftn, align 8
-  %ne124 = icmp ne ptr %ftn123, null
-  br i1 %ne124, label %if.then125, label %if.else126
+  %ftn119 = load ptr, ptr %ftn, align 8
+  %ne120 = icmp ne ptr %ftn119, null
+  br i1 %ne120, label %if.then121, label %if.else122
 
-if.then118:                                       ; preds = %if.end
-  %name120 = load ptr, ptr %name, align 8
-  %call121 = call i32 (ptr, ...) @printf(ptr @.str.215, ptr %name120)
-  call void @exit(i32 1)
-  br label %if.end115
+if.then112:                                       ; preds = %if.end
+  %objptr114 = load ptr, ptr %call, align 8
+  %fld115 = getelementptr inbounds nuw %ASTNode, ptr %objptr114, i32 0, i32 1
+  %fldval116 = load %Location, ptr %fld115, align 8
+  %name117 = load ptr, ptr %name, align 8
+  call void @diag_fatal(%Location %fldval116, ptr @.str.176, ptr %name117, ptr @.str.72)
+  br label %if.end109
 
-if.else119:                                       ; preds = %if.end
-  br label %if.end115
+if.else113:                                       ; preds = %if.end
+  br label %if.end109
 
-if.end122:                                        ; preds = %if.else126, %if.then125
-  %fty132 = load ptr, ptr %fty, align 8
-  %call133 = call i32 @LLVMCountParamTypes(ptr %fty132)
-  store i32 %call133, ptr %nparams, align 4
-  %call134 = call ptr @malloc(i64 512)
-  store ptr %call134, ptr %ptypes, align 8
-  %fty135 = load ptr, ptr %fty, align 8
-  %ptypes136 = load ptr, ptr %ptypes, align 8
-  call void @LLVMGetParamTypes(ptr %fty135, ptr %ptypes136)
-  %call137 = call ptr @malloc(i64 512)
-  store ptr %call137, ptr %args, align 8
+if.end118:                                        ; preds = %if.else122, %if.then121
+  %fty128 = load ptr, ptr %fty, align 8
+  %call129 = call i32 @LLVMCountParamTypes(ptr %fty128)
+  store i32 %call129, ptr %nparams, align 4
+  %call130 = call ptr @malloc(i64 512)
+  store ptr %call130, ptr %ptypes, align 8
+  %fty131 = load ptr, ptr %fty, align 8
+  %ptypes132 = load ptr, ptr %ptypes, align 8
+  call void @LLVMGetParamTypes(ptr %fty131, ptr %ptypes132)
+  %call133 = call ptr @malloc(i64 512)
+  store ptr %call133, ptr %args, align 8
   store i32 0, ptr %n, align 4
-  %is_method139 = load i1, ptr %is_method, align 1
-  br i1 %is_method139, label %if.then140, label %if.else141
+  %is_method135 = load i1, ptr %is_method, align 1
+  br i1 %is_method135, label %if.then136, label %if.else137
 
-if.then125:                                       ; preds = %if.end115
-  %c127 = load ptr, ptr %c, align 8
-  %ftn128 = load ptr, ptr %ftn, align 8
-  %call129 = call ptr @fn_llvm_type(ptr %c127, ptr %ftn128)
-  store ptr %call129, ptr %fty, align 8
-  br label %if.end122
+if.then121:                                       ; preds = %if.end109
+  %c123 = load ptr, ptr %c, align 8
+  %ftn124 = load ptr, ptr %ftn, align 8
+  %call125 = call ptr @fn_llvm_type(ptr %c123, ptr %ftn124)
+  store ptr %call125, ptr %fty, align 8
+  br label %if.end118
 
-if.else126:                                       ; preds = %if.end115
-  %callee130 = load ptr, ptr %callee, align 8
-  %call131 = call ptr @LLVMGlobalGetValueType(ptr %callee130)
-  store ptr %call131, ptr %fty, align 8
-  br label %if.end122
+if.else122:                                       ; preds = %if.end109
+  %callee126 = load ptr, ptr %callee, align 8
+  %call127 = call ptr @LLVMGlobalGetValueType(ptr %callee126)
+  store ptr %call127, ptr %fty, align 8
+  br label %if.end118
 
-if.end138:                                        ; preds = %if.else141, %if.end146
-  %objptr176 = load ptr, ptr %call, align 8
-  %fld177 = getelementptr inbounds nuw %ASTNode, ptr %objptr176, i32 0, i32 2
-  %fld178 = getelementptr inbounds nuw %N_FnCall, ptr %fld177, i32 0, i32 1
-  %fldval179 = load ptr, ptr %fld178, align 8
-  store ptr %fldval179, ptr %a, align 8
+if.end134:                                        ; preds = %if.else137, %if.end142
+  %objptr172 = load ptr, ptr %call, align 8
+  %fld173 = getelementptr inbounds nuw %ASTNode, ptr %objptr172, i32 0, i32 2
+  %fld174 = getelementptr inbounds nuw %N_FnCall, ptr %fld173, i32 0, i32 1
+  %fldval175 = load ptr, ptr %fld174, align 8
+  store ptr %fldval175, ptr %a, align 8
   br label %loop.body
 
-if.then140:                                       ; preds = %if.end122
-  %objptr142 = load ptr, ptr %call, align 8
-  %fld143 = getelementptr inbounds nuw %ASTNode, ptr %objptr142, i32 0, i32 2
-  %fld144 = getelementptr inbounds nuw %N_FnCall, ptr %fld143, i32 0, i32 2
-  %fldval145 = load ptr, ptr %fld144, align 8
-  store ptr %fldval145, ptr %recv, align 8
+if.then136:                                       ; preds = %if.end118
+  %objptr138 = load ptr, ptr %call, align 8
+  %fld139 = getelementptr inbounds nuw %ASTNode, ptr %objptr138, i32 0, i32 2
+  %fld140 = getelementptr inbounds nuw %N_FnCall, ptr %fld139, i32 0, i32 2
+  %fldval141 = load ptr, ptr %fld140, align 8
+  store ptr %fldval141, ptr %recv, align 8
   store ptr null, ptr %self, align 8
-  %rptrs147 = load i64, ptr %rptrs, align 8
-  %gt = icmp ugt i64 %rptrs147, 0
-  br i1 %gt, label %if.then148, label %if.else149
+  %rptrs143 = load i64, ptr %rptrs, align 8
+  %gt = icmp ugt i64 %rptrs143, 0
+  br i1 %gt, label %if.then144, label %if.else145
 
-if.else141:                                       ; preds = %if.end122
-  br label %if.end138
+if.else137:                                       ; preds = %if.end118
+  br label %if.end134
 
-if.end146:                                        ; preds = %if.end153, %if.then148
-  %args174 = load ptr, ptr %args, align 8
-  %self175 = load ptr, ptr %self, align 8
-  store ptr %self175, ptr %args174, align 8
+if.end142:                                        ; preds = %if.end149, %if.then144
+  %args170 = load ptr, ptr %args, align 8
+  %self171 = load ptr, ptr %self, align 8
+  store ptr %self171, ptr %args170, align 8
   store i32 1, ptr %n, align 4
-  br label %if.end138
+  br label %if.end134
 
-if.then148:                                       ; preds = %if.then140
+if.then144:                                       ; preds = %if.then136
+  %c146 = load ptr, ptr %c, align 8
+  %recv147 = load ptr, ptr %recv, align 8
+  %call148 = call ptr @gen_expr(ptr %c146, ptr %recv147)
+  store ptr %call148, ptr %self, align 8
+  br label %if.end142
+
+if.else145:                                       ; preds = %if.then136
   %c150 = load ptr, ptr %c, align 8
   %recv151 = load ptr, ptr %recv, align 8
-  %call152 = call ptr @gen_expr(ptr %c150, ptr %recv151)
-  store ptr %call152, ptr %self, align 8
-  br label %if.end146
+  %call152 = call i1 @gen_lvalue(ptr %c150, ptr %recv151, ptr %lv)
+  br i1 %call152, label %if.then153, label %if.else154
 
-if.else149:                                       ; preds = %if.then140
-  %c154 = load ptr, ptr %c, align 8
-  %recv155 = load ptr, ptr %recv, align 8
-  %call156 = call i1 @gen_lvalue(ptr %c154, ptr %recv155, ptr %lv)
-  br i1 %call156, label %if.then157, label %if.else158
+if.end149:                                        ; preds = %if.else154, %if.then153
+  br label %if.end142
 
-if.end153:                                        ; preds = %if.else158, %if.then157
-  br label %if.end146
+if.then153:                                       ; preds = %if.else145
+  %fld155 = getelementptr inbounds nuw %LValue, ptr %lv, i32 0, i32 0
+  %fldval156 = load ptr, ptr %fld155, align 8
+  store ptr %fldval156, ptr %self, align 8
+  br label %if.end149
 
-if.then157:                                       ; preds = %if.else149
-  %fld159 = getelementptr inbounds nuw %LValue, ptr %lv, i32 0, i32 0
-  %fldval160 = load ptr, ptr %fld159, align 8
-  store ptr %fldval160, ptr %self, align 8
-  br label %if.end153
+if.else154:                                       ; preds = %if.else145
+  %c157 = load ptr, ptr %c, align 8
+  %recv158 = load ptr, ptr %recv, align 8
+  %call159 = call ptr @gen_expr(ptr %c157, ptr %recv158)
+  store ptr %call159, ptr %v, align 8
+  %c160 = load ptr, ptr %c, align 8
+  %v161 = load ptr, ptr %v, align 8
+  %call162 = call ptr @LLVMTypeOf(ptr %v161)
+  %call163 = call ptr @entry_alloca(ptr %c160, ptr %call162, ptr @.str.249)
+  store ptr %call163, ptr %self, align 8
+  %objptr164 = load ptr, ptr %c, align 8
+  %fld165 = getelementptr inbounds nuw %CodegenContext, ptr %objptr164, i32 0, i32 2
+  %fldval166 = load ptr, ptr %fld165, align 8
+  %v167 = load ptr, ptr %v, align 8
+  %self168 = load ptr, ptr %self, align 8
+  %call169 = call ptr @LLVMBuildStore(ptr %fldval166, ptr %v167, ptr %self168)
+  br label %if.end149
 
-if.else158:                                       ; preds = %if.else149
-  %c161 = load ptr, ptr %c, align 8
-  %recv162 = load ptr, ptr %recv, align 8
-  %call163 = call ptr @gen_expr(ptr %c161, ptr %recv162)
-  store ptr %call163, ptr %v, align 8
-  %c164 = load ptr, ptr %c, align 8
-  %v165 = load ptr, ptr %v, align 8
-  %call166 = call ptr @LLVMTypeOf(ptr %v165)
-  %call167 = call ptr @entry_alloca(ptr %c164, ptr %call166, ptr @.str.216)
-  store ptr %call167, ptr %self, align 8
-  %objptr168 = load ptr, ptr %c, align 8
-  %fld169 = getelementptr inbounds nuw %CodegenContext, ptr %objptr168, i32 0, i32 2
-  %fldval170 = load ptr, ptr %fld169, align 8
-  %v171 = load ptr, ptr %v, align 8
-  %self172 = load ptr, ptr %self, align 8
-  %call173 = call ptr @LLVMBuildStore(ptr %fldval170, ptr %v171, ptr %self172)
-  br label %if.end153
+loop.body:                                        ; preds = %loop.cont, %if.end134
+  %a176 = load ptr, ptr %a, align 8
+  %ne177 = icmp ne ptr %a176, null
+  br i1 %ne177, label %sc.rhs, label %sc.end
 
-loop.body:                                        ; preds = %loop.cont, %if.end138
-  %a180 = load ptr, ptr %a, align 8
-  %ne181 = icmp ne ptr %a180, null
-  br i1 %ne181, label %sc.rhs, label %sc.end
-
-loop.cont:                                        ; preds = %if.end198
+loop.cont:                                        ; preds = %if.end197
   br label %loop.body
 
 loop.end:                                         ; preds = %sc.end
@@ -28316,13 +29624,13 @@ loop.end:                                         ; preds = %sc.end
   %LLVMVoidTypeKind = load i32, ptr @LLVMVoidTypeKind, align 4
   %eq289 = icmp eq i32 %call288, %LLVMVoidTypeKind
   store i1 %eq289, ptr %is_void, align 1
-  store ptr @.str.219, ptr %rname, align 8
+  store ptr @.str.252, ptr %rname, align 8
   %is_void291 = load i1, ptr %is_void, align 1
   br i1 %is_void291, label %if.then292, label %if.else293
 
 sc.rhs:                                           ; preds = %loop.body
-  %n182 = load i32, ptr %n, align 4
-  %lt = icmp slt i32 %n182, 64
+  %n178 = load i32, ptr %n, align 4
+  %lt = icmp slt i32 %n178, 64
   br label %sc.end
 
 sc.end:                                           ; preds = %sc.rhs, %loop.body
@@ -28330,40 +29638,44 @@ sc.end:                                           ; preds = %sc.rhs, %loop.body
   br i1 %sc, label %while.body, label %loop.end
 
 while.body:                                       ; preds = %sc.end
-  %c184 = load ptr, ptr %c, align 8
-  %objptr185 = load ptr, ptr %a, align 8
-  %fld186 = getelementptr inbounds nuw %ASTNode, ptr %objptr185, i32 0, i32 2
-  %fld187 = getelementptr inbounds nuw %N_Argument, ptr %fld186, i32 0, i32 0
-  %fldval188 = load ptr, ptr %fld187, align 8
-  %call189 = call ptr @gen_expr(ptr %c184, ptr %fldval188)
-  store ptr %call189, ptr %v183, align 8
-  %v191 = load ptr, ptr %v183, align 8
-  %eq192 = icmp eq ptr %v191, null
-  br i1 %eq192, label %if.then193, label %if.else194
+  %c180 = load ptr, ptr %c, align 8
+  %objptr181 = load ptr, ptr %a, align 8
+  %fld182 = getelementptr inbounds nuw %ASTNode, ptr %objptr181, i32 0, i32 2
+  %fld183 = getelementptr inbounds nuw %N_Argument, ptr %fld182, i32 0, i32 0
+  %fldval184 = load ptr, ptr %fld183, align 8
+  %call185 = call ptr @gen_expr(ptr %c180, ptr %fldval184)
+  store ptr %call185, ptr %v179, align 8
+  %v187 = load ptr, ptr %v179, align 8
+  %eq188 = icmp eq ptr %v187, null
+  br i1 %eq188, label %if.then189, label %if.else190
 
-if.end190:                                        ; preds = %if.else194, %if.then193
-  %n199 = load i32, ptr %n, align 4
-  %nparams200 = load i32, ptr %nparams, align 4
-  %lt201 = icmp slt i32 %n199, %nparams200
-  br i1 %lt201, label %if.then202, label %if.else203
+if.end186:                                        ; preds = %if.else190, %if.then189
+  %n198 = load i32, ptr %n, align 4
+  %nparams199 = load i32, ptr %nparams, align 4
+  %lt200 = icmp slt i32 %n198, %nparams199
+  br i1 %lt200, label %if.then201, label %if.else202
 
-if.then193:                                       ; preds = %while.body
-  %n195 = load i32, ptr %n, align 4
-  %add = add i32 %n195, 1
+if.then189:                                       ; preds = %while.body
+  %objptr191 = load ptr, ptr %a, align 8
+  %fld192 = getelementptr inbounds nuw %ASTNode, ptr %objptr191, i32 0, i32 1
+  %fldval193 = load %Location, ptr %fld192, align 8
+  %n194 = load i32, ptr %n, align 4
+  %add = add i32 %n194, 1
+  %sext = sext i32 %add to i64
+  %call195 = call ptr @itoa(i64 %sext)
   %name196 = load ptr, ptr %name, align 8
-  %call197 = call i32 (ptr, ...) @printf(ptr @.str.217, i32 %add, ptr %name196)
-  call void @exit(i32 1)
-  br label %if.end190
+  call void @diag_fatal(%Location %fldval193, ptr @.str.250, ptr %call195, ptr %name196)
+  br label %if.end186
 
-if.else194:                                       ; preds = %while.body
-  br label %if.end190
+if.else190:                                       ; preds = %while.body
+  br label %if.end186
 
-if.end198:                                        ; preds = %if.end230, %if.then202
+if.end197:                                        ; preds = %if.end230, %if.then201
   %args275 = load ptr, ptr %args, align 8
   %n276 = load i32, ptr %n, align 4
   %sext277 = sext i32 %n276 to i64
   %padd278 = getelementptr ptr, ptr %args275, i64 %sext277
-  %v279 = load ptr, ptr %v183, align 8
+  %v279 = load ptr, ptr %v179, align 8
   store ptr %v279, ptr %padd278, align 8
   %n280 = load i32, ptr %n, align 4
   %add281 = add i32 %n280, 1
@@ -28375,24 +29687,24 @@ if.end198:                                        ; preds = %if.end230, %if.then
   store ptr %fldval285, ptr %a, align 8
   br label %loop.cont
 
-if.then202:                                       ; preds = %if.end190
-  %c204 = load ptr, ptr %c, align 8
-  %v205 = load ptr, ptr %v183, align 8
-  %ptypes206 = load ptr, ptr %ptypes, align 8
-  %n207 = load i32, ptr %n, align 4
-  %sext = sext i32 %n207 to i64
-  %padd = getelementptr ptr, ptr %ptypes206, i64 %sext
+if.then201:                                       ; preds = %if.end186
+  %c203 = load ptr, ptr %c, align 8
+  %v204 = load ptr, ptr %v179, align 8
+  %ptypes205 = load ptr, ptr %ptypes, align 8
+  %n206 = load i32, ptr %n, align 4
+  %sext207 = sext i32 %n206 to i64
+  %padd = getelementptr ptr, ptr %ptypes205, i64 %sext207
   %deref = load ptr, ptr %padd, align 8
   %objptr208 = load ptr, ptr %a, align 8
   %fld209 = getelementptr inbounds nuw %ASTNode, ptr %objptr208, i32 0, i32 2
   %fld210 = getelementptr inbounds nuw %N_Argument, ptr %fld209, i32 0, i32 0
   %fldval211 = load ptr, ptr %fld210, align 8
-  %call212 = call ptr @coerce_e(ptr %c204, ptr %v205, ptr %deref, ptr %fldval211)
-  store ptr %call212, ptr %v183, align 8
-  br label %if.end198
+  %call212 = call ptr @coerce_e(ptr %c203, ptr %v204, ptr %deref, ptr %fldval211)
+  store ptr %call212, ptr %v179, align 8
+  br label %if.end197
 
-if.else203:                                       ; preds = %if.end190
-  %v213 = load ptr, ptr %v183, align 8
+if.else202:                                       ; preds = %if.end186
+  %v213 = load ptr, ptr %v179, align 8
   %call214 = call ptr @LLVMTypeOf(ptr %v213)
   store ptr %call214, ptr %vt, align 8
   %vt216 = load ptr, ptr %vt, align 8
@@ -28408,24 +29720,24 @@ if.end215:                                        ; preds = %if.else220, %if.the
   %eq233 = icmp eq i32 %call232, %LLVMIntegerTypeKind
   br i1 %eq233, label %sc.rhs234, label %sc.end235
 
-if.then219:                                       ; preds = %if.else203
+if.then219:                                       ; preds = %if.else202
   %objptr221 = load ptr, ptr %c, align 8
   %fld222 = getelementptr inbounds nuw %CodegenContext, ptr %objptr221, i32 0, i32 2
   %fldval223 = load ptr, ptr %fld222, align 8
-  %v224 = load ptr, ptr %v183, align 8
+  %v224 = load ptr, ptr %v179, align 8
   %objptr225 = load ptr, ptr %c, align 8
   %fld226 = getelementptr inbounds nuw %CodegenContext, ptr %objptr225, i32 0, i32 0
   %fldval227 = load ptr, ptr %fld226, align 8
   %call228 = call ptr @LLVMDoubleTypeInContext(ptr %fldval227)
-  %call229 = call ptr @LLVMBuildFPExt(ptr %fldval223, ptr %v224, ptr %call228, ptr @.str.218)
-  store ptr %call229, ptr %v183, align 8
+  %call229 = call ptr @LLVMBuildFPExt(ptr %fldval223, ptr %v224, ptr %call228, ptr @.str.251)
+  store ptr %call229, ptr %v179, align 8
   br label %if.end215
 
-if.else220:                                       ; preds = %if.else203
+if.else220:                                       ; preds = %if.else202
   br label %if.end215
 
 if.end230:                                        ; preds = %if.else241, %if.end259
-  br label %if.end198
+  br label %if.end197
 
 sc.rhs234:                                        ; preds = %if.end215
   %vt236 = load ptr, ptr %vt, align 8
@@ -28478,20 +29790,20 @@ if.then261:                                       ; preds = %if.end249
   %objptr263 = load ptr, ptr %c, align 8
   %fld264 = getelementptr inbounds nuw %CodegenContext, ptr %objptr263, i32 0, i32 2
   %fldval265 = load ptr, ptr %fld264, align 8
-  %v266 = load ptr, ptr %v183, align 8
+  %v266 = load ptr, ptr %v179, align 8
   %i32267 = load ptr, ptr %i32, align 8
-  %call268 = call ptr @LLVMBuildZExt(ptr %fldval265, ptr %v266, ptr %i32267, ptr @.str.218)
-  store ptr %call268, ptr %v183, align 8
+  %call268 = call ptr @LLVMBuildZExt(ptr %fldval265, ptr %v266, ptr %i32267, ptr @.str.251)
+  store ptr %call268, ptr %v179, align 8
   br label %if.end259
 
 if.else262:                                       ; preds = %if.end249
   %objptr269 = load ptr, ptr %c, align 8
   %fld270 = getelementptr inbounds nuw %CodegenContext, ptr %objptr269, i32 0, i32 2
   %fldval271 = load ptr, ptr %fld270, align 8
-  %v272 = load ptr, ptr %v183, align 8
+  %v272 = load ptr, ptr %v179, align 8
   %i32273 = load ptr, ptr %i32, align 8
-  %call274 = call ptr @LLVMBuildSExt(ptr %fldval271, ptr %v272, ptr %i32273, ptr @.str.218)
-  store ptr %call274, ptr %v183, align 8
+  %call274 = call ptr @LLVMBuildSExt(ptr %fldval271, ptr %v272, ptr %i32273, ptr @.str.251)
+  store ptr %call274, ptr %v179, align 8
   br label %if.end259
 
 if.end290:                                        ; preds = %if.else293, %if.then292
@@ -28513,7 +29825,7 @@ if.end290:                                        ; preds = %if.else293, %if.the
   ret ptr %r305
 
 if.then292:                                       ; preds = %loop.end
-  store ptr @.str.117, ptr %rname, align 8
+  store ptr @.str.72, ptr %rname, align 8
   br label %if.end290
 
 if.else293:                                       ; preds = %loop.end
@@ -28575,7 +29887,7 @@ if.end11:                                         ; preds = %if.else19
   %fldval25 = load ptr, ptr %fld24, align 8
   %v26 = load ptr, ptr %v, align 8
   %to27 = load ptr, ptr %to, align 8
-  %call28 = call ptr @LLVMBuildSIToFP(ptr %fldval25, ptr %v26, ptr %to27, ptr @.str.200)
+  %call28 = call ptr @LLVMBuildSIToFP(ptr %fldval25, ptr %v26, ptr %to27, ptr @.str.235)
   ret ptr %call28
 
 sc.rhs:                                           ; preds = %if.then9
@@ -28594,7 +29906,7 @@ if.then18:                                        ; preds = %sc.end
   %fldval = load ptr, ptr %fld, align 8
   %v20 = load ptr, ptr %v, align 8
   %to21 = load ptr, ptr %to, align 8
-  %call22 = call ptr @LLVMBuildUIToFP(ptr %fldval, ptr %v20, ptr %to21, ptr @.str.220)
+  %call22 = call ptr @LLVMBuildUIToFP(ptr %fldval, ptr %v20, ptr %to21, ptr @.str.253)
   ret ptr %call22
 
 if.else19:                                        ; preds = %sc.end
@@ -28688,7 +30000,7 @@ if.then36:                                        ; preds = %if.end
   %fldval40 = load ptr, ptr %fld39, align 8
   %l41 = load ptr, ptr %l, align 8
   %r42 = load ptr, ptr %r, align 8
-  %call43 = call ptr @LLVMBuildFAdd(ptr %fldval40, ptr %l41, ptr %r42, ptr @.str.221)
+  %call43 = call ptr @LLVMBuildFAdd(ptr %fldval40, ptr %l41, ptr %r42, ptr @.str.254)
   ret ptr %call43
 
 if.else37:                                        ; preds = %if.end
@@ -28705,7 +30017,7 @@ if.then47:                                        ; preds = %if.end33
   %fldval51 = load ptr, ptr %fld50, align 8
   %l52 = load ptr, ptr %l, align 8
   %r53 = load ptr, ptr %r, align 8
-  %call54 = call ptr @LLVMBuildFSub(ptr %fldval51, ptr %l52, ptr %r53, ptr @.str.222)
+  %call54 = call ptr @LLVMBuildFSub(ptr %fldval51, ptr %l52, ptr %r53, ptr @.str.255)
   ret ptr %call54
 
 if.else48:                                        ; preds = %if.end33
@@ -28722,7 +30034,7 @@ if.then58:                                        ; preds = %if.end44
   %fldval62 = load ptr, ptr %fld61, align 8
   %l63 = load ptr, ptr %l, align 8
   %r64 = load ptr, ptr %r, align 8
-  %call65 = call ptr @LLVMBuildFMul(ptr %fldval62, ptr %l63, ptr %r64, ptr @.str.223)
+  %call65 = call ptr @LLVMBuildFMul(ptr %fldval62, ptr %l63, ptr %r64, ptr @.str.256)
   ret ptr %call65
 
 if.else59:                                        ; preds = %if.end44
@@ -28739,7 +30051,7 @@ if.then69:                                        ; preds = %if.end55
   %fldval73 = load ptr, ptr %fld72, align 8
   %l74 = load ptr, ptr %l, align 8
   %r75 = load ptr, ptr %r, align 8
-  %call76 = call ptr @LLVMBuildFDiv(ptr %fldval73, ptr %l74, ptr %r75, ptr @.str.224)
+  %call76 = call ptr @LLVMBuildFDiv(ptr %fldval73, ptr %l74, ptr %r75, ptr @.str.257)
   ret ptr %call76
 
 if.else70:                                        ; preds = %if.end55
@@ -28757,7 +30069,7 @@ if.then80:                                        ; preds = %if.end66
   %fldval84 = load ptr, ptr %fld83, align 8
   %l85 = load ptr, ptr %l, align 8
   %r86 = load ptr, ptr %r, align 8
-  %call87 = call ptr @LLVMBuildFRem(ptr %fldval84, ptr %l85, ptr %r86, ptr @.str.225)
+  %call87 = call ptr @LLVMBuildFRem(ptr %fldval84, ptr %l85, ptr %r86, ptr @.str.258)
   ret ptr %call87
 
 if.else81:                                        ; preds = %if.end66
@@ -28827,26 +30139,20 @@ elif.else110:                                     ; preds = %elif.else106
   br label %if.end88
 
 if.end111:                                        ; preds = %if.else114, %if.then113
-  %objptr124 = load ptr, ptr %c, align 8
-  %fld125 = getelementptr inbounds nuw %CodegenContext, ptr %objptr124, i32 0, i32 2
-  %fldval126 = load ptr, ptr %fld125, align 8
-  %p127 = load i32, ptr %p, align 4
-  %l128 = load ptr, ptr %l, align 8
-  %r129 = load ptr, ptr %r, align 8
-  %call130 = call ptr @LLVMBuildFCmp(ptr %fldval126, i32 %p127, ptr %l128, ptr %r129, ptr @.str.227)
-  ret ptr %call130
+  %objptr118 = load ptr, ptr %c, align 8
+  %fld119 = getelementptr inbounds nuw %CodegenContext, ptr %objptr118, i32 0, i32 2
+  %fldval120 = load ptr, ptr %fld119, align 8
+  %p121 = load i32, ptr %p, align 4
+  %l122 = load ptr, ptr %l, align 8
+  %r123 = load ptr, ptr %r, align 8
+  %call124 = call ptr @LLVMBuildFCmp(ptr %fldval120, i32 %p121, ptr %l122, ptr %r123, ptr @.str.260)
+  ret ptr %call124
 
 if.then113:                                       ; preds = %if.end88
   %objptr115 = load ptr, ptr %n, align 8
   %fld116 = getelementptr inbounds nuw %ASTNode, ptr %objptr115, i32 0, i32 1
-  %fld117 = getelementptr inbounds nuw %Location, ptr %fld116, i32 0, i32 0
-  %fldval118 = load i32, ptr %fld117, align 4
-  %objptr119 = load ptr, ptr %n, align 8
-  %fld120 = getelementptr inbounds nuw %ASTNode, ptr %objptr119, i32 0, i32 1
-  %fld121 = getelementptr inbounds nuw %Location, ptr %fld120, i32 0, i32 1
-  %fldval122 = load i32, ptr %fld121, align 4
-  %call123 = call i32 (ptr, ...) @printf(ptr @.str.226, i32 %fldval118, i32 %fldval122)
-  call void @exit(i32 1)
+  %fldval117 = load %Location, ptr %fld116, align 8
+  call void @diag_fatal(%Location %fldval117, ptr @.str.259, ptr @.str.72, ptr @.str.72)
   br label %if.end111
 
 if.else114:                                       ; preds = %if.end88
@@ -28855,9 +30161,9 @@ if.else114:                                       ; preds = %if.end88
 
 define ptr @gen_binop(ptr %0, ptr %1) {
 entry:
-  %p765 = alloca i32, align 4
-  %p748 = alloca i32, align 4
-  %p731 = alloca i32, align 4
+  %p741 = alloca i32, align 4
+  %p724 = alloca i32, align 4
+  %p707 = alloca i32, align 4
   %p = alloca i32, align 4
   %uns = alloca i1, align 1
   %rt = alloca ptr, align 8
@@ -28889,10 +30195,10 @@ entry:
   %end_bb = alloca ptr, align 8
   %rhs_bb = alloca ptr, align 8
   %lhs_end = alloca ptr, align 8
-  %lv136 = alloca ptr, align 8
+  %lv112 = alloca ptr, align 8
   %i1 = alloca ptr, align 8
-  %lv100 = alloca %LValue, align 8
-  %lv61 = alloca %LValue, align 8
+  %lv82 = alloca %LValue, align 8
+  %lv49 = alloca %LValue, align 8
   %v = alloca ptr, align 8
   %lv = alloca %LValue, align 8
   %k = alloca i32, align 4
@@ -28910,9 +30216,9 @@ entry:
   br i1 %eq, label %if.then, label %if.else
 
 if.end:                                           ; preds = %if.else
-  %k57 = load i32, ptr %k, align 4
-  %eq58 = icmp eq i32 %k57, 19
-  br i1 %eq58, label %if.then59, label %if.else60
+  %k45 = load i32, ptr %k, align 4
+  %eq46 = icmp eq i32 %k45, 19
+  br i1 %eq46, label %if.then47, label %if.else48
 
 if.then:                                          ; preds = %entry
   %c4 = load ptr, ptr %c, align 8
@@ -28928,1191 +30234,1167 @@ if.else:                                          ; preds = %entry
   br label %if.end
 
 if.end3:                                          ; preds = %if.else10, %if.then9
-  %c20 = load ptr, ptr %c, align 8
-  %c21 = load ptr, ptr %c, align 8
-  %objptr22 = load ptr, ptr %n, align 8
-  %fld23 = getelementptr inbounds nuw %ASTNode, ptr %objptr22, i32 0, i32 2
-  %fld24 = getelementptr inbounds nuw %N_BinOp, ptr %fld23, i32 0, i32 2
-  %fldval25 = load ptr, ptr %fld24, align 8
-  %call26 = call ptr @gen_expr(ptr %c21, ptr %fldval25)
-  %fld27 = getelementptr inbounds nuw %LValue, ptr %lv, i32 0, i32 1
-  %fldval28 = load ptr, ptr %fld27, align 8
-  %objptr29 = load ptr, ptr %n, align 8
-  %fld30 = getelementptr inbounds nuw %ASTNode, ptr %objptr29, i32 0, i32 2
-  %fld31 = getelementptr inbounds nuw %N_BinOp, ptr %fld30, i32 0, i32 2
-  %fldval32 = load ptr, ptr %fld31, align 8
-  %call33 = call ptr @coerce_e(ptr %c20, ptr %call26, ptr %fldval28, ptr %fldval32)
-  store ptr %call33, ptr %v, align 8
-  %v35 = load ptr, ptr %v, align 8
-  %eq36 = icmp eq ptr %v35, null
-  br i1 %eq36, label %if.then37, label %if.else38
+  %c14 = load ptr, ptr %c, align 8
+  %c15 = load ptr, ptr %c, align 8
+  %objptr16 = load ptr, ptr %n, align 8
+  %fld17 = getelementptr inbounds nuw %ASTNode, ptr %objptr16, i32 0, i32 2
+  %fld18 = getelementptr inbounds nuw %N_BinOp, ptr %fld17, i32 0, i32 2
+  %fldval19 = load ptr, ptr %fld18, align 8
+  %call20 = call ptr @gen_expr(ptr %c15, ptr %fldval19)
+  %fld21 = getelementptr inbounds nuw %LValue, ptr %lv, i32 0, i32 1
+  %fldval22 = load ptr, ptr %fld21, align 8
+  %objptr23 = load ptr, ptr %n, align 8
+  %fld24 = getelementptr inbounds nuw %ASTNode, ptr %objptr23, i32 0, i32 2
+  %fld25 = getelementptr inbounds nuw %N_BinOp, ptr %fld24, i32 0, i32 2
+  %fldval26 = load ptr, ptr %fld25, align 8
+  %call27 = call ptr @coerce_e(ptr %c14, ptr %call20, ptr %fldval22, ptr %fldval26)
+  store ptr %call27, ptr %v, align 8
+  %v29 = load ptr, ptr %v, align 8
+  %eq30 = icmp eq ptr %v29, null
+  br i1 %eq30, label %if.then31, label %if.else32
 
 if.then9:                                         ; preds = %if.then
   %objptr11 = load ptr, ptr %n, align 8
   %fld12 = getelementptr inbounds nuw %ASTNode, ptr %objptr11, i32 0, i32 1
-  %fld13 = getelementptr inbounds nuw %Location, ptr %fld12, i32 0, i32 0
-  %fldval14 = load i32, ptr %fld13, align 4
-  %objptr15 = load ptr, ptr %n, align 8
-  %fld16 = getelementptr inbounds nuw %ASTNode, ptr %objptr15, i32 0, i32 1
-  %fld17 = getelementptr inbounds nuw %Location, ptr %fld16, i32 0, i32 1
-  %fldval18 = load i32, ptr %fld17, align 4
-  %call19 = call i32 (ptr, ...) @printf(ptr @.str.228, i32 %fldval14, i32 %fldval18)
-  call void @exit(i32 1)
+  %fldval13 = load %Location, ptr %fld12, align 8
+  call void @diag_fatal(%Location %fldval13, ptr @.str.261, ptr @.str.72, ptr @.str.72)
   br label %if.end3
 
 if.else10:                                        ; preds = %if.then
   br label %if.end3
 
-if.end34:                                         ; preds = %if.else38, %if.then37
-  %objptr48 = load ptr, ptr %c, align 8
-  %fld49 = getelementptr inbounds nuw %CodegenContext, ptr %objptr48, i32 0, i32 2
-  %fldval50 = load ptr, ptr %fld49, align 8
-  %v51 = load ptr, ptr %v, align 8
-  %fld52 = getelementptr inbounds nuw %LValue, ptr %lv, i32 0, i32 0
-  %fldval53 = load ptr, ptr %fld52, align 8
-  %call54 = call ptr @LLVMBuildStore(ptr %fldval50, ptr %v51, ptr %fldval53)
-  %v55 = load ptr, ptr %v, align 8
-  ret ptr %v55
+if.end28:                                         ; preds = %if.else32, %if.then31
+  %objptr36 = load ptr, ptr %c, align 8
+  %fld37 = getelementptr inbounds nuw %CodegenContext, ptr %objptr36, i32 0, i32 2
+  %fldval38 = load ptr, ptr %fld37, align 8
+  %v39 = load ptr, ptr %v, align 8
+  %fld40 = getelementptr inbounds nuw %LValue, ptr %lv, i32 0, i32 0
+  %fldval41 = load ptr, ptr %fld40, align 8
+  %call42 = call ptr @LLVMBuildStore(ptr %fldval38, ptr %v39, ptr %fldval41)
+  %v43 = load ptr, ptr %v, align 8
+  ret ptr %v43
 
-if.then37:                                        ; preds = %if.end3
-  %objptr39 = load ptr, ptr %n, align 8
-  %fld40 = getelementptr inbounds nuw %ASTNode, ptr %objptr39, i32 0, i32 1
-  %fld41 = getelementptr inbounds nuw %Location, ptr %fld40, i32 0, i32 0
-  %fldval42 = load i32, ptr %fld41, align 4
-  %objptr43 = load ptr, ptr %n, align 8
-  %fld44 = getelementptr inbounds nuw %ASTNode, ptr %objptr43, i32 0, i32 1
-  %fld45 = getelementptr inbounds nuw %Location, ptr %fld44, i32 0, i32 1
-  %fldval46 = load i32, ptr %fld45, align 4
-  %call47 = call i32 (ptr, ...) @printf(ptr @.str.229, i32 %fldval42, i32 %fldval46)
-  call void @exit(i32 1)
-  br label %if.end34
+if.then31:                                        ; preds = %if.end3
+  %objptr33 = load ptr, ptr %n, align 8
+  %fld34 = getelementptr inbounds nuw %ASTNode, ptr %objptr33, i32 0, i32 1
+  %fldval35 = load %Location, ptr %fld34, align 8
+  call void @diag_fatal(%Location %fldval35, ptr @.str.262, ptr @.str.72, ptr @.str.72)
+  br label %if.end28
 
-if.else38:                                        ; preds = %if.end3
-  br label %if.end34
+if.else32:                                        ; preds = %if.end3
+  br label %if.end28
 
-if.end56:                                         ; preds = %if.else60
-  %k96 = load i32, ptr %k, align 4
-  %eq97 = icmp eq i32 %k96, 20
-  br i1 %eq97, label %if.then98, label %if.else99
+if.end44:                                         ; preds = %if.else48
+  %k78 = load i32, ptr %k, align 4
+  %eq79 = icmp eq i32 %k78, 20
+  br i1 %eq79, label %if.then80, label %if.else81
 
-if.then59:                                        ; preds = %if.end
-  %c63 = load ptr, ptr %c, align 8
-  %n64 = load ptr, ptr %n, align 8
-  %call65 = call i1 @gen_lvalue(ptr %c63, ptr %n64, ptr %lv61)
-  %not66 = icmp eq i1 %call65, false
-  br i1 %not66, label %if.then67, label %if.else68
+if.then47:                                        ; preds = %if.end
+  %c51 = load ptr, ptr %c, align 8
+  %n52 = load ptr, ptr %n, align 8
+  %call53 = call i1 @gen_lvalue(ptr %c51, ptr %n52, ptr %lv49)
+  %not54 = icmp eq i1 %call53, false
+  br i1 %not54, label %if.then55, label %if.else56
 
-if.else60:                                        ; preds = %if.end
-  br label %if.end56
+if.else48:                                        ; preds = %if.end
+  br label %if.end44
 
-if.end62:                                         ; preds = %if.else68, %if.then67
-  %fld79 = getelementptr inbounds nuw %LValue, ptr %lv61, i32 0, i32 1
-  %fldval80 = load ptr, ptr %fld79, align 8
-  %call81 = call i32 @LLVMGetTypeKind(ptr %fldval80)
+if.end50:                                         ; preds = %if.else56, %if.then55
+  %fld61 = getelementptr inbounds nuw %LValue, ptr %lv49, i32 0, i32 1
+  %fldval62 = load ptr, ptr %fld61, align 8
+  %call63 = call i32 @LLVMGetTypeKind(ptr %fldval62)
   %LLVMArrayTypeKind = load i32, ptr @LLVMArrayTypeKind, align 4
-  %eq82 = icmp eq i32 %call81, %LLVMArrayTypeKind
-  br i1 %eq82, label %if.then83, label %if.else84
+  %eq64 = icmp eq i32 %call63, %LLVMArrayTypeKind
+  br i1 %eq64, label %if.then65, label %if.else66
 
-if.then67:                                        ; preds = %if.then59
-  %objptr69 = load ptr, ptr %n, align 8
-  %fld70 = getelementptr inbounds nuw %ASTNode, ptr %objptr69, i32 0, i32 1
-  %fld71 = getelementptr inbounds nuw %Location, ptr %fld70, i32 0, i32 0
-  %fldval72 = load i32, ptr %fld71, align 4
-  %objptr73 = load ptr, ptr %n, align 8
-  %fld74 = getelementptr inbounds nuw %ASTNode, ptr %objptr73, i32 0, i32 1
-  %fld75 = getelementptr inbounds nuw %Location, ptr %fld74, i32 0, i32 1
-  %fldval76 = load i32, ptr %fld75, align 4
-  %call77 = call i32 (ptr, ...) @printf(ptr @.str.230, i32 %fldval72, i32 %fldval76)
-  call void @exit(i32 1)
-  br label %if.end62
+if.then55:                                        ; preds = %if.then47
+  %objptr57 = load ptr, ptr %n, align 8
+  %fld58 = getelementptr inbounds nuw %ASTNode, ptr %objptr57, i32 0, i32 1
+  %fldval59 = load %Location, ptr %fld58, align 8
+  call void @diag_fatal(%Location %fldval59, ptr @.str.263, ptr @.str.72, ptr @.str.72)
+  br label %if.end50
 
-if.else68:                                        ; preds = %if.then59
-  br label %if.end62
+if.else56:                                        ; preds = %if.then47
+  br label %if.end50
 
-if.end78:                                         ; preds = %if.else84
-  %objptr87 = load ptr, ptr %c, align 8
-  %fld88 = getelementptr inbounds nuw %CodegenContext, ptr %objptr87, i32 0, i32 2
-  %fldval89 = load ptr, ptr %fld88, align 8
-  %fld90 = getelementptr inbounds nuw %LValue, ptr %lv61, i32 0, i32 1
-  %fldval91 = load ptr, ptr %fld90, align 8
-  %fld92 = getelementptr inbounds nuw %LValue, ptr %lv61, i32 0, i32 0
-  %fldval93 = load ptr, ptr %fld92, align 8
-  %call94 = call ptr @LLVMBuildLoad2(ptr %fldval89, ptr %fldval91, ptr %fldval93, ptr @.str.231)
-  ret ptr %call94
+if.end60:                                         ; preds = %if.else66
+  %objptr69 = load ptr, ptr %c, align 8
+  %fld70 = getelementptr inbounds nuw %CodegenContext, ptr %objptr69, i32 0, i32 2
+  %fldval71 = load ptr, ptr %fld70, align 8
+  %fld72 = getelementptr inbounds nuw %LValue, ptr %lv49, i32 0, i32 1
+  %fldval73 = load ptr, ptr %fld72, align 8
+  %fld74 = getelementptr inbounds nuw %LValue, ptr %lv49, i32 0, i32 0
+  %fldval75 = load ptr, ptr %fld74, align 8
+  %call76 = call ptr @LLVMBuildLoad2(ptr %fldval71, ptr %fldval73, ptr %fldval75, ptr @.str.264)
+  ret ptr %call76
 
-if.then83:                                        ; preds = %if.end62
-  %fld85 = getelementptr inbounds nuw %LValue, ptr %lv61, i32 0, i32 0
-  %fldval86 = load ptr, ptr %fld85, align 8
-  ret ptr %fldval86
+if.then65:                                        ; preds = %if.end50
+  %fld67 = getelementptr inbounds nuw %LValue, ptr %lv49, i32 0, i32 0
+  %fldval68 = load ptr, ptr %fld67, align 8
+  ret ptr %fldval68
 
-if.else84:                                        ; preds = %if.end62
-  br label %if.end78
+if.else66:                                        ; preds = %if.end50
+  br label %if.end60
 
-if.end95:                                         ; preds = %if.else99
-  %k126 = load i32, ptr %k, align 4
-  %eq127 = icmp eq i32 %k126, 12
-  br i1 %eq127, label %sc.end, label %sc.rhs
+if.end77:                                         ; preds = %if.else81
+  %k102 = load i32, ptr %k, align 4
+  %eq103 = icmp eq i32 %k102, 12
+  br i1 %eq103, label %sc.end, label %sc.rhs
 
-if.then98:                                        ; preds = %if.end56
-  %c102 = load ptr, ptr %c, align 8
-  %n103 = load ptr, ptr %n, align 8
-  %call104 = call i1 @gen_lvalue(ptr %c102, ptr %n103, ptr %lv100)
-  %not105 = icmp eq i1 %call104, false
-  br i1 %not105, label %if.then106, label %if.else107
+if.then80:                                        ; preds = %if.end44
+  %c84 = load ptr, ptr %c, align 8
+  %n85 = load ptr, ptr %n, align 8
+  %call86 = call i1 @gen_lvalue(ptr %c84, ptr %n85, ptr %lv82)
+  %not87 = icmp eq i1 %call86, false
+  br i1 %not87, label %if.then88, label %if.else89
 
-if.else99:                                        ; preds = %if.end56
-  br label %if.end95
+if.else81:                                        ; preds = %if.end44
+  br label %if.end77
 
-if.end101:                                        ; preds = %if.else107, %if.then106
-  %objptr117 = load ptr, ptr %c, align 8
-  %fld118 = getelementptr inbounds nuw %CodegenContext, ptr %objptr117, i32 0, i32 2
-  %fldval119 = load ptr, ptr %fld118, align 8
-  %fld120 = getelementptr inbounds nuw %LValue, ptr %lv100, i32 0, i32 1
-  %fldval121 = load ptr, ptr %fld120, align 8
-  %fld122 = getelementptr inbounds nuw %LValue, ptr %lv100, i32 0, i32 0
-  %fldval123 = load ptr, ptr %fld122, align 8
-  %call124 = call ptr @LLVMBuildLoad2(ptr %fldval119, ptr %fldval121, ptr %fldval123, ptr @.str.233)
-  ret ptr %call124
+if.end83:                                         ; preds = %if.else89, %if.then88
+  %objptr93 = load ptr, ptr %c, align 8
+  %fld94 = getelementptr inbounds nuw %CodegenContext, ptr %objptr93, i32 0, i32 2
+  %fldval95 = load ptr, ptr %fld94, align 8
+  %fld96 = getelementptr inbounds nuw %LValue, ptr %lv82, i32 0, i32 1
+  %fldval97 = load ptr, ptr %fld96, align 8
+  %fld98 = getelementptr inbounds nuw %LValue, ptr %lv82, i32 0, i32 0
+  %fldval99 = load ptr, ptr %fld98, align 8
+  %call100 = call ptr @LLVMBuildLoad2(ptr %fldval95, ptr %fldval97, ptr %fldval99, ptr @.str.266)
+  ret ptr %call100
 
-if.then106:                                       ; preds = %if.then98
-  %objptr108 = load ptr, ptr %n, align 8
-  %fld109 = getelementptr inbounds nuw %ASTNode, ptr %objptr108, i32 0, i32 1
-  %fld110 = getelementptr inbounds nuw %Location, ptr %fld109, i32 0, i32 0
-  %fldval111 = load i32, ptr %fld110, align 4
-  %objptr112 = load ptr, ptr %n, align 8
-  %fld113 = getelementptr inbounds nuw %ASTNode, ptr %objptr112, i32 0, i32 1
-  %fld114 = getelementptr inbounds nuw %Location, ptr %fld113, i32 0, i32 1
-  %fldval115 = load i32, ptr %fld114, align 4
-  %call116 = call i32 (ptr, ...) @printf(ptr @.str.232, i32 %fldval111, i32 %fldval115)
-  call void @exit(i32 1)
-  br label %if.end101
+if.then88:                                        ; preds = %if.then80
+  %objptr90 = load ptr, ptr %n, align 8
+  %fld91 = getelementptr inbounds nuw %ASTNode, ptr %objptr90, i32 0, i32 1
+  %fldval92 = load %Location, ptr %fld91, align 8
+  call void @diag_fatal(%Location %fldval92, ptr @.str.265, ptr @.str.72, ptr @.str.72)
+  br label %if.end83
 
-if.else107:                                       ; preds = %if.then98
-  br label %if.end101
+if.else89:                                        ; preds = %if.then80
+  br label %if.end83
 
-if.end125:                                        ; preds = %if.else131
-  %c240 = load ptr, ptr %c, align 8
-  %objptr241 = load ptr, ptr %n, align 8
-  %fld242 = getelementptr inbounds nuw %ASTNode, ptr %objptr241, i32 0, i32 2
-  %fld243 = getelementptr inbounds nuw %N_BinOp, ptr %fld242, i32 0, i32 1
-  %fldval244 = load ptr, ptr %fld243, align 8
-  %call245 = call ptr @gen_expr(ptr %c240, ptr %fldval244)
-  store ptr %call245, ptr %l, align 8
-  %c246 = load ptr, ptr %c, align 8
-  %objptr247 = load ptr, ptr %n, align 8
-  %fld248 = getelementptr inbounds nuw %ASTNode, ptr %objptr247, i32 0, i32 2
-  %fld249 = getelementptr inbounds nuw %N_BinOp, ptr %fld248, i32 0, i32 2
-  %fldval250 = load ptr, ptr %fld249, align 8
-  %call251 = call ptr @gen_expr(ptr %c246, ptr %fldval250)
-  store ptr %call251, ptr %r, align 8
-  %l253 = load ptr, ptr %l, align 8
-  %eq254 = icmp eq ptr %l253, null
-  br i1 %eq254, label %sc.end256, label %sc.rhs255
+if.end101:                                        ; preds = %if.else107
+  %c216 = load ptr, ptr %c, align 8
+  %objptr217 = load ptr, ptr %n, align 8
+  %fld218 = getelementptr inbounds nuw %ASTNode, ptr %objptr217, i32 0, i32 2
+  %fld219 = getelementptr inbounds nuw %N_BinOp, ptr %fld218, i32 0, i32 1
+  %fldval220 = load ptr, ptr %fld219, align 8
+  %call221 = call ptr @gen_expr(ptr %c216, ptr %fldval220)
+  store ptr %call221, ptr %l, align 8
+  %c222 = load ptr, ptr %c, align 8
+  %objptr223 = load ptr, ptr %n, align 8
+  %fld224 = getelementptr inbounds nuw %ASTNode, ptr %objptr223, i32 0, i32 2
+  %fld225 = getelementptr inbounds nuw %N_BinOp, ptr %fld224, i32 0, i32 2
+  %fldval226 = load ptr, ptr %fld225, align 8
+  %call227 = call ptr @gen_expr(ptr %c222, ptr %fldval226)
+  store ptr %call227, ptr %r, align 8
+  %l229 = load ptr, ptr %l, align 8
+  %eq230 = icmp eq ptr %l229, null
+  br i1 %eq230, label %sc.end232, label %sc.rhs231
 
-sc.rhs:                                           ; preds = %if.end95
-  %k128 = load i32, ptr %k, align 4
-  %eq129 = icmp eq i32 %k128, 13
+sc.rhs:                                           ; preds = %if.end77
+  %k104 = load i32, ptr %k, align 4
+  %eq105 = icmp eq i32 %k104, 13
   br label %sc.end
 
-sc.end:                                           ; preds = %sc.rhs, %if.end95
-  %sc = phi i1 [ true, %if.end95 ], [ %eq129, %sc.rhs ]
-  br i1 %sc, label %if.then130, label %if.else131
+sc.end:                                           ; preds = %sc.rhs, %if.end77
+  %sc = phi i1 [ true, %if.end77 ], [ %eq105, %sc.rhs ]
+  br i1 %sc, label %if.then106, label %if.else107
 
-if.then130:                                       ; preds = %sc.end
-  %objptr132 = load ptr, ptr %c, align 8
-  %fld133 = getelementptr inbounds nuw %CodegenContext, ptr %objptr132, i32 0, i32 0
-  %fldval134 = load ptr, ptr %fld133, align 8
-  %call135 = call ptr @LLVMInt1TypeInContext(ptr %fldval134)
-  store ptr %call135, ptr %i1, align 8
-  %c137 = load ptr, ptr %c, align 8
-  %c138 = load ptr, ptr %c, align 8
-  %objptr139 = load ptr, ptr %n, align 8
-  %fld140 = getelementptr inbounds nuw %ASTNode, ptr %objptr139, i32 0, i32 2
-  %fld141 = getelementptr inbounds nuw %N_BinOp, ptr %fld140, i32 0, i32 1
-  %fldval142 = load ptr, ptr %fld141, align 8
-  %call143 = call ptr @gen_expr(ptr %c138, ptr %fldval142)
-  %i1144 = load ptr, ptr %i1, align 8
-  %call145 = call ptr @coerce(ptr %c137, ptr %call143, ptr %i1144)
-  store ptr %call145, ptr %lv136, align 8
-  %objptr146 = load ptr, ptr %c, align 8
-  %fld147 = getelementptr inbounds nuw %CodegenContext, ptr %objptr146, i32 0, i32 2
-  %fldval148 = load ptr, ptr %fld147, align 8
-  %call149 = call ptr @LLVMGetInsertBlock(ptr %fldval148)
-  store ptr %call149, ptr %lhs_end, align 8
-  %objptr150 = load ptr, ptr %c, align 8
-  %fld151 = getelementptr inbounds nuw %CodegenContext, ptr %objptr150, i32 0, i32 0
-  %fldval152 = load ptr, ptr %fld151, align 8
-  %objptr153 = load ptr, ptr %c, align 8
-  %fld154 = getelementptr inbounds nuw %CodegenContext, ptr %objptr153, i32 0, i32 8
-  %fldval155 = load ptr, ptr %fld154, align 8
-  %call156 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval152, ptr %fldval155, ptr @.str.234)
-  store ptr %call156, ptr %rhs_bb, align 8
-  %objptr157 = load ptr, ptr %c, align 8
-  %fld158 = getelementptr inbounds nuw %CodegenContext, ptr %objptr157, i32 0, i32 0
-  %fldval159 = load ptr, ptr %fld158, align 8
-  %objptr160 = load ptr, ptr %c, align 8
-  %fld161 = getelementptr inbounds nuw %CodegenContext, ptr %objptr160, i32 0, i32 8
-  %fldval162 = load ptr, ptr %fld161, align 8
-  %call163 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval159, ptr %fldval162, ptr @.str.235)
-  store ptr %call163, ptr %end_bb, align 8
-  %k165 = load i32, ptr %k, align 4
-  %eq166 = icmp eq i32 %k165, 12
-  br i1 %eq166, label %if.then167, label %if.else168
+if.then106:                                       ; preds = %sc.end
+  %objptr108 = load ptr, ptr %c, align 8
+  %fld109 = getelementptr inbounds nuw %CodegenContext, ptr %objptr108, i32 0, i32 0
+  %fldval110 = load ptr, ptr %fld109, align 8
+  %call111 = call ptr @LLVMInt1TypeInContext(ptr %fldval110)
+  store ptr %call111, ptr %i1, align 8
+  %c113 = load ptr, ptr %c, align 8
+  %c114 = load ptr, ptr %c, align 8
+  %objptr115 = load ptr, ptr %n, align 8
+  %fld116 = getelementptr inbounds nuw %ASTNode, ptr %objptr115, i32 0, i32 2
+  %fld117 = getelementptr inbounds nuw %N_BinOp, ptr %fld116, i32 0, i32 1
+  %fldval118 = load ptr, ptr %fld117, align 8
+  %call119 = call ptr @gen_expr(ptr %c114, ptr %fldval118)
+  %i1120 = load ptr, ptr %i1, align 8
+  %call121 = call ptr @coerce(ptr %c113, ptr %call119, ptr %i1120)
+  store ptr %call121, ptr %lv112, align 8
+  %objptr122 = load ptr, ptr %c, align 8
+  %fld123 = getelementptr inbounds nuw %CodegenContext, ptr %objptr122, i32 0, i32 2
+  %fldval124 = load ptr, ptr %fld123, align 8
+  %call125 = call ptr @LLVMGetInsertBlock(ptr %fldval124)
+  store ptr %call125, ptr %lhs_end, align 8
+  %objptr126 = load ptr, ptr %c, align 8
+  %fld127 = getelementptr inbounds nuw %CodegenContext, ptr %objptr126, i32 0, i32 0
+  %fldval128 = load ptr, ptr %fld127, align 8
+  %objptr129 = load ptr, ptr %c, align 8
+  %fld130 = getelementptr inbounds nuw %CodegenContext, ptr %objptr129, i32 0, i32 8
+  %fldval131 = load ptr, ptr %fld130, align 8
+  %call132 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval128, ptr %fldval131, ptr @.str.267)
+  store ptr %call132, ptr %rhs_bb, align 8
+  %objptr133 = load ptr, ptr %c, align 8
+  %fld134 = getelementptr inbounds nuw %CodegenContext, ptr %objptr133, i32 0, i32 0
+  %fldval135 = load ptr, ptr %fld134, align 8
+  %objptr136 = load ptr, ptr %c, align 8
+  %fld137 = getelementptr inbounds nuw %CodegenContext, ptr %objptr136, i32 0, i32 8
+  %fldval138 = load ptr, ptr %fld137, align 8
+  %call139 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval135, ptr %fldval138, ptr @.str.268)
+  store ptr %call139, ptr %end_bb, align 8
+  %k141 = load i32, ptr %k, align 4
+  %eq142 = icmp eq i32 %k141, 12
+  br i1 %eq142, label %if.then143, label %if.else144
 
-if.else131:                                       ; preds = %sc.end
-  br label %if.end125
+if.else107:                                       ; preds = %sc.end
+  br label %if.end101
 
-if.end164:                                        ; preds = %if.else168, %if.then167
-  %objptr183 = load ptr, ptr %c, align 8
-  %fld184 = getelementptr inbounds nuw %CodegenContext, ptr %objptr183, i32 0, i32 2
-  %fldval185 = load ptr, ptr %fld184, align 8
-  %rhs_bb186 = load ptr, ptr %rhs_bb, align 8
-  call void @LLVMPositionBuilderAtEnd(ptr %fldval185, ptr %rhs_bb186)
-  %c187 = load ptr, ptr %c, align 8
-  %c188 = load ptr, ptr %c, align 8
-  %objptr189 = load ptr, ptr %n, align 8
-  %fld190 = getelementptr inbounds nuw %ASTNode, ptr %objptr189, i32 0, i32 2
-  %fld191 = getelementptr inbounds nuw %N_BinOp, ptr %fld190, i32 0, i32 2
-  %fldval192 = load ptr, ptr %fld191, align 8
-  %call193 = call ptr @gen_expr(ptr %c188, ptr %fldval192)
-  %i1194 = load ptr, ptr %i1, align 8
-  %call195 = call ptr @coerce(ptr %c187, ptr %call193, ptr %i1194)
-  store ptr %call195, ptr %rv, align 8
-  %objptr196 = load ptr, ptr %c, align 8
-  %fld197 = getelementptr inbounds nuw %CodegenContext, ptr %objptr196, i32 0, i32 2
-  %fldval198 = load ptr, ptr %fld197, align 8
-  %call199 = call ptr @LLVMGetInsertBlock(ptr %fldval198)
-  store ptr %call199, ptr %rhs_end, align 8
-  %objptr200 = load ptr, ptr %c, align 8
-  %fld201 = getelementptr inbounds nuw %CodegenContext, ptr %objptr200, i32 0, i32 2
-  %fldval202 = load ptr, ptr %fld201, align 8
-  %end_bb203 = load ptr, ptr %end_bb, align 8
-  %call204 = call ptr @LLVMBuildBr(ptr %fldval202, ptr %end_bb203)
-  %objptr205 = load ptr, ptr %c, align 8
-  %fld206 = getelementptr inbounds nuw %CodegenContext, ptr %objptr205, i32 0, i32 2
-  %fldval207 = load ptr, ptr %fld206, align 8
-  %end_bb208 = load ptr, ptr %end_bb, align 8
-  call void @LLVMPositionBuilderAtEnd(ptr %fldval207, ptr %end_bb208)
-  %objptr209 = load ptr, ptr %c, align 8
-  %fld210 = getelementptr inbounds nuw %CodegenContext, ptr %objptr209, i32 0, i32 2
-  %fldval211 = load ptr, ptr %fld210, align 8
-  %i1212 = load ptr, ptr %i1, align 8
-  %call213 = call ptr @LLVMBuildPhi(ptr %fldval211, ptr %i1212, ptr @.str.236)
-  store ptr %call213, ptr %phi, align 8
-  store i64 0, ptr %shortval, align 8
-  %k215 = load i32, ptr %k, align 4
-  %eq216 = icmp eq i32 %k215, 13
-  br i1 %eq216, label %if.then217, label %if.else218
-
-if.then167:                                       ; preds = %if.then130
-  %objptr169 = load ptr, ptr %c, align 8
-  %fld170 = getelementptr inbounds nuw %CodegenContext, ptr %objptr169, i32 0, i32 2
-  %fldval171 = load ptr, ptr %fld170, align 8
-  %lv172 = load ptr, ptr %lv136, align 8
-  %rhs_bb173 = load ptr, ptr %rhs_bb, align 8
-  %end_bb174 = load ptr, ptr %end_bb, align 8
-  %call175 = call ptr @LLVMBuildCondBr(ptr %fldval171, ptr %lv172, ptr %rhs_bb173, ptr %end_bb174)
-  br label %if.end164
-
-if.else168:                                       ; preds = %if.then130
+if.end140:                                        ; preds = %if.else144, %if.then143
+  %objptr159 = load ptr, ptr %c, align 8
+  %fld160 = getelementptr inbounds nuw %CodegenContext, ptr %objptr159, i32 0, i32 2
+  %fldval161 = load ptr, ptr %fld160, align 8
+  %rhs_bb162 = load ptr, ptr %rhs_bb, align 8
+  call void @LLVMPositionBuilderAtEnd(ptr %fldval161, ptr %rhs_bb162)
+  %c163 = load ptr, ptr %c, align 8
+  %c164 = load ptr, ptr %c, align 8
+  %objptr165 = load ptr, ptr %n, align 8
+  %fld166 = getelementptr inbounds nuw %ASTNode, ptr %objptr165, i32 0, i32 2
+  %fld167 = getelementptr inbounds nuw %N_BinOp, ptr %fld166, i32 0, i32 2
+  %fldval168 = load ptr, ptr %fld167, align 8
+  %call169 = call ptr @gen_expr(ptr %c164, ptr %fldval168)
+  %i1170 = load ptr, ptr %i1, align 8
+  %call171 = call ptr @coerce(ptr %c163, ptr %call169, ptr %i1170)
+  store ptr %call171, ptr %rv, align 8
+  %objptr172 = load ptr, ptr %c, align 8
+  %fld173 = getelementptr inbounds nuw %CodegenContext, ptr %objptr172, i32 0, i32 2
+  %fldval174 = load ptr, ptr %fld173, align 8
+  %call175 = call ptr @LLVMGetInsertBlock(ptr %fldval174)
+  store ptr %call175, ptr %rhs_end, align 8
   %objptr176 = load ptr, ptr %c, align 8
   %fld177 = getelementptr inbounds nuw %CodegenContext, ptr %objptr176, i32 0, i32 2
   %fldval178 = load ptr, ptr %fld177, align 8
-  %lv179 = load ptr, ptr %lv136, align 8
-  %end_bb180 = load ptr, ptr %end_bb, align 8
-  %rhs_bb181 = load ptr, ptr %rhs_bb, align 8
-  %call182 = call ptr @LLVMBuildCondBr(ptr %fldval178, ptr %lv179, ptr %end_bb180, ptr %rhs_bb181)
-  br label %if.end164
+  %end_bb179 = load ptr, ptr %end_bb, align 8
+  %call180 = call ptr @LLVMBuildBr(ptr %fldval178, ptr %end_bb179)
+  %objptr181 = load ptr, ptr %c, align 8
+  %fld182 = getelementptr inbounds nuw %CodegenContext, ptr %objptr181, i32 0, i32 2
+  %fldval183 = load ptr, ptr %fld182, align 8
+  %end_bb184 = load ptr, ptr %end_bb, align 8
+  call void @LLVMPositionBuilderAtEnd(ptr %fldval183, ptr %end_bb184)
+  %objptr185 = load ptr, ptr %c, align 8
+  %fld186 = getelementptr inbounds nuw %CodegenContext, ptr %objptr185, i32 0, i32 2
+  %fldval187 = load ptr, ptr %fld186, align 8
+  %i1188 = load ptr, ptr %i1, align 8
+  %call189 = call ptr @LLVMBuildPhi(ptr %fldval187, ptr %i1188, ptr @.str.269)
+  store ptr %call189, ptr %phi, align 8
+  store i64 0, ptr %shortval, align 8
+  %k191 = load i32, ptr %k, align 4
+  %eq192 = icmp eq i32 %k191, 13
+  br i1 %eq192, label %if.then193, label %if.else194
 
-if.end214:                                        ; preds = %if.else218, %if.then217
-  %call219 = call ptr @malloc(i64 16)
-  store ptr %call219, ptr %vals, align 8
-  %call220 = call ptr @malloc(i64 16)
-  store ptr %call220, ptr %blks, align 8
-  %vals221 = load ptr, ptr %vals, align 8
-  %padd = getelementptr ptr, ptr %vals221, i64 0
-  %i1222 = load ptr, ptr %i1, align 8
-  %shortval223 = load i64, ptr %shortval, align 8
-  %call224 = call ptr @LLVMConstInt(ptr %i1222, i64 %shortval223, i32 0)
-  store ptr %call224, ptr %padd, align 8
-  %vals225 = load ptr, ptr %vals, align 8
-  %padd226 = getelementptr ptr, ptr %vals225, i64 1
-  %rv227 = load ptr, ptr %rv, align 8
-  store ptr %rv227, ptr %padd226, align 8
-  %blks228 = load ptr, ptr %blks, align 8
-  %padd229 = getelementptr ptr, ptr %blks228, i64 0
-  %lhs_end230 = load ptr, ptr %lhs_end, align 8
-  store ptr %lhs_end230, ptr %padd229, align 8
-  %blks231 = load ptr, ptr %blks, align 8
-  %padd232 = getelementptr ptr, ptr %blks231, i64 1
-  %rhs_end233 = load ptr, ptr %rhs_end, align 8
-  store ptr %rhs_end233, ptr %padd232, align 8
-  %phi234 = load ptr, ptr %phi, align 8
-  %vals235 = load ptr, ptr %vals, align 8
-  %blks236 = load ptr, ptr %blks, align 8
-  call void @LLVMAddIncoming(ptr %phi234, ptr %vals235, ptr %blks236, i32 2)
-  %vals237 = load ptr, ptr %vals, align 8
-  call void @free(ptr %vals237)
-  %blks238 = load ptr, ptr %blks, align 8
-  call void @free(ptr %blks238)
-  %phi239 = load ptr, ptr %phi, align 8
-  ret ptr %phi239
+if.then143:                                       ; preds = %if.then106
+  %objptr145 = load ptr, ptr %c, align 8
+  %fld146 = getelementptr inbounds nuw %CodegenContext, ptr %objptr145, i32 0, i32 2
+  %fldval147 = load ptr, ptr %fld146, align 8
+  %lv148 = load ptr, ptr %lv112, align 8
+  %rhs_bb149 = load ptr, ptr %rhs_bb, align 8
+  %end_bb150 = load ptr, ptr %end_bb, align 8
+  %call151 = call ptr @LLVMBuildCondBr(ptr %fldval147, ptr %lv148, ptr %rhs_bb149, ptr %end_bb150)
+  br label %if.end140
 
-if.then217:                                       ; preds = %if.end164
+if.else144:                                       ; preds = %if.then106
+  %objptr152 = load ptr, ptr %c, align 8
+  %fld153 = getelementptr inbounds nuw %CodegenContext, ptr %objptr152, i32 0, i32 2
+  %fldval154 = load ptr, ptr %fld153, align 8
+  %lv155 = load ptr, ptr %lv112, align 8
+  %end_bb156 = load ptr, ptr %end_bb, align 8
+  %rhs_bb157 = load ptr, ptr %rhs_bb, align 8
+  %call158 = call ptr @LLVMBuildCondBr(ptr %fldval154, ptr %lv155, ptr %end_bb156, ptr %rhs_bb157)
+  br label %if.end140
+
+if.end190:                                        ; preds = %if.else194, %if.then193
+  %call195 = call ptr @malloc(i64 16)
+  store ptr %call195, ptr %vals, align 8
+  %call196 = call ptr @malloc(i64 16)
+  store ptr %call196, ptr %blks, align 8
+  %vals197 = load ptr, ptr %vals, align 8
+  %padd = getelementptr ptr, ptr %vals197, i64 0
+  %i1198 = load ptr, ptr %i1, align 8
+  %shortval199 = load i64, ptr %shortval, align 8
+  %call200 = call ptr @LLVMConstInt(ptr %i1198, i64 %shortval199, i32 0)
+  store ptr %call200, ptr %padd, align 8
+  %vals201 = load ptr, ptr %vals, align 8
+  %padd202 = getelementptr ptr, ptr %vals201, i64 1
+  %rv203 = load ptr, ptr %rv, align 8
+  store ptr %rv203, ptr %padd202, align 8
+  %blks204 = load ptr, ptr %blks, align 8
+  %padd205 = getelementptr ptr, ptr %blks204, i64 0
+  %lhs_end206 = load ptr, ptr %lhs_end, align 8
+  store ptr %lhs_end206, ptr %padd205, align 8
+  %blks207 = load ptr, ptr %blks, align 8
+  %padd208 = getelementptr ptr, ptr %blks207, i64 1
+  %rhs_end209 = load ptr, ptr %rhs_end, align 8
+  store ptr %rhs_end209, ptr %padd208, align 8
+  %phi210 = load ptr, ptr %phi, align 8
+  %vals211 = load ptr, ptr %vals, align 8
+  %blks212 = load ptr, ptr %blks, align 8
+  call void @LLVMAddIncoming(ptr %phi210, ptr %vals211, ptr %blks212, i32 2)
+  %vals213 = load ptr, ptr %vals, align 8
+  call void @free(ptr %vals213)
+  %blks214 = load ptr, ptr %blks, align 8
+  call void @free(ptr %blks214)
+  %phi215 = load ptr, ptr %phi, align 8
+  ret ptr %phi215
+
+if.then193:                                       ; preds = %if.end140
   store i64 1, ptr %shortval, align 8
-  br label %if.end214
+  br label %if.end190
 
-if.else218:                                       ; preds = %if.end164
-  br label %if.end214
+if.else194:                                       ; preds = %if.end140
+  br label %if.end190
 
-if.end252:                                        ; preds = %if.else261
-  %l263 = load ptr, ptr %l, align 8
-  %call264 = call ptr @LLVMTypeOf(ptr %l263)
-  %call265 = call i1 @is_float_ty(ptr %call264)
-  br i1 %call265, label %sc.end267, label %sc.rhs266
+if.end228:                                        ; preds = %if.else237
+  %l239 = load ptr, ptr %l, align 8
+  %call240 = call ptr @LLVMTypeOf(ptr %l239)
+  %call241 = call i1 @is_float_ty(ptr %call240)
+  br i1 %call241, label %sc.end243, label %sc.rhs242
 
-sc.rhs255:                                        ; preds = %if.end125
-  %r257 = load ptr, ptr %r, align 8
-  %eq258 = icmp eq ptr %r257, null
-  br label %sc.end256
+sc.rhs231:                                        ; preds = %if.end101
+  %r233 = load ptr, ptr %r, align 8
+  %eq234 = icmp eq ptr %r233, null
+  br label %sc.end232
 
-sc.end256:                                        ; preds = %sc.rhs255, %if.end125
-  %sc259 = phi i1 [ true, %if.end125 ], [ %eq258, %sc.rhs255 ]
-  br i1 %sc259, label %if.then260, label %if.else261
+sc.end232:                                        ; preds = %sc.rhs231, %if.end101
+  %sc235 = phi i1 [ true, %if.end101 ], [ %eq234, %sc.rhs231 ]
+  br i1 %sc235, label %if.then236, label %if.else237
 
-if.then260:                                       ; preds = %sc.end256
+if.then236:                                       ; preds = %sc.end232
   ret ptr null
 
-if.else261:                                       ; preds = %sc.end256
-  br label %if.end252
+if.else237:                                       ; preds = %sc.end232
+  br label %if.end228
 
-if.end262:                                        ; preds = %if.else273
-  %l279 = load ptr, ptr %l, align 8
-  %call280 = call ptr @LLVMTypeOf(ptr %l279)
-  %call281 = call i32 @LLVMGetTypeKind(ptr %call280)
-  store i32 %call281, ptr %lk, align 4
-  %r282 = load ptr, ptr %r, align 8
-  %call283 = call ptr @LLVMTypeOf(ptr %r282)
-  %call284 = call i32 @LLVMGetTypeKind(ptr %call283)
-  store i32 %call284, ptr %rk, align 4
-  %objptr285 = load ptr, ptr %n, align 8
-  %fld286 = getelementptr inbounds nuw %ASTNode, ptr %objptr285, i32 0, i32 2
-  %fld287 = getelementptr inbounds nuw %N_BinOp, ptr %fld286, i32 0, i32 1
-  %fldval288 = load ptr, ptr %fld287, align 8
-  store ptr %fldval288, ptr %pe, align 8
-  %objptr289 = load ptr, ptr %n, align 8
-  %fld290 = getelementptr inbounds nuw %ASTNode, ptr %objptr289, i32 0, i32 2
-  %fld291 = getelementptr inbounds nuw %N_BinOp, ptr %fld290, i32 0, i32 2
-  %fldval292 = load ptr, ptr %fld291, align 8
-  store ptr %fldval292, ptr %ie, align 8
-  %k294 = load i32, ptr %k, align 4
-  %eq295 = icmp eq i32 %k294, 1
-  br i1 %eq295, label %sc.rhs296, label %sc.end297
+if.end238:                                        ; preds = %if.else249
+  %l255 = load ptr, ptr %l, align 8
+  %call256 = call ptr @LLVMTypeOf(ptr %l255)
+  %call257 = call i32 @LLVMGetTypeKind(ptr %call256)
+  store i32 %call257, ptr %lk, align 4
+  %r258 = load ptr, ptr %r, align 8
+  %call259 = call ptr @LLVMTypeOf(ptr %r258)
+  %call260 = call i32 @LLVMGetTypeKind(ptr %call259)
+  store i32 %call260, ptr %rk, align 4
+  %objptr261 = load ptr, ptr %n, align 8
+  %fld262 = getelementptr inbounds nuw %ASTNode, ptr %objptr261, i32 0, i32 2
+  %fld263 = getelementptr inbounds nuw %N_BinOp, ptr %fld262, i32 0, i32 1
+  %fldval264 = load ptr, ptr %fld263, align 8
+  store ptr %fldval264, ptr %pe, align 8
+  %objptr265 = load ptr, ptr %n, align 8
+  %fld266 = getelementptr inbounds nuw %ASTNode, ptr %objptr265, i32 0, i32 2
+  %fld267 = getelementptr inbounds nuw %N_BinOp, ptr %fld266, i32 0, i32 2
+  %fldval268 = load ptr, ptr %fld267, align 8
+  store ptr %fldval268, ptr %ie, align 8
+  %k270 = load i32, ptr %k, align 4
+  %eq271 = icmp eq i32 %k270, 1
+  br i1 %eq271, label %sc.rhs272, label %sc.end273
 
-sc.rhs266:                                        ; preds = %if.end252
-  %r268 = load ptr, ptr %r, align 8
-  %call269 = call ptr @LLVMTypeOf(ptr %r268)
-  %call270 = call i1 @is_float_ty(ptr %call269)
-  br label %sc.end267
+sc.rhs242:                                        ; preds = %if.end228
+  %r244 = load ptr, ptr %r, align 8
+  %call245 = call ptr @LLVMTypeOf(ptr %r244)
+  %call246 = call i1 @is_float_ty(ptr %call245)
+  br label %sc.end243
 
-sc.end267:                                        ; preds = %sc.rhs266, %if.end252
-  %sc271 = phi i1 [ true, %if.end252 ], [ %call270, %sc.rhs266 ]
-  br i1 %sc271, label %if.then272, label %if.else273
+sc.end243:                                        ; preds = %sc.rhs242, %if.end228
+  %sc247 = phi i1 [ true, %if.end228 ], [ %call246, %sc.rhs242 ]
+  br i1 %sc247, label %if.then248, label %if.else249
 
-if.then272:                                       ; preds = %sc.end267
-  %c274 = load ptr, ptr %c, align 8
-  %n275 = load ptr, ptr %n, align 8
-  %l276 = load ptr, ptr %l, align 8
-  %r277 = load ptr, ptr %r, align 8
-  %call278 = call ptr @gen_float_binop(ptr %c274, ptr %n275, ptr %l276, ptr %r277)
-  ret ptr %call278
+if.then248:                                       ; preds = %sc.end243
+  %c250 = load ptr, ptr %c, align 8
+  %n251 = load ptr, ptr %n, align 8
+  %l252 = load ptr, ptr %l, align 8
+  %r253 = load ptr, ptr %r, align 8
+  %call254 = call ptr @gen_float_binop(ptr %c250, ptr %n251, ptr %l252, ptr %r253)
+  ret ptr %call254
 
-if.else273:                                       ; preds = %sc.end267
-  br label %if.end262
+if.else249:                                       ; preds = %sc.end243
+  br label %if.end238
 
-if.end293:                                        ; preds = %if.else307, %if.then306
-  %k322 = load i32, ptr %k, align 4
-  %eq323 = icmp eq i32 %k322, 1
-  br i1 %eq323, label %sc.end325, label %sc.rhs324
+if.end269:                                        ; preds = %if.else283, %if.then282
+  %k298 = load i32, ptr %k, align 4
+  %eq299 = icmp eq i32 %k298, 1
+  br i1 %eq299, label %sc.end301, label %sc.rhs300
 
-sc.rhs296:                                        ; preds = %if.end262
-  %rk298 = load i32, ptr %rk, align 4
+sc.rhs272:                                        ; preds = %if.end238
+  %rk274 = load i32, ptr %rk, align 4
   %LLVMPointerTypeKind = load i32, ptr @LLVMPointerTypeKind, align 4
-  %eq299 = icmp eq i32 %rk298, %LLVMPointerTypeKind
-  br label %sc.end297
+  %eq275 = icmp eq i32 %rk274, %LLVMPointerTypeKind
+  br label %sc.end273
 
-sc.end297:                                        ; preds = %sc.rhs296, %if.end262
-  %sc300 = phi i1 [ false, %if.end262 ], [ %eq299, %sc.rhs296 ]
-  br i1 %sc300, label %sc.rhs301, label %sc.end302
+sc.end273:                                        ; preds = %sc.rhs272, %if.end238
+  %sc276 = phi i1 [ false, %if.end238 ], [ %eq275, %sc.rhs272 ]
+  br i1 %sc276, label %sc.rhs277, label %sc.end278
 
-sc.rhs301:                                        ; preds = %sc.end297
-  %lk303 = load i32, ptr %lk, align 4
+sc.rhs277:                                        ; preds = %sc.end273
+  %lk279 = load i32, ptr %lk, align 4
   %LLVMIntegerTypeKind = load i32, ptr @LLVMIntegerTypeKind, align 4
-  %eq304 = icmp eq i32 %lk303, %LLVMIntegerTypeKind
-  br label %sc.end302
+  %eq280 = icmp eq i32 %lk279, %LLVMIntegerTypeKind
+  br label %sc.end278
 
-sc.end302:                                        ; preds = %sc.rhs301, %sc.end297
-  %sc305 = phi i1 [ false, %sc.end297 ], [ %eq304, %sc.rhs301 ]
-  br i1 %sc305, label %if.then306, label %if.else307
+sc.end278:                                        ; preds = %sc.rhs277, %sc.end273
+  %sc281 = phi i1 [ false, %sc.end273 ], [ %eq280, %sc.rhs277 ]
+  br i1 %sc281, label %if.then282, label %if.else283
 
-if.then306:                                       ; preds = %sc.end302
-  %l308 = load ptr, ptr %l, align 8
-  store ptr %l308, ptr %tmp, align 8
-  %r309 = load ptr, ptr %r, align 8
-  store ptr %r309, ptr %l, align 8
-  %tmp310 = load ptr, ptr %tmp, align 8
-  store ptr %tmp310, ptr %r, align 8
-  %objptr311 = load ptr, ptr %n, align 8
-  %fld312 = getelementptr inbounds nuw %ASTNode, ptr %objptr311, i32 0, i32 2
-  %fld313 = getelementptr inbounds nuw %N_BinOp, ptr %fld312, i32 0, i32 2
-  %fldval314 = load ptr, ptr %fld313, align 8
-  store ptr %fldval314, ptr %pe, align 8
-  %objptr315 = load ptr, ptr %n, align 8
-  %fld316 = getelementptr inbounds nuw %ASTNode, ptr %objptr315, i32 0, i32 2
-  %fld317 = getelementptr inbounds nuw %N_BinOp, ptr %fld316, i32 0, i32 1
-  %fldval318 = load ptr, ptr %fld317, align 8
-  store ptr %fldval318, ptr %ie, align 8
-  %LLVMPointerTypeKind319 = load i32, ptr @LLVMPointerTypeKind, align 4
-  store i32 %LLVMPointerTypeKind319, ptr %lk, align 4
-  %LLVMIntegerTypeKind320 = load i32, ptr @LLVMIntegerTypeKind, align 4
-  store i32 %LLVMIntegerTypeKind320, ptr %rk, align 4
-  br label %if.end293
+if.then282:                                       ; preds = %sc.end278
+  %l284 = load ptr, ptr %l, align 8
+  store ptr %l284, ptr %tmp, align 8
+  %r285 = load ptr, ptr %r, align 8
+  store ptr %r285, ptr %l, align 8
+  %tmp286 = load ptr, ptr %tmp, align 8
+  store ptr %tmp286, ptr %r, align 8
+  %objptr287 = load ptr, ptr %n, align 8
+  %fld288 = getelementptr inbounds nuw %ASTNode, ptr %objptr287, i32 0, i32 2
+  %fld289 = getelementptr inbounds nuw %N_BinOp, ptr %fld288, i32 0, i32 2
+  %fldval290 = load ptr, ptr %fld289, align 8
+  store ptr %fldval290, ptr %pe, align 8
+  %objptr291 = load ptr, ptr %n, align 8
+  %fld292 = getelementptr inbounds nuw %ASTNode, ptr %objptr291, i32 0, i32 2
+  %fld293 = getelementptr inbounds nuw %N_BinOp, ptr %fld292, i32 0, i32 1
+  %fldval294 = load ptr, ptr %fld293, align 8
+  store ptr %fldval294, ptr %ie, align 8
+  %LLVMPointerTypeKind295 = load i32, ptr @LLVMPointerTypeKind, align 4
+  store i32 %LLVMPointerTypeKind295, ptr %lk, align 4
+  %LLVMIntegerTypeKind296 = load i32, ptr @LLVMIntegerTypeKind, align 4
+  store i32 %LLVMIntegerTypeKind296, ptr %rk, align 4
+  br label %if.end269
 
-if.else307:                                       ; preds = %sc.end302
-  br label %if.end293
+if.else283:                                       ; preds = %sc.end278
+  br label %if.end269
 
-if.end321:                                        ; preds = %if.else336
-  %lk449 = load i32, ptr %lk, align 4
-  %LLVMPointerTypeKind450 = load i32, ptr @LLVMPointerTypeKind, align 4
-  %eq451 = icmp eq i32 %lk449, %LLVMPointerTypeKind450
-  br i1 %eq451, label %sc.rhs452, label %sc.end453
+if.end297:                                        ; preds = %if.else312
+  %lk425 = load i32, ptr %lk, align 4
+  %LLVMPointerTypeKind426 = load i32, ptr @LLVMPointerTypeKind, align 4
+  %eq427 = icmp eq i32 %lk425, %LLVMPointerTypeKind426
+  br i1 %eq427, label %sc.rhs428, label %sc.end429
 
-sc.rhs324:                                        ; preds = %if.end293
-  %k326 = load i32, ptr %k, align 4
-  %eq327 = icmp eq i32 %k326, 2
-  br label %sc.end325
+sc.rhs300:                                        ; preds = %if.end269
+  %k302 = load i32, ptr %k, align 4
+  %eq303 = icmp eq i32 %k302, 2
+  br label %sc.end301
 
-sc.end325:                                        ; preds = %sc.rhs324, %if.end293
-  %sc328 = phi i1 [ true, %if.end293 ], [ %eq327, %sc.rhs324 ]
-  br i1 %sc328, label %sc.rhs329, label %sc.end330
+sc.end301:                                        ; preds = %sc.rhs300, %if.end269
+  %sc304 = phi i1 [ true, %if.end269 ], [ %eq303, %sc.rhs300 ]
+  br i1 %sc304, label %sc.rhs305, label %sc.end306
 
-sc.rhs329:                                        ; preds = %sc.end325
-  %lk331 = load i32, ptr %lk, align 4
-  %LLVMPointerTypeKind332 = load i32, ptr @LLVMPointerTypeKind, align 4
-  %eq333 = icmp eq i32 %lk331, %LLVMPointerTypeKind332
-  br label %sc.end330
+sc.rhs305:                                        ; preds = %sc.end301
+  %lk307 = load i32, ptr %lk, align 4
+  %LLVMPointerTypeKind308 = load i32, ptr @LLVMPointerTypeKind, align 4
+  %eq309 = icmp eq i32 %lk307, %LLVMPointerTypeKind308
+  br label %sc.end306
 
-sc.end330:                                        ; preds = %sc.rhs329, %sc.end325
-  %sc334 = phi i1 [ false, %sc.end325 ], [ %eq333, %sc.rhs329 ]
-  br i1 %sc334, label %if.then335, label %if.else336
+sc.end306:                                        ; preds = %sc.rhs305, %sc.end301
+  %sc310 = phi i1 [ false, %sc.end301 ], [ %eq309, %sc.rhs305 ]
+  br i1 %sc310, label %if.then311, label %if.else312
 
-if.then335:                                       ; preds = %sc.end330
-  %c337 = load ptr, ptr %c, align 8
-  %pe338 = load ptr, ptr %pe, align 8
-  %call339 = call %TypeInfo @infer(ptr %c337, ptr %pe338)
-  store %TypeInfo %call339, ptr %ti, align 8
+if.then311:                                       ; preds = %sc.end306
+  %c313 = load ptr, ptr %c, align 8
+  %pe314 = load ptr, ptr %pe, align 8
+  %call315 = call %TypeInfo @infer(ptr %c313, ptr %pe314)
+  store %TypeInfo %call315, ptr %ti, align 8
   store ptr null, ptr %elem, align 8
-  %fld341 = getelementptr inbounds nuw %TypeInfo, ptr %ti, i32 0, i32 0
-  %fldval342 = load ptr, ptr %fld341, align 8
-  %ne = icmp ne ptr %fldval342, null
-  br i1 %ne, label %sc.rhs343, label %sc.end344
+  %fld317 = getelementptr inbounds nuw %TypeInfo, ptr %ti, i32 0, i32 0
+  %fldval318 = load ptr, ptr %fld317, align 8
+  %ne = icmp ne ptr %fldval318, null
+  br i1 %ne, label %sc.rhs319, label %sc.end320
 
-if.else336:                                       ; preds = %sc.end330
-  br label %if.end321
+if.else312:                                       ; preds = %sc.end306
+  br label %if.end297
 
-if.end340:                                        ; preds = %if.else349, %if.then348
-  %elem360 = load ptr, ptr %elem, align 8
-  %eq361 = icmp eq ptr %elem360, null
-  br i1 %eq361, label %sc.end363, label %sc.rhs362
+if.end316:                                        ; preds = %if.else325, %if.then324
+  %elem336 = load ptr, ptr %elem, align 8
+  %eq337 = icmp eq ptr %elem336, null
+  br i1 %eq337, label %sc.end339, label %sc.rhs338
 
-sc.rhs343:                                        ; preds = %if.then335
-  %fld345 = getelementptr inbounds nuw %TypeInfo, ptr %ti, i32 0, i32 1
-  %fldval346 = load i64, ptr %fld345, align 8
-  %gt = icmp ugt i64 %fldval346, 0
-  br label %sc.end344
+sc.rhs319:                                        ; preds = %if.then311
+  %fld321 = getelementptr inbounds nuw %TypeInfo, ptr %ti, i32 0, i32 1
+  %fldval322 = load i64, ptr %fld321, align 8
+  %gt = icmp ugt i64 %fldval322, 0
+  br label %sc.end320
 
-sc.end344:                                        ; preds = %sc.rhs343, %if.then335
-  %sc347 = phi i1 [ false, %if.then335 ], [ %gt, %sc.rhs343 ]
-  br i1 %sc347, label %if.then348, label %if.else349
+sc.end320:                                        ; preds = %sc.rhs319, %if.then311
+  %sc323 = phi i1 [ false, %if.then311 ], [ %gt, %sc.rhs319 ]
+  br i1 %sc323, label %if.then324, label %if.else325
 
-if.then348:                                       ; preds = %sc.end344
-  %fld350 = getelementptr inbounds nuw %TypeInfo, ptr %inner, i32 0, i32 0
-  %fld351 = getelementptr inbounds nuw %TypeInfo, ptr %ti, i32 0, i32 0
+if.then324:                                       ; preds = %sc.end320
+  %fld326 = getelementptr inbounds nuw %TypeInfo, ptr %inner, i32 0, i32 0
+  %fld327 = getelementptr inbounds nuw %TypeInfo, ptr %ti, i32 0, i32 0
+  %fldval328 = load ptr, ptr %fld327, align 8
+  store ptr %fldval328, ptr %fld326, align 8
+  %fld329 = getelementptr inbounds nuw %TypeInfo, ptr %inner, i32 0, i32 1
+  %fld330 = getelementptr inbounds nuw %TypeInfo, ptr %ti, i32 0, i32 1
+  %fldval331 = load i64, ptr %fld330, align 8
+  %sub = sub i64 %fldval331, 1
+  store i64 %sub, ptr %fld329, align 8
+  %c332 = load ptr, ptr %c, align 8
+  %inner333 = load %TypeInfo, ptr %inner, align 8
+  %call334 = call ptr @llvm_of(ptr %c332, %TypeInfo %inner333)
+  store ptr %call334, ptr %elem, align 8
+  br label %if.end316
+
+if.else325:                                       ; preds = %sc.end320
+  br label %if.end316
+
+if.end335:                                        ; preds = %if.else345, %if.then344
+  %objptr350 = load ptr, ptr %c, align 8
+  %fld351 = getelementptr inbounds nuw %CodegenContext, ptr %objptr350, i32 0, i32 0
   %fldval352 = load ptr, ptr %fld351, align 8
-  store ptr %fldval352, ptr %fld350, align 8
-  %fld353 = getelementptr inbounds nuw %TypeInfo, ptr %inner, i32 0, i32 1
-  %fld354 = getelementptr inbounds nuw %TypeInfo, ptr %ti, i32 0, i32 1
-  %fldval355 = load i64, ptr %fld354, align 8
-  %sub = sub i64 %fldval355, 1
-  store i64 %sub, ptr %fld353, align 8
-  %c356 = load ptr, ptr %c, align 8
-  %inner357 = load %TypeInfo, ptr %inner, align 8
-  %call358 = call ptr @llvm_of(ptr %c356, %TypeInfo %inner357)
-  store ptr %call358, ptr %elem, align 8
-  br label %if.end340
+  %call353 = call ptr @LLVMInt64TypeInContext(ptr %fldval352)
+  store ptr %call353, ptr %i64, align 8
+  %k355 = load i32, ptr %k, align 4
+  %eq356 = icmp eq i32 %k355, 2
+  br i1 %eq356, label %sc.rhs357, label %sc.end358
 
-if.else349:                                       ; preds = %sc.end344
-  br label %if.end340
-
-if.end359:                                        ; preds = %if.else369, %if.then368
-  %objptr374 = load ptr, ptr %c, align 8
-  %fld375 = getelementptr inbounds nuw %CodegenContext, ptr %objptr374, i32 0, i32 0
-  %fldval376 = load ptr, ptr %fld375, align 8
-  %call377 = call ptr @LLVMInt64TypeInContext(ptr %fldval376)
-  store ptr %call377, ptr %i64, align 8
-  %k379 = load i32, ptr %k, align 4
-  %eq380 = icmp eq i32 %k379, 2
-  br i1 %eq380, label %sc.rhs381, label %sc.end382
-
-sc.rhs362:                                        ; preds = %if.end340
-  %elem364 = load ptr, ptr %elem, align 8
-  %call365 = call i32 @LLVMGetTypeKind(ptr %elem364)
+sc.rhs338:                                        ; preds = %if.end316
+  %elem340 = load ptr, ptr %elem, align 8
+  %call341 = call i32 @LLVMGetTypeKind(ptr %elem340)
   %LLVMVoidTypeKind = load i32, ptr @LLVMVoidTypeKind, align 4
-  %eq366 = icmp eq i32 %call365, %LLVMVoidTypeKind
-  br label %sc.end363
+  %eq342 = icmp eq i32 %call341, %LLVMVoidTypeKind
+  br label %sc.end339
 
-sc.end363:                                        ; preds = %sc.rhs362, %if.end340
-  %sc367 = phi i1 [ true, %if.end340 ], [ %eq366, %sc.rhs362 ]
-  br i1 %sc367, label %if.then368, label %if.else369
+sc.end339:                                        ; preds = %sc.rhs338, %if.end316
+  %sc343 = phi i1 [ true, %if.end316 ], [ %eq342, %sc.rhs338 ]
+  br i1 %sc343, label %if.then344, label %if.else345
 
-if.then368:                                       ; preds = %sc.end363
-  %objptr370 = load ptr, ptr %c, align 8
-  %fld371 = getelementptr inbounds nuw %CodegenContext, ptr %objptr370, i32 0, i32 0
-  %fldval372 = load ptr, ptr %fld371, align 8
-  %call373 = call ptr @LLVMInt8TypeInContext(ptr %fldval372)
-  store ptr %call373, ptr %elem, align 8
-  br label %if.end359
+if.then344:                                       ; preds = %sc.end339
+  %objptr346 = load ptr, ptr %c, align 8
+  %fld347 = getelementptr inbounds nuw %CodegenContext, ptr %objptr346, i32 0, i32 0
+  %fldval348 = load ptr, ptr %fld347, align 8
+  %call349 = call ptr @LLVMInt8TypeInContext(ptr %fldval348)
+  store ptr %call349, ptr %elem, align 8
+  br label %if.end335
 
-if.else369:                                       ; preds = %sc.end363
-  br label %if.end359
+if.else345:                                       ; preds = %sc.end339
+  br label %if.end335
 
-if.end378:                                        ; preds = %if.else388
-  %c421 = load ptr, ptr %c, align 8
-  %r422 = load ptr, ptr %r, align 8
-  %i64423 = load ptr, ptr %i64, align 8
-  %ie424 = load ptr, ptr %ie, align 8
-  %call425 = call ptr @coerce_e(ptr %c421, ptr %r422, ptr %i64423, ptr %ie424)
-  store ptr %call425, ptr %off, align 8
-  %k427 = load i32, ptr %k, align 4
-  %eq428 = icmp eq i32 %k427, 2
-  br i1 %eq428, label %if.then429, label %if.else430
+if.end354:                                        ; preds = %if.else364
+  %c397 = load ptr, ptr %c, align 8
+  %r398 = load ptr, ptr %r, align 8
+  %i64399 = load ptr, ptr %i64, align 8
+  %ie400 = load ptr, ptr %ie, align 8
+  %call401 = call ptr @coerce_e(ptr %c397, ptr %r398, ptr %i64399, ptr %ie400)
+  store ptr %call401, ptr %off, align 8
+  %k403 = load i32, ptr %k, align 4
+  %eq404 = icmp eq i32 %k403, 2
+  br i1 %eq404, label %if.then405, label %if.else406
 
-sc.rhs381:                                        ; preds = %if.end359
-  %rk383 = load i32, ptr %rk, align 4
-  %LLVMPointerTypeKind384 = load i32, ptr @LLVMPointerTypeKind, align 4
-  %eq385 = icmp eq i32 %rk383, %LLVMPointerTypeKind384
-  br label %sc.end382
+sc.rhs357:                                        ; preds = %if.end335
+  %rk359 = load i32, ptr %rk, align 4
+  %LLVMPointerTypeKind360 = load i32, ptr @LLVMPointerTypeKind, align 4
+  %eq361 = icmp eq i32 %rk359, %LLVMPointerTypeKind360
+  br label %sc.end358
 
-sc.end382:                                        ; preds = %sc.rhs381, %if.end359
-  %sc386 = phi i1 [ false, %if.end359 ], [ %eq385, %sc.rhs381 ]
-  br i1 %sc386, label %if.then387, label %if.else388
+sc.end358:                                        ; preds = %sc.rhs357, %if.end335
+  %sc362 = phi i1 [ false, %if.end335 ], [ %eq361, %sc.rhs357 ]
+  br i1 %sc362, label %if.then363, label %if.else364
 
-if.then387:                                       ; preds = %sc.end382
+if.then363:                                       ; preds = %sc.end358
+  %objptr365 = load ptr, ptr %c, align 8
+  %fld366 = getelementptr inbounds nuw %CodegenContext, ptr %objptr365, i32 0, i32 2
+  %fldval367 = load ptr, ptr %fld366, align 8
+  %l368 = load ptr, ptr %l, align 8
+  %i64369 = load ptr, ptr %i64, align 8
+  %call370 = call ptr @LLVMBuildPtrToInt(ptr %fldval367, ptr %l368, ptr %i64369, ptr @.str.270)
+  store ptr %call370, ptr %li, align 8
+  %objptr371 = load ptr, ptr %c, align 8
+  %fld372 = getelementptr inbounds nuw %CodegenContext, ptr %objptr371, i32 0, i32 2
+  %fldval373 = load ptr, ptr %fld372, align 8
+  %r374 = load ptr, ptr %r, align 8
+  %i64375 = load ptr, ptr %i64, align 8
+  %call376 = call ptr @LLVMBuildPtrToInt(ptr %fldval373, ptr %r374, ptr %i64375, ptr @.str.271)
+  store ptr %call376, ptr %ri, align 8
+  %objptr377 = load ptr, ptr %c, align 8
+  %fld378 = getelementptr inbounds nuw %CodegenContext, ptr %objptr377, i32 0, i32 2
+  %fldval379 = load ptr, ptr %fld378, align 8
+  %li380 = load ptr, ptr %li, align 8
+  %ri381 = load ptr, ptr %ri, align 8
+  %call382 = call ptr @LLVMBuildSub(ptr %fldval379, ptr %li380, ptr %ri381, ptr @.str.272)
+  store ptr %call382, ptr %bytes, align 8
+  %objptr383 = load ptr, ptr %c, align 8
+  %fld384 = getelementptr inbounds nuw %CodegenContext, ptr %objptr383, i32 0, i32 1
+  %fldval385 = load ptr, ptr %fld384, align 8
+  %call386 = call ptr @LLVMGetModuleDataLayout(ptr %fldval385)
+  %elem387 = load ptr, ptr %elem, align 8
+  %call388 = call i64 @LLVMABISizeOfType(ptr %call386, ptr %elem387)
+  store i64 %call388, ptr %esz, align 8
   %objptr389 = load ptr, ptr %c, align 8
   %fld390 = getelementptr inbounds nuw %CodegenContext, ptr %objptr389, i32 0, i32 2
   %fldval391 = load ptr, ptr %fld390, align 8
-  %l392 = load ptr, ptr %l, align 8
+  %bytes392 = load ptr, ptr %bytes, align 8
   %i64393 = load ptr, ptr %i64, align 8
-  %call394 = call ptr @LLVMBuildPtrToInt(ptr %fldval391, ptr %l392, ptr %i64393, ptr @.str.237)
-  store ptr %call394, ptr %li, align 8
-  %objptr395 = load ptr, ptr %c, align 8
-  %fld396 = getelementptr inbounds nuw %CodegenContext, ptr %objptr395, i32 0, i32 2
-  %fldval397 = load ptr, ptr %fld396, align 8
-  %r398 = load ptr, ptr %r, align 8
-  %i64399 = load ptr, ptr %i64, align 8
-  %call400 = call ptr @LLVMBuildPtrToInt(ptr %fldval397, ptr %r398, ptr %i64399, ptr @.str.238)
-  store ptr %call400, ptr %ri, align 8
-  %objptr401 = load ptr, ptr %c, align 8
-  %fld402 = getelementptr inbounds nuw %CodegenContext, ptr %objptr401, i32 0, i32 2
-  %fldval403 = load ptr, ptr %fld402, align 8
-  %li404 = load ptr, ptr %li, align 8
-  %ri405 = load ptr, ptr %ri, align 8
-  %call406 = call ptr @LLVMBuildSub(ptr %fldval403, ptr %li404, ptr %ri405, ptr @.str.239)
-  store ptr %call406, ptr %bytes, align 8
+  %esz394 = load i64, ptr %esz, align 8
+  %call395 = call ptr @LLVMConstInt(ptr %i64393, i64 %esz394, i32 0)
+  %call396 = call ptr @LLVMBuildSDiv(ptr %fldval391, ptr %bytes392, ptr %call395, ptr @.str.273)
+  ret ptr %call396
+
+if.else364:                                       ; preds = %sc.end358
+  br label %if.end354
+
+if.end402:                                        ; preds = %if.else406, %if.then405
+  %call412 = call ptr @malloc(i64 8)
+  store ptr %call412, ptr %idx, align 8
+  %idx413 = load ptr, ptr %idx, align 8
+  %off414 = load ptr, ptr %off, align 8
+  store ptr %off414, ptr %idx413, align 8
+  %objptr415 = load ptr, ptr %c, align 8
+  %fld416 = getelementptr inbounds nuw %CodegenContext, ptr %objptr415, i32 0, i32 2
+  %fldval417 = load ptr, ptr %fld416, align 8
+  %elem418 = load ptr, ptr %elem, align 8
+  %l419 = load ptr, ptr %l, align 8
+  %idx420 = load ptr, ptr %idx, align 8
+  %call421 = call ptr @LLVMBuildGEP2(ptr %fldval417, ptr %elem418, ptr %l419, ptr %idx420, i32 1, ptr @.str.275)
+  store ptr %call421, ptr %res, align 8
+  %idx422 = load ptr, ptr %idx, align 8
+  call void @free(ptr %idx422)
+  %res423 = load ptr, ptr %res, align 8
+  ret ptr %res423
+
+if.then405:                                       ; preds = %if.end354
   %objptr407 = load ptr, ptr %c, align 8
-  %fld408 = getelementptr inbounds nuw %CodegenContext, ptr %objptr407, i32 0, i32 1
+  %fld408 = getelementptr inbounds nuw %CodegenContext, ptr %objptr407, i32 0, i32 2
   %fldval409 = load ptr, ptr %fld408, align 8
-  %call410 = call ptr @LLVMGetModuleDataLayout(ptr %fldval409)
-  %elem411 = load ptr, ptr %elem, align 8
-  %call412 = call i64 @LLVMABISizeOfType(ptr %call410, ptr %elem411)
-  store i64 %call412, ptr %esz, align 8
-  %objptr413 = load ptr, ptr %c, align 8
-  %fld414 = getelementptr inbounds nuw %CodegenContext, ptr %objptr413, i32 0, i32 2
-  %fldval415 = load ptr, ptr %fld414, align 8
-  %bytes416 = load ptr, ptr %bytes, align 8
-  %i64417 = load ptr, ptr %i64, align 8
-  %esz418 = load i64, ptr %esz, align 8
-  %call419 = call ptr @LLVMConstInt(ptr %i64417, i64 %esz418, i32 0)
-  %call420 = call ptr @LLVMBuildSDiv(ptr %fldval415, ptr %bytes416, ptr %call419, ptr @.str.240)
-  ret ptr %call420
-
-if.else388:                                       ; preds = %sc.end382
-  br label %if.end378
-
-if.end426:                                        ; preds = %if.else430, %if.then429
-  %call436 = call ptr @malloc(i64 8)
-  store ptr %call436, ptr %idx, align 8
-  %idx437 = load ptr, ptr %idx, align 8
-  %off438 = load ptr, ptr %off, align 8
-  store ptr %off438, ptr %idx437, align 8
-  %objptr439 = load ptr, ptr %c, align 8
-  %fld440 = getelementptr inbounds nuw %CodegenContext, ptr %objptr439, i32 0, i32 2
-  %fldval441 = load ptr, ptr %fld440, align 8
-  %elem442 = load ptr, ptr %elem, align 8
-  %l443 = load ptr, ptr %l, align 8
-  %idx444 = load ptr, ptr %idx, align 8
-  %call445 = call ptr @LLVMBuildGEP2(ptr %fldval441, ptr %elem442, ptr %l443, ptr %idx444, i32 1, ptr @.str.242)
-  store ptr %call445, ptr %res, align 8
-  %idx446 = load ptr, ptr %idx, align 8
-  call void @free(ptr %idx446)
-  %res447 = load ptr, ptr %res, align 8
-  ret ptr %res447
-
-if.then429:                                       ; preds = %if.end378
-  %objptr431 = load ptr, ptr %c, align 8
-  %fld432 = getelementptr inbounds nuw %CodegenContext, ptr %objptr431, i32 0, i32 2
-  %fldval433 = load ptr, ptr %fld432, align 8
-  %off434 = load ptr, ptr %off, align 8
-  %call435 = call ptr @LLVMBuildNeg(ptr %fldval433, ptr %off434, ptr @.str.241)
-  store ptr %call435, ptr %off, align 8
-  br label %if.end426
-
-if.else430:                                       ; preds = %if.end378
-  br label %if.end426
-
-if.end448:                                        ; preds = %if.end487, %elif.then, %if.then458
-  %c531 = load ptr, ptr %c, align 8
-  %objptr532 = load ptr, ptr %n, align 8
-  %fld533 = getelementptr inbounds nuw %ASTNode, ptr %objptr532, i32 0, i32 2
-  %fld534 = getelementptr inbounds nuw %N_BinOp, ptr %fld533, i32 0, i32 1
-  %fldval535 = load ptr, ptr %fld534, align 8
-  %call536 = call i1 @is_unsigned_expr(ptr %c531, ptr %fldval535)
-  store i1 %call536, ptr %uns, align 1
-  %uns538 = load i1, ptr %uns, align 1
-  %not539 = icmp eq i1 %uns538, false
-  br i1 %not539, label %if.then540, label %if.else541
-
-sc.rhs452:                                        ; preds = %if.end321
-  %rk454 = load i32, ptr %rk, align 4
-  %LLVMIntegerTypeKind455 = load i32, ptr @LLVMIntegerTypeKind, align 4
-  %eq456 = icmp eq i32 %rk454, %LLVMIntegerTypeKind455
-  br label %sc.end453
-
-sc.end453:                                        ; preds = %sc.rhs452, %if.end321
-  %sc457 = phi i1 [ false, %if.end321 ], [ %eq456, %sc.rhs452 ]
-  br i1 %sc457, label %if.then458, label %if.else459
-
-if.then458:                                       ; preds = %sc.end453
-  %objptr460 = load ptr, ptr %c, align 8
-  %fld461 = getelementptr inbounds nuw %CodegenContext, ptr %objptr460, i32 0, i32 2
-  %fldval462 = load ptr, ptr %fld461, align 8
-  %r463 = load ptr, ptr %r, align 8
-  %l464 = load ptr, ptr %l, align 8
-  %call465 = call ptr @LLVMTypeOf(ptr %l464)
-  %call466 = call ptr @LLVMBuildIntToPtr(ptr %fldval462, ptr %r463, ptr %call465, ptr @.str.198)
-  store ptr %call466, ptr %r, align 8
-  br label %if.end448
-
-if.else459:                                       ; preds = %sc.end453
-  %rk467 = load i32, ptr %rk, align 4
-  %LLVMPointerTypeKind468 = load i32, ptr @LLVMPointerTypeKind, align 4
-  %eq469 = icmp eq i32 %rk467, %LLVMPointerTypeKind468
-  br i1 %eq469, label %sc.rhs470, label %sc.end471
-
-sc.rhs470:                                        ; preds = %if.else459
-  %lk472 = load i32, ptr %lk, align 4
-  %LLVMIntegerTypeKind473 = load i32, ptr @LLVMIntegerTypeKind, align 4
-  %eq474 = icmp eq i32 %lk472, %LLVMIntegerTypeKind473
-  br label %sc.end471
-
-sc.end471:                                        ; preds = %sc.rhs470, %if.else459
-  %sc475 = phi i1 [ false, %if.else459 ], [ %eq474, %sc.rhs470 ]
-  br i1 %sc475, label %elif.then, label %elif.else
-
-elif.then:                                        ; preds = %sc.end471
-  %objptr476 = load ptr, ptr %c, align 8
-  %fld477 = getelementptr inbounds nuw %CodegenContext, ptr %objptr476, i32 0, i32 2
-  %fldval478 = load ptr, ptr %fld477, align 8
-  %l479 = load ptr, ptr %l, align 8
-  %r480 = load ptr, ptr %r, align 8
-  %call481 = call ptr @LLVMTypeOf(ptr %r480)
-  %call482 = call ptr @LLVMBuildIntToPtr(ptr %fldval478, ptr %l479, ptr %call481, ptr @.str.198)
-  store ptr %call482, ptr %l, align 8
-  br label %if.end448
-
-elif.else:                                        ; preds = %sc.end471
-  %l483 = load ptr, ptr %l, align 8
-  %call484 = call ptr @LLVMTypeOf(ptr %l483)
-  store ptr %call484, ptr %lt, align 8
-  %r485 = load ptr, ptr %r, align 8
-  %call486 = call ptr @LLVMTypeOf(ptr %r485)
-  store ptr %call486, ptr %rt, align 8
-  %lt488 = load ptr, ptr %lt, align 8
-  %rt489 = load ptr, ptr %rt, align 8
-  %ne490 = icmp ne ptr %lt488, %rt489
-  br i1 %ne490, label %sc.rhs491, label %sc.end492
-
-if.end487:                                        ; preds = %if.else506, %if.end507
-  br label %if.end448
-
-sc.rhs491:                                        ; preds = %elif.else
-  %lt493 = load ptr, ptr %lt, align 8
-  %call494 = call i32 @LLVMGetTypeKind(ptr %lt493)
-  %LLVMIntegerTypeKind495 = load i32, ptr @LLVMIntegerTypeKind, align 4
-  %eq496 = icmp eq i32 %call494, %LLVMIntegerTypeKind495
-  br label %sc.end492
-
-sc.end492:                                        ; preds = %sc.rhs491, %elif.else
-  %sc497 = phi i1 [ false, %elif.else ], [ %eq496, %sc.rhs491 ]
-  br i1 %sc497, label %sc.rhs498, label %sc.end499
-
-sc.rhs498:                                        ; preds = %sc.end492
-  %rt500 = load ptr, ptr %rt, align 8
-  %call501 = call i32 @LLVMGetTypeKind(ptr %rt500)
-  %LLVMIntegerTypeKind502 = load i32, ptr @LLVMIntegerTypeKind, align 4
-  %eq503 = icmp eq i32 %call501, %LLVMIntegerTypeKind502
-  br label %sc.end499
-
-sc.end499:                                        ; preds = %sc.rhs498, %sc.end492
-  %sc504 = phi i1 [ false, %sc.end492 ], [ %eq503, %sc.rhs498 ]
-  br i1 %sc504, label %if.then505, label %if.else506
-
-if.then505:                                       ; preds = %sc.end499
-  %lt508 = load ptr, ptr %lt, align 8
-  %call509 = call i32 @LLVMGetIntTypeWidth(ptr %lt508)
-  %rt510 = load ptr, ptr %rt, align 8
-  %call511 = call i32 @LLVMGetIntTypeWidth(ptr %rt510)
-  %lt512 = icmp slt i32 %call509, %call511
-  br i1 %lt512, label %if.then513, label %if.else514
-
-if.else506:                                       ; preds = %sc.end499
-  br label %if.end487
-
-if.end507:                                        ; preds = %if.else514, %if.then513
-  br label %if.end487
-
-if.then513:                                       ; preds = %if.then505
-  %c515 = load ptr, ptr %c, align 8
-  %l516 = load ptr, ptr %l, align 8
-  %rt517 = load ptr, ptr %rt, align 8
-  %objptr518 = load ptr, ptr %n, align 8
-  %fld519 = getelementptr inbounds nuw %ASTNode, ptr %objptr518, i32 0, i32 2
-  %fld520 = getelementptr inbounds nuw %N_BinOp, ptr %fld519, i32 0, i32 1
-  %fldval521 = load ptr, ptr %fld520, align 8
-  %call522 = call ptr @coerce_e(ptr %c515, ptr %l516, ptr %rt517, ptr %fldval521)
-  store ptr %call522, ptr %l, align 8
-  br label %if.end507
-
-if.else514:                                       ; preds = %if.then505
-  %c523 = load ptr, ptr %c, align 8
-  %r524 = load ptr, ptr %r, align 8
-  %lt525 = load ptr, ptr %lt, align 8
-  %objptr526 = load ptr, ptr %n, align 8
-  %fld527 = getelementptr inbounds nuw %ASTNode, ptr %objptr526, i32 0, i32 2
-  %fld528 = getelementptr inbounds nuw %N_BinOp, ptr %fld527, i32 0, i32 2
-  %fldval529 = load ptr, ptr %fld528, align 8
-  %call530 = call ptr @coerce_e(ptr %c523, ptr %r524, ptr %lt525, ptr %fldval529)
-  store ptr %call530, ptr %r, align 8
-  br label %if.end507
-
-if.end537:                                        ; preds = %if.else541, %if.then540
-  %k549 = load i32, ptr %k, align 4
-  %eq550 = icmp eq i32 %k549, 1
-  br i1 %eq550, label %if.then551, label %if.else552
-
-if.then540:                                       ; preds = %if.end448
-  %c542 = load ptr, ptr %c, align 8
-  %objptr543 = load ptr, ptr %n, align 8
-  %fld544 = getelementptr inbounds nuw %ASTNode, ptr %objptr543, i32 0, i32 2
-  %fld545 = getelementptr inbounds nuw %N_BinOp, ptr %fld544, i32 0, i32 2
-  %fldval546 = load ptr, ptr %fld545, align 8
-  %call547 = call i1 @is_unsigned_expr(ptr %c542, ptr %fldval546)
-  store i1 %call547, ptr %uns, align 1
-  br label %if.end537
-
-if.else541:                                       ; preds = %if.end448
-  br label %if.end537
-
-if.end548:                                        ; preds = %if.else552
-  %k560 = load i32, ptr %k, align 4
-  %eq561 = icmp eq i32 %k560, 2
-  br i1 %eq561, label %if.then562, label %if.else563
-
-if.then551:                                       ; preds = %if.end537
-  %objptr553 = load ptr, ptr %c, align 8
-  %fld554 = getelementptr inbounds nuw %CodegenContext, ptr %objptr553, i32 0, i32 2
-  %fldval555 = load ptr, ptr %fld554, align 8
-  %l556 = load ptr, ptr %l, align 8
-  %r557 = load ptr, ptr %r, align 8
-  %call558 = call ptr @LLVMBuildAdd(ptr %fldval555, ptr %l556, ptr %r557, ptr @.str.243)
-  ret ptr %call558
-
-if.else552:                                       ; preds = %if.end537
-  br label %if.end548
-
-if.end559:                                        ; preds = %if.else563
-  %k571 = load i32, ptr %k, align 4
-  %eq572 = icmp eq i32 %k571, 3
-  br i1 %eq572, label %if.then573, label %if.else574
-
-if.then562:                                       ; preds = %if.end548
-  %objptr564 = load ptr, ptr %c, align 8
-  %fld565 = getelementptr inbounds nuw %CodegenContext, ptr %objptr564, i32 0, i32 2
-  %fldval566 = load ptr, ptr %fld565, align 8
-  %l567 = load ptr, ptr %l, align 8
-  %r568 = load ptr, ptr %r, align 8
-  %call569 = call ptr @LLVMBuildSub(ptr %fldval566, ptr %l567, ptr %r568, ptr @.str.244)
-  ret ptr %call569
-
-if.else563:                                       ; preds = %if.end548
-  br label %if.end559
-
-if.end570:                                        ; preds = %if.else574
-  %k582 = load i32, ptr %k, align 4
-  %eq583 = icmp eq i32 %k582, 4
-  br i1 %eq583, label %if.then584, label %if.else585
-
-if.then573:                                       ; preds = %if.end559
-  %objptr575 = load ptr, ptr %c, align 8
-  %fld576 = getelementptr inbounds nuw %CodegenContext, ptr %objptr575, i32 0, i32 2
-  %fldval577 = load ptr, ptr %fld576, align 8
-  %l578 = load ptr, ptr %l, align 8
-  %r579 = load ptr, ptr %r, align 8
-  %call580 = call ptr @LLVMBuildMul(ptr %fldval577, ptr %l578, ptr %r579, ptr @.str.245)
-  ret ptr %call580
-
-if.else574:                                       ; preds = %if.end559
-  br label %if.end570
-
-if.end581:                                        ; preds = %if.else585
-  %k603 = load i32, ptr %k, align 4
-  %eq604 = icmp eq i32 %k603, 5
-  br i1 %eq604, label %if.then605, label %if.else606
-
-if.then584:                                       ; preds = %if.end570
-  %uns587 = load i1, ptr %uns, align 1
-  br i1 %uns587, label %if.then588, label %if.else589
-
-if.else585:                                       ; preds = %if.end570
-  br label %if.end581
-
-if.end586:                                        ; preds = %if.else589
-  %objptr596 = load ptr, ptr %c, align 8
-  %fld597 = getelementptr inbounds nuw %CodegenContext, ptr %objptr596, i32 0, i32 2
-  %fldval598 = load ptr, ptr %fld597, align 8
-  %l599 = load ptr, ptr %l, align 8
-  %r600 = load ptr, ptr %r, align 8
-  %call601 = call ptr @LLVMBuildSDiv(ptr %fldval598, ptr %l599, ptr %r600, ptr @.str.246)
-  ret ptr %call601
-
-if.then588:                                       ; preds = %if.then584
-  %objptr590 = load ptr, ptr %c, align 8
-  %fld591 = getelementptr inbounds nuw %CodegenContext, ptr %objptr590, i32 0, i32 2
-  %fldval592 = load ptr, ptr %fld591, align 8
-  %l593 = load ptr, ptr %l, align 8
-  %r594 = load ptr, ptr %r, align 8
-  %call595 = call ptr @LLVMBuildUDiv(ptr %fldval592, ptr %l593, ptr %r594, ptr @.str.246)
-  ret ptr %call595
-
-if.else589:                                       ; preds = %if.then584
-  br label %if.end586
-
-if.end602:                                        ; preds = %if.else606
-  %k624 = load i32, ptr %k, align 4
-  %eq625 = icmp eq i32 %k624, 14
-  br i1 %eq625, label %if.then626, label %if.else627
-
-if.then605:                                       ; preds = %if.end581
-  %uns608 = load i1, ptr %uns, align 1
-  br i1 %uns608, label %if.then609, label %if.else610
-
-if.else606:                                       ; preds = %if.end581
-  br label %if.end602
-
-if.end607:                                        ; preds = %if.else610
-  %objptr617 = load ptr, ptr %c, align 8
-  %fld618 = getelementptr inbounds nuw %CodegenContext, ptr %objptr617, i32 0, i32 2
-  %fldval619 = load ptr, ptr %fld618, align 8
-  %l620 = load ptr, ptr %l, align 8
-  %r621 = load ptr, ptr %r, align 8
-  %call622 = call ptr @LLVMBuildSRem(ptr %fldval619, ptr %l620, ptr %r621, ptr @.str.247)
-  ret ptr %call622
-
-if.then609:                                       ; preds = %if.then605
-  %objptr611 = load ptr, ptr %c, align 8
-  %fld612 = getelementptr inbounds nuw %CodegenContext, ptr %objptr611, i32 0, i32 2
-  %fldval613 = load ptr, ptr %fld612, align 8
-  %l614 = load ptr, ptr %l, align 8
-  %r615 = load ptr, ptr %r, align 8
-  %call616 = call ptr @LLVMBuildURem(ptr %fldval613, ptr %l614, ptr %r615, ptr @.str.247)
-  ret ptr %call616
-
-if.else610:                                       ; preds = %if.then605
-  br label %if.end607
-
-if.end623:                                        ; preds = %if.else627
-  %k635 = load i32, ptr %k, align 4
-  %eq636 = icmp eq i32 %k635, 15
-  br i1 %eq636, label %if.then637, label %if.else638
-
-if.then626:                                       ; preds = %if.end602
-  %objptr628 = load ptr, ptr %c, align 8
-  %fld629 = getelementptr inbounds nuw %CodegenContext, ptr %objptr628, i32 0, i32 2
-  %fldval630 = load ptr, ptr %fld629, align 8
-  %l631 = load ptr, ptr %l, align 8
-  %r632 = load ptr, ptr %r, align 8
-  %call633 = call ptr @LLVMBuildAnd(ptr %fldval630, ptr %l631, ptr %r632, ptr @.str.248)
-  ret ptr %call633
-
-if.else627:                                       ; preds = %if.end602
-  br label %if.end623
-
-if.end634:                                        ; preds = %if.else638
-  %k646 = load i32, ptr %k, align 4
-  %eq647 = icmp eq i32 %k646, 16
-  br i1 %eq647, label %if.then648, label %if.else649
-
-if.then637:                                       ; preds = %if.end623
-  %objptr639 = load ptr, ptr %c, align 8
-  %fld640 = getelementptr inbounds nuw %CodegenContext, ptr %objptr639, i32 0, i32 2
-  %fldval641 = load ptr, ptr %fld640, align 8
-  %l642 = load ptr, ptr %l, align 8
-  %r643 = load ptr, ptr %r, align 8
-  %call644 = call ptr @LLVMBuildOr(ptr %fldval641, ptr %l642, ptr %r643, ptr @.str.249)
-  ret ptr %call644
-
-if.else638:                                       ; preds = %if.end623
-  br label %if.end634
-
-if.end645:                                        ; preds = %if.else649
-  %k657 = load i32, ptr %k, align 4
-  %eq658 = icmp eq i32 %k657, 17
-  br i1 %eq658, label %if.then659, label %if.else660
-
-if.then648:                                       ; preds = %if.end634
-  %objptr650 = load ptr, ptr %c, align 8
-  %fld651 = getelementptr inbounds nuw %CodegenContext, ptr %objptr650, i32 0, i32 2
-  %fldval652 = load ptr, ptr %fld651, align 8
-  %l653 = load ptr, ptr %l, align 8
-  %r654 = load ptr, ptr %r, align 8
-  %call655 = call ptr @LLVMBuildXor(ptr %fldval652, ptr %l653, ptr %r654, ptr @.str.250)
-  ret ptr %call655
-
-if.else649:                                       ; preds = %if.end634
-  br label %if.end645
-
-if.end656:                                        ; preds = %if.else660
-  %k668 = load i32, ptr %k, align 4
-  %eq669 = icmp eq i32 %k668, 18
-  br i1 %eq669, label %if.then670, label %if.else671
-
-if.then659:                                       ; preds = %if.end645
-  %objptr661 = load ptr, ptr %c, align 8
-  %fld662 = getelementptr inbounds nuw %CodegenContext, ptr %objptr661, i32 0, i32 2
-  %fldval663 = load ptr, ptr %fld662, align 8
-  %l664 = load ptr, ptr %l, align 8
-  %r665 = load ptr, ptr %r, align 8
-  %call666 = call ptr @LLVMBuildShl(ptr %fldval663, ptr %l664, ptr %r665, ptr @.str.251)
-  ret ptr %call666
-
-if.else660:                                       ; preds = %if.end645
-  br label %if.end656
-
-if.end667:                                        ; preds = %if.else671
-  %k689 = load i32, ptr %k, align 4
-  %eq690 = icmp eq i32 %k689, 6
-  br i1 %eq690, label %if.then691, label %if.else692
-
-if.then670:                                       ; preds = %if.end656
-  %uns673 = load i1, ptr %uns, align 1
-  br i1 %uns673, label %if.then674, label %if.else675
-
-if.else671:                                       ; preds = %if.end656
-  br label %if.end667
-
-if.end672:                                        ; preds = %if.else675
-  %objptr682 = load ptr, ptr %c, align 8
-  %fld683 = getelementptr inbounds nuw %CodegenContext, ptr %objptr682, i32 0, i32 2
-  %fldval684 = load ptr, ptr %fld683, align 8
-  %l685 = load ptr, ptr %l, align 8
-  %r686 = load ptr, ptr %r, align 8
-  %call687 = call ptr @LLVMBuildAShr(ptr %fldval684, ptr %l685, ptr %r686, ptr @.str.252)
-  ret ptr %call687
-
-if.then674:                                       ; preds = %if.then670
-  %objptr676 = load ptr, ptr %c, align 8
-  %fld677 = getelementptr inbounds nuw %CodegenContext, ptr %objptr676, i32 0, i32 2
-  %fldval678 = load ptr, ptr %fld677, align 8
-  %l679 = load ptr, ptr %l, align 8
-  %r680 = load ptr, ptr %r, align 8
-  %call681 = call ptr @LLVMBuildLShr(ptr %fldval678, ptr %l679, ptr %r680, ptr @.str.252)
-  ret ptr %call681
-
-if.else675:                                       ; preds = %if.then670
-  br label %if.end672
-
-if.end688:                                        ; preds = %if.else692
-  %k700 = load i32, ptr %k, align 4
-  %eq701 = icmp eq i32 %k700, 7
-  br i1 %eq701, label %if.then702, label %if.else703
-
-if.then691:                                       ; preds = %if.end667
-  %objptr693 = load ptr, ptr %c, align 8
-  %fld694 = getelementptr inbounds nuw %CodegenContext, ptr %objptr693, i32 0, i32 2
-  %fldval695 = load ptr, ptr %fld694, align 8
+  %off410 = load ptr, ptr %off, align 8
+  %call411 = call ptr @LLVMBuildNeg(ptr %fldval409, ptr %off410, ptr @.str.274)
+  store ptr %call411, ptr %off, align 8
+  br label %if.end402
+
+if.else406:                                       ; preds = %if.end354
+  br label %if.end402
+
+if.end424:                                        ; preds = %if.end463, %elif.then, %if.then434
+  %c507 = load ptr, ptr %c, align 8
+  %objptr508 = load ptr, ptr %n, align 8
+  %fld509 = getelementptr inbounds nuw %ASTNode, ptr %objptr508, i32 0, i32 2
+  %fld510 = getelementptr inbounds nuw %N_BinOp, ptr %fld509, i32 0, i32 1
+  %fldval511 = load ptr, ptr %fld510, align 8
+  %call512 = call i1 @is_unsigned_expr(ptr %c507, ptr %fldval511)
+  store i1 %call512, ptr %uns, align 1
+  %uns514 = load i1, ptr %uns, align 1
+  %not515 = icmp eq i1 %uns514, false
+  br i1 %not515, label %if.then516, label %if.else517
+
+sc.rhs428:                                        ; preds = %if.end297
+  %rk430 = load i32, ptr %rk, align 4
+  %LLVMIntegerTypeKind431 = load i32, ptr @LLVMIntegerTypeKind, align 4
+  %eq432 = icmp eq i32 %rk430, %LLVMIntegerTypeKind431
+  br label %sc.end429
+
+sc.end429:                                        ; preds = %sc.rhs428, %if.end297
+  %sc433 = phi i1 [ false, %if.end297 ], [ %eq432, %sc.rhs428 ]
+  br i1 %sc433, label %if.then434, label %if.else435
+
+if.then434:                                       ; preds = %sc.end429
+  %objptr436 = load ptr, ptr %c, align 8
+  %fld437 = getelementptr inbounds nuw %CodegenContext, ptr %objptr436, i32 0, i32 2
+  %fldval438 = load ptr, ptr %fld437, align 8
+  %r439 = load ptr, ptr %r, align 8
+  %l440 = load ptr, ptr %l, align 8
+  %call441 = call ptr @LLVMTypeOf(ptr %l440)
+  %call442 = call ptr @LLVMBuildIntToPtr(ptr %fldval438, ptr %r439, ptr %call441, ptr @.str.233)
+  store ptr %call442, ptr %r, align 8
+  br label %if.end424
+
+if.else435:                                       ; preds = %sc.end429
+  %rk443 = load i32, ptr %rk, align 4
+  %LLVMPointerTypeKind444 = load i32, ptr @LLVMPointerTypeKind, align 4
+  %eq445 = icmp eq i32 %rk443, %LLVMPointerTypeKind444
+  br i1 %eq445, label %sc.rhs446, label %sc.end447
+
+sc.rhs446:                                        ; preds = %if.else435
+  %lk448 = load i32, ptr %lk, align 4
+  %LLVMIntegerTypeKind449 = load i32, ptr @LLVMIntegerTypeKind, align 4
+  %eq450 = icmp eq i32 %lk448, %LLVMIntegerTypeKind449
+  br label %sc.end447
+
+sc.end447:                                        ; preds = %sc.rhs446, %if.else435
+  %sc451 = phi i1 [ false, %if.else435 ], [ %eq450, %sc.rhs446 ]
+  br i1 %sc451, label %elif.then, label %elif.else
+
+elif.then:                                        ; preds = %sc.end447
+  %objptr452 = load ptr, ptr %c, align 8
+  %fld453 = getelementptr inbounds nuw %CodegenContext, ptr %objptr452, i32 0, i32 2
+  %fldval454 = load ptr, ptr %fld453, align 8
+  %l455 = load ptr, ptr %l, align 8
+  %r456 = load ptr, ptr %r, align 8
+  %call457 = call ptr @LLVMTypeOf(ptr %r456)
+  %call458 = call ptr @LLVMBuildIntToPtr(ptr %fldval454, ptr %l455, ptr %call457, ptr @.str.233)
+  store ptr %call458, ptr %l, align 8
+  br label %if.end424
+
+elif.else:                                        ; preds = %sc.end447
+  %l459 = load ptr, ptr %l, align 8
+  %call460 = call ptr @LLVMTypeOf(ptr %l459)
+  store ptr %call460, ptr %lt, align 8
+  %r461 = load ptr, ptr %r, align 8
+  %call462 = call ptr @LLVMTypeOf(ptr %r461)
+  store ptr %call462, ptr %rt, align 8
+  %lt464 = load ptr, ptr %lt, align 8
+  %rt465 = load ptr, ptr %rt, align 8
+  %ne466 = icmp ne ptr %lt464, %rt465
+  br i1 %ne466, label %sc.rhs467, label %sc.end468
+
+if.end463:                                        ; preds = %if.else482, %if.end483
+  br label %if.end424
+
+sc.rhs467:                                        ; preds = %elif.else
+  %lt469 = load ptr, ptr %lt, align 8
+  %call470 = call i32 @LLVMGetTypeKind(ptr %lt469)
+  %LLVMIntegerTypeKind471 = load i32, ptr @LLVMIntegerTypeKind, align 4
+  %eq472 = icmp eq i32 %call470, %LLVMIntegerTypeKind471
+  br label %sc.end468
+
+sc.end468:                                        ; preds = %sc.rhs467, %elif.else
+  %sc473 = phi i1 [ false, %elif.else ], [ %eq472, %sc.rhs467 ]
+  br i1 %sc473, label %sc.rhs474, label %sc.end475
+
+sc.rhs474:                                        ; preds = %sc.end468
+  %rt476 = load ptr, ptr %rt, align 8
+  %call477 = call i32 @LLVMGetTypeKind(ptr %rt476)
+  %LLVMIntegerTypeKind478 = load i32, ptr @LLVMIntegerTypeKind, align 4
+  %eq479 = icmp eq i32 %call477, %LLVMIntegerTypeKind478
+  br label %sc.end475
+
+sc.end475:                                        ; preds = %sc.rhs474, %sc.end468
+  %sc480 = phi i1 [ false, %sc.end468 ], [ %eq479, %sc.rhs474 ]
+  br i1 %sc480, label %if.then481, label %if.else482
+
+if.then481:                                       ; preds = %sc.end475
+  %lt484 = load ptr, ptr %lt, align 8
+  %call485 = call i32 @LLVMGetIntTypeWidth(ptr %lt484)
+  %rt486 = load ptr, ptr %rt, align 8
+  %call487 = call i32 @LLVMGetIntTypeWidth(ptr %rt486)
+  %lt488 = icmp slt i32 %call485, %call487
+  br i1 %lt488, label %if.then489, label %if.else490
+
+if.else482:                                       ; preds = %sc.end475
+  br label %if.end463
+
+if.end483:                                        ; preds = %if.else490, %if.then489
+  br label %if.end463
+
+if.then489:                                       ; preds = %if.then481
+  %c491 = load ptr, ptr %c, align 8
+  %l492 = load ptr, ptr %l, align 8
+  %rt493 = load ptr, ptr %rt, align 8
+  %objptr494 = load ptr, ptr %n, align 8
+  %fld495 = getelementptr inbounds nuw %ASTNode, ptr %objptr494, i32 0, i32 2
+  %fld496 = getelementptr inbounds nuw %N_BinOp, ptr %fld495, i32 0, i32 1
+  %fldval497 = load ptr, ptr %fld496, align 8
+  %call498 = call ptr @coerce_e(ptr %c491, ptr %l492, ptr %rt493, ptr %fldval497)
+  store ptr %call498, ptr %l, align 8
+  br label %if.end483
+
+if.else490:                                       ; preds = %if.then481
+  %c499 = load ptr, ptr %c, align 8
+  %r500 = load ptr, ptr %r, align 8
+  %lt501 = load ptr, ptr %lt, align 8
+  %objptr502 = load ptr, ptr %n, align 8
+  %fld503 = getelementptr inbounds nuw %ASTNode, ptr %objptr502, i32 0, i32 2
+  %fld504 = getelementptr inbounds nuw %N_BinOp, ptr %fld503, i32 0, i32 2
+  %fldval505 = load ptr, ptr %fld504, align 8
+  %call506 = call ptr @coerce_e(ptr %c499, ptr %r500, ptr %lt501, ptr %fldval505)
+  store ptr %call506, ptr %r, align 8
+  br label %if.end483
+
+if.end513:                                        ; preds = %if.else517, %if.then516
+  %k525 = load i32, ptr %k, align 4
+  %eq526 = icmp eq i32 %k525, 1
+  br i1 %eq526, label %if.then527, label %if.else528
+
+if.then516:                                       ; preds = %if.end424
+  %c518 = load ptr, ptr %c, align 8
+  %objptr519 = load ptr, ptr %n, align 8
+  %fld520 = getelementptr inbounds nuw %ASTNode, ptr %objptr519, i32 0, i32 2
+  %fld521 = getelementptr inbounds nuw %N_BinOp, ptr %fld520, i32 0, i32 2
+  %fldval522 = load ptr, ptr %fld521, align 8
+  %call523 = call i1 @is_unsigned_expr(ptr %c518, ptr %fldval522)
+  store i1 %call523, ptr %uns, align 1
+  br label %if.end513
+
+if.else517:                                       ; preds = %if.end424
+  br label %if.end513
+
+if.end524:                                        ; preds = %if.else528
+  %k536 = load i32, ptr %k, align 4
+  %eq537 = icmp eq i32 %k536, 2
+  br i1 %eq537, label %if.then538, label %if.else539
+
+if.then527:                                       ; preds = %if.end513
+  %objptr529 = load ptr, ptr %c, align 8
+  %fld530 = getelementptr inbounds nuw %CodegenContext, ptr %objptr529, i32 0, i32 2
+  %fldval531 = load ptr, ptr %fld530, align 8
+  %l532 = load ptr, ptr %l, align 8
+  %r533 = load ptr, ptr %r, align 8
+  %call534 = call ptr @LLVMBuildAdd(ptr %fldval531, ptr %l532, ptr %r533, ptr @.str.276)
+  ret ptr %call534
+
+if.else528:                                       ; preds = %if.end513
+  br label %if.end524
+
+if.end535:                                        ; preds = %if.else539
+  %k547 = load i32, ptr %k, align 4
+  %eq548 = icmp eq i32 %k547, 3
+  br i1 %eq548, label %if.then549, label %if.else550
+
+if.then538:                                       ; preds = %if.end524
+  %objptr540 = load ptr, ptr %c, align 8
+  %fld541 = getelementptr inbounds nuw %CodegenContext, ptr %objptr540, i32 0, i32 2
+  %fldval542 = load ptr, ptr %fld541, align 8
+  %l543 = load ptr, ptr %l, align 8
+  %r544 = load ptr, ptr %r, align 8
+  %call545 = call ptr @LLVMBuildSub(ptr %fldval542, ptr %l543, ptr %r544, ptr @.str.277)
+  ret ptr %call545
+
+if.else539:                                       ; preds = %if.end524
+  br label %if.end535
+
+if.end546:                                        ; preds = %if.else550
+  %k558 = load i32, ptr %k, align 4
+  %eq559 = icmp eq i32 %k558, 4
+  br i1 %eq559, label %if.then560, label %if.else561
+
+if.then549:                                       ; preds = %if.end535
+  %objptr551 = load ptr, ptr %c, align 8
+  %fld552 = getelementptr inbounds nuw %CodegenContext, ptr %objptr551, i32 0, i32 2
+  %fldval553 = load ptr, ptr %fld552, align 8
+  %l554 = load ptr, ptr %l, align 8
+  %r555 = load ptr, ptr %r, align 8
+  %call556 = call ptr @LLVMBuildMul(ptr %fldval553, ptr %l554, ptr %r555, ptr @.str.278)
+  ret ptr %call556
+
+if.else550:                                       ; preds = %if.end535
+  br label %if.end546
+
+if.end557:                                        ; preds = %if.else561
+  %k579 = load i32, ptr %k, align 4
+  %eq580 = icmp eq i32 %k579, 5
+  br i1 %eq580, label %if.then581, label %if.else582
+
+if.then560:                                       ; preds = %if.end546
+  %uns563 = load i1, ptr %uns, align 1
+  br i1 %uns563, label %if.then564, label %if.else565
+
+if.else561:                                       ; preds = %if.end546
+  br label %if.end557
+
+if.end562:                                        ; preds = %if.else565
+  %objptr572 = load ptr, ptr %c, align 8
+  %fld573 = getelementptr inbounds nuw %CodegenContext, ptr %objptr572, i32 0, i32 2
+  %fldval574 = load ptr, ptr %fld573, align 8
+  %l575 = load ptr, ptr %l, align 8
+  %r576 = load ptr, ptr %r, align 8
+  %call577 = call ptr @LLVMBuildSDiv(ptr %fldval574, ptr %l575, ptr %r576, ptr @.str.279)
+  ret ptr %call577
+
+if.then564:                                       ; preds = %if.then560
+  %objptr566 = load ptr, ptr %c, align 8
+  %fld567 = getelementptr inbounds nuw %CodegenContext, ptr %objptr566, i32 0, i32 2
+  %fldval568 = load ptr, ptr %fld567, align 8
+  %l569 = load ptr, ptr %l, align 8
+  %r570 = load ptr, ptr %r, align 8
+  %call571 = call ptr @LLVMBuildUDiv(ptr %fldval568, ptr %l569, ptr %r570, ptr @.str.279)
+  ret ptr %call571
+
+if.else565:                                       ; preds = %if.then560
+  br label %if.end562
+
+if.end578:                                        ; preds = %if.else582
+  %k600 = load i32, ptr %k, align 4
+  %eq601 = icmp eq i32 %k600, 14
+  br i1 %eq601, label %if.then602, label %if.else603
+
+if.then581:                                       ; preds = %if.end557
+  %uns584 = load i1, ptr %uns, align 1
+  br i1 %uns584, label %if.then585, label %if.else586
+
+if.else582:                                       ; preds = %if.end557
+  br label %if.end578
+
+if.end583:                                        ; preds = %if.else586
+  %objptr593 = load ptr, ptr %c, align 8
+  %fld594 = getelementptr inbounds nuw %CodegenContext, ptr %objptr593, i32 0, i32 2
+  %fldval595 = load ptr, ptr %fld594, align 8
+  %l596 = load ptr, ptr %l, align 8
+  %r597 = load ptr, ptr %r, align 8
+  %call598 = call ptr @LLVMBuildSRem(ptr %fldval595, ptr %l596, ptr %r597, ptr @.str.280)
+  ret ptr %call598
+
+if.then585:                                       ; preds = %if.then581
+  %objptr587 = load ptr, ptr %c, align 8
+  %fld588 = getelementptr inbounds nuw %CodegenContext, ptr %objptr587, i32 0, i32 2
+  %fldval589 = load ptr, ptr %fld588, align 8
+  %l590 = load ptr, ptr %l, align 8
+  %r591 = load ptr, ptr %r, align 8
+  %call592 = call ptr @LLVMBuildURem(ptr %fldval589, ptr %l590, ptr %r591, ptr @.str.280)
+  ret ptr %call592
+
+if.else586:                                       ; preds = %if.then581
+  br label %if.end583
+
+if.end599:                                        ; preds = %if.else603
+  %k611 = load i32, ptr %k, align 4
+  %eq612 = icmp eq i32 %k611, 15
+  br i1 %eq612, label %if.then613, label %if.else614
+
+if.then602:                                       ; preds = %if.end578
+  %objptr604 = load ptr, ptr %c, align 8
+  %fld605 = getelementptr inbounds nuw %CodegenContext, ptr %objptr604, i32 0, i32 2
+  %fldval606 = load ptr, ptr %fld605, align 8
+  %l607 = load ptr, ptr %l, align 8
+  %r608 = load ptr, ptr %r, align 8
+  %call609 = call ptr @LLVMBuildAnd(ptr %fldval606, ptr %l607, ptr %r608, ptr @.str.281)
+  ret ptr %call609
+
+if.else603:                                       ; preds = %if.end578
+  br label %if.end599
+
+if.end610:                                        ; preds = %if.else614
+  %k622 = load i32, ptr %k, align 4
+  %eq623 = icmp eq i32 %k622, 16
+  br i1 %eq623, label %if.then624, label %if.else625
+
+if.then613:                                       ; preds = %if.end599
+  %objptr615 = load ptr, ptr %c, align 8
+  %fld616 = getelementptr inbounds nuw %CodegenContext, ptr %objptr615, i32 0, i32 2
+  %fldval617 = load ptr, ptr %fld616, align 8
+  %l618 = load ptr, ptr %l, align 8
+  %r619 = load ptr, ptr %r, align 8
+  %call620 = call ptr @LLVMBuildOr(ptr %fldval617, ptr %l618, ptr %r619, ptr @.str.282)
+  ret ptr %call620
+
+if.else614:                                       ; preds = %if.end599
+  br label %if.end610
+
+if.end621:                                        ; preds = %if.else625
+  %k633 = load i32, ptr %k, align 4
+  %eq634 = icmp eq i32 %k633, 17
+  br i1 %eq634, label %if.then635, label %if.else636
+
+if.then624:                                       ; preds = %if.end610
+  %objptr626 = load ptr, ptr %c, align 8
+  %fld627 = getelementptr inbounds nuw %CodegenContext, ptr %objptr626, i32 0, i32 2
+  %fldval628 = load ptr, ptr %fld627, align 8
+  %l629 = load ptr, ptr %l, align 8
+  %r630 = load ptr, ptr %r, align 8
+  %call631 = call ptr @LLVMBuildXor(ptr %fldval628, ptr %l629, ptr %r630, ptr @.str.283)
+  ret ptr %call631
+
+if.else625:                                       ; preds = %if.end610
+  br label %if.end621
+
+if.end632:                                        ; preds = %if.else636
+  %k644 = load i32, ptr %k, align 4
+  %eq645 = icmp eq i32 %k644, 18
+  br i1 %eq645, label %if.then646, label %if.else647
+
+if.then635:                                       ; preds = %if.end621
+  %objptr637 = load ptr, ptr %c, align 8
+  %fld638 = getelementptr inbounds nuw %CodegenContext, ptr %objptr637, i32 0, i32 2
+  %fldval639 = load ptr, ptr %fld638, align 8
+  %l640 = load ptr, ptr %l, align 8
+  %r641 = load ptr, ptr %r, align 8
+  %call642 = call ptr @LLVMBuildShl(ptr %fldval639, ptr %l640, ptr %r641, ptr @.str.284)
+  ret ptr %call642
+
+if.else636:                                       ; preds = %if.end621
+  br label %if.end632
+
+if.end643:                                        ; preds = %if.else647
+  %k665 = load i32, ptr %k, align 4
+  %eq666 = icmp eq i32 %k665, 6
+  br i1 %eq666, label %if.then667, label %if.else668
+
+if.then646:                                       ; preds = %if.end632
+  %uns649 = load i1, ptr %uns, align 1
+  br i1 %uns649, label %if.then650, label %if.else651
+
+if.else647:                                       ; preds = %if.end632
+  br label %if.end643
+
+if.end648:                                        ; preds = %if.else651
+  %objptr658 = load ptr, ptr %c, align 8
+  %fld659 = getelementptr inbounds nuw %CodegenContext, ptr %objptr658, i32 0, i32 2
+  %fldval660 = load ptr, ptr %fld659, align 8
+  %l661 = load ptr, ptr %l, align 8
+  %r662 = load ptr, ptr %r, align 8
+  %call663 = call ptr @LLVMBuildAShr(ptr %fldval660, ptr %l661, ptr %r662, ptr @.str.285)
+  ret ptr %call663
+
+if.then650:                                       ; preds = %if.then646
+  %objptr652 = load ptr, ptr %c, align 8
+  %fld653 = getelementptr inbounds nuw %CodegenContext, ptr %objptr652, i32 0, i32 2
+  %fldval654 = load ptr, ptr %fld653, align 8
+  %l655 = load ptr, ptr %l, align 8
+  %r656 = load ptr, ptr %r, align 8
+  %call657 = call ptr @LLVMBuildLShr(ptr %fldval654, ptr %l655, ptr %r656, ptr @.str.285)
+  ret ptr %call657
+
+if.else651:                                       ; preds = %if.then646
+  br label %if.end648
+
+if.end664:                                        ; preds = %if.else668
+  %k676 = load i32, ptr %k, align 4
+  %eq677 = icmp eq i32 %k676, 7
+  br i1 %eq677, label %if.then678, label %if.else679
+
+if.then667:                                       ; preds = %if.end643
+  %objptr669 = load ptr, ptr %c, align 8
+  %fld670 = getelementptr inbounds nuw %CodegenContext, ptr %objptr669, i32 0, i32 2
+  %fldval671 = load ptr, ptr %fld670, align 8
   %LLVMIntEQ = load i32, ptr @LLVMIntEQ, align 4
-  %l696 = load ptr, ptr %l, align 8
-  %r697 = load ptr, ptr %r, align 8
-  %call698 = call ptr @LLVMBuildICmp(ptr %fldval695, i32 %LLVMIntEQ, ptr %l696, ptr %r697, ptr @.str.253)
-  ret ptr %call698
+  %l672 = load ptr, ptr %l, align 8
+  %r673 = load ptr, ptr %r, align 8
+  %call674 = call ptr @LLVMBuildICmp(ptr %fldval671, i32 %LLVMIntEQ, ptr %l672, ptr %r673, ptr @.str.286)
+  ret ptr %call674
 
-if.else692:                                       ; preds = %if.end667
-  br label %if.end688
+if.else668:                                       ; preds = %if.end643
+  br label %if.end664
 
-if.end699:                                        ; preds = %if.else703
-  %k711 = load i32, ptr %k, align 4
-  %eq712 = icmp eq i32 %k711, 8
-  br i1 %eq712, label %if.then713, label %if.else714
+if.end675:                                        ; preds = %if.else679
+  %k687 = load i32, ptr %k, align 4
+  %eq688 = icmp eq i32 %k687, 8
+  br i1 %eq688, label %if.then689, label %if.else690
 
-if.then702:                                       ; preds = %if.end688
-  %objptr704 = load ptr, ptr %c, align 8
-  %fld705 = getelementptr inbounds nuw %CodegenContext, ptr %objptr704, i32 0, i32 2
-  %fldval706 = load ptr, ptr %fld705, align 8
+if.then678:                                       ; preds = %if.end664
+  %objptr680 = load ptr, ptr %c, align 8
+  %fld681 = getelementptr inbounds nuw %CodegenContext, ptr %objptr680, i32 0, i32 2
+  %fldval682 = load ptr, ptr %fld681, align 8
   %LLVMIntNE = load i32, ptr @LLVMIntNE, align 4
-  %l707 = load ptr, ptr %l, align 8
-  %r708 = load ptr, ptr %r, align 8
-  %call709 = call ptr @LLVMBuildICmp(ptr %fldval706, i32 %LLVMIntNE, ptr %l707, ptr %r708, ptr @.str.254)
-  ret ptr %call709
+  %l683 = load ptr, ptr %l, align 8
+  %r684 = load ptr, ptr %r, align 8
+  %call685 = call ptr @LLVMBuildICmp(ptr %fldval682, i32 %LLVMIntNE, ptr %l683, ptr %r684, ptr @.str.287)
+  ret ptr %call685
 
-if.else703:                                       ; preds = %if.end688
-  br label %if.end699
+if.else679:                                       ; preds = %if.end664
+  br label %if.end675
 
-if.end710:                                        ; preds = %if.else714
-  %k727 = load i32, ptr %k, align 4
-  %eq728 = icmp eq i32 %k727, 9
-  br i1 %eq728, label %if.then729, label %if.else730
+if.end686:                                        ; preds = %if.else690
+  %k703 = load i32, ptr %k, align 4
+  %eq704 = icmp eq i32 %k703, 9
+  br i1 %eq704, label %if.then705, label %if.else706
 
-if.then713:                                       ; preds = %if.end699
+if.then689:                                       ; preds = %if.end675
   %LLVMIntSLT = load i32, ptr @LLVMIntSLT, align 4
   store i32 %LLVMIntSLT, ptr %p, align 4
-  %uns716 = load i1, ptr %uns, align 1
-  br i1 %uns716, label %if.then717, label %if.else718
+  %uns692 = load i1, ptr %uns, align 1
+  br i1 %uns692, label %if.then693, label %if.else694
 
-if.else714:                                       ; preds = %if.end699
-  br label %if.end710
+if.else690:                                       ; preds = %if.end675
+  br label %if.end686
 
-if.end715:                                        ; preds = %if.else718, %if.then717
-  %objptr719 = load ptr, ptr %c, align 8
-  %fld720 = getelementptr inbounds nuw %CodegenContext, ptr %objptr719, i32 0, i32 2
-  %fldval721 = load ptr, ptr %fld720, align 8
-  %p722 = load i32, ptr %p, align 4
-  %l723 = load ptr, ptr %l, align 8
-  %r724 = load ptr, ptr %r, align 8
-  %call725 = call ptr @LLVMBuildICmp(ptr %fldval721, i32 %p722, ptr %l723, ptr %r724, ptr @.str.255)
-  ret ptr %call725
+if.end691:                                        ; preds = %if.else694, %if.then693
+  %objptr695 = load ptr, ptr %c, align 8
+  %fld696 = getelementptr inbounds nuw %CodegenContext, ptr %objptr695, i32 0, i32 2
+  %fldval697 = load ptr, ptr %fld696, align 8
+  %p698 = load i32, ptr %p, align 4
+  %l699 = load ptr, ptr %l, align 8
+  %r700 = load ptr, ptr %r, align 8
+  %call701 = call ptr @LLVMBuildICmp(ptr %fldval697, i32 %p698, ptr %l699, ptr %r700, ptr @.str.288)
+  ret ptr %call701
 
-if.then717:                                       ; preds = %if.then713
+if.then693:                                       ; preds = %if.then689
   %LLVMIntULT = load i32, ptr @LLVMIntULT, align 4
   store i32 %LLVMIntULT, ptr %p, align 4
-  br label %if.end715
+  br label %if.end691
 
-if.else718:                                       ; preds = %if.then713
-  br label %if.end715
+if.else694:                                       ; preds = %if.then689
+  br label %if.end691
 
-if.end726:                                        ; preds = %if.else730
-  %k744 = load i32, ptr %k, align 4
-  %eq745 = icmp eq i32 %k744, 10
-  br i1 %eq745, label %if.then746, label %if.else747
+if.end702:                                        ; preds = %if.else706
+  %k720 = load i32, ptr %k, align 4
+  %eq721 = icmp eq i32 %k720, 10
+  br i1 %eq721, label %if.then722, label %if.else723
 
-if.then729:                                       ; preds = %if.end710
+if.then705:                                       ; preds = %if.end686
   %LLVMIntSLE = load i32, ptr @LLVMIntSLE, align 4
-  store i32 %LLVMIntSLE, ptr %p731, align 4
-  %uns733 = load i1, ptr %uns, align 1
-  br i1 %uns733, label %if.then734, label %if.else735
+  store i32 %LLVMIntSLE, ptr %p707, align 4
+  %uns709 = load i1, ptr %uns, align 1
+  br i1 %uns709, label %if.then710, label %if.else711
 
-if.else730:                                       ; preds = %if.end710
-  br label %if.end726
+if.else706:                                       ; preds = %if.end686
+  br label %if.end702
 
-if.end732:                                        ; preds = %if.else735, %if.then734
-  %objptr736 = load ptr, ptr %c, align 8
-  %fld737 = getelementptr inbounds nuw %CodegenContext, ptr %objptr736, i32 0, i32 2
-  %fldval738 = load ptr, ptr %fld737, align 8
-  %p739 = load i32, ptr %p731, align 4
-  %l740 = load ptr, ptr %l, align 8
-  %r741 = load ptr, ptr %r, align 8
-  %call742 = call ptr @LLVMBuildICmp(ptr %fldval738, i32 %p739, ptr %l740, ptr %r741, ptr @.str.256)
-  ret ptr %call742
+if.end708:                                        ; preds = %if.else711, %if.then710
+  %objptr712 = load ptr, ptr %c, align 8
+  %fld713 = getelementptr inbounds nuw %CodegenContext, ptr %objptr712, i32 0, i32 2
+  %fldval714 = load ptr, ptr %fld713, align 8
+  %p715 = load i32, ptr %p707, align 4
+  %l716 = load ptr, ptr %l, align 8
+  %r717 = load ptr, ptr %r, align 8
+  %call718 = call ptr @LLVMBuildICmp(ptr %fldval714, i32 %p715, ptr %l716, ptr %r717, ptr @.str.289)
+  ret ptr %call718
 
-if.then734:                                       ; preds = %if.then729
+if.then710:                                       ; preds = %if.then705
   %LLVMIntULE = load i32, ptr @LLVMIntULE, align 4
-  store i32 %LLVMIntULE, ptr %p731, align 4
-  br label %if.end732
+  store i32 %LLVMIntULE, ptr %p707, align 4
+  br label %if.end708
 
-if.else735:                                       ; preds = %if.then729
-  br label %if.end732
+if.else711:                                       ; preds = %if.then705
+  br label %if.end708
 
-if.end743:                                        ; preds = %if.else747
-  %k761 = load i32, ptr %k, align 4
-  %eq762 = icmp eq i32 %k761, 11
-  br i1 %eq762, label %if.then763, label %if.else764
+if.end719:                                        ; preds = %if.else723
+  %k737 = load i32, ptr %k, align 4
+  %eq738 = icmp eq i32 %k737, 11
+  br i1 %eq738, label %if.then739, label %if.else740
 
-if.then746:                                       ; preds = %if.end726
+if.then722:                                       ; preds = %if.end702
   %LLVMIntSGT = load i32, ptr @LLVMIntSGT, align 4
-  store i32 %LLVMIntSGT, ptr %p748, align 4
-  %uns750 = load i1, ptr %uns, align 1
-  br i1 %uns750, label %if.then751, label %if.else752
+  store i32 %LLVMIntSGT, ptr %p724, align 4
+  %uns726 = load i1, ptr %uns, align 1
+  br i1 %uns726, label %if.then727, label %if.else728
 
-if.else747:                                       ; preds = %if.end726
-  br label %if.end743
+if.else723:                                       ; preds = %if.end702
+  br label %if.end719
 
-if.end749:                                        ; preds = %if.else752, %if.then751
-  %objptr753 = load ptr, ptr %c, align 8
-  %fld754 = getelementptr inbounds nuw %CodegenContext, ptr %objptr753, i32 0, i32 2
-  %fldval755 = load ptr, ptr %fld754, align 8
-  %p756 = load i32, ptr %p748, align 4
-  %l757 = load ptr, ptr %l, align 8
-  %r758 = load ptr, ptr %r, align 8
-  %call759 = call ptr @LLVMBuildICmp(ptr %fldval755, i32 %p756, ptr %l757, ptr %r758, ptr @.str.257)
-  ret ptr %call759
+if.end725:                                        ; preds = %if.else728, %if.then727
+  %objptr729 = load ptr, ptr %c, align 8
+  %fld730 = getelementptr inbounds nuw %CodegenContext, ptr %objptr729, i32 0, i32 2
+  %fldval731 = load ptr, ptr %fld730, align 8
+  %p732 = load i32, ptr %p724, align 4
+  %l733 = load ptr, ptr %l, align 8
+  %r734 = load ptr, ptr %r, align 8
+  %call735 = call ptr @LLVMBuildICmp(ptr %fldval731, i32 %p732, ptr %l733, ptr %r734, ptr @.str.290)
+  ret ptr %call735
 
-if.then751:                                       ; preds = %if.then746
+if.then727:                                       ; preds = %if.then722
   %LLVMIntUGT = load i32, ptr @LLVMIntUGT, align 4
-  store i32 %LLVMIntUGT, ptr %p748, align 4
-  br label %if.end749
+  store i32 %LLVMIntUGT, ptr %p724, align 4
+  br label %if.end725
 
-if.else752:                                       ; preds = %if.then746
-  br label %if.end749
+if.else728:                                       ; preds = %if.then722
+  br label %if.end725
 
-if.end760:                                        ; preds = %if.else764
-  call void @cg_fatal(ptr @.str.259)
+if.end736:                                        ; preds = %if.else740
+  call void @cg_fatal(ptr @.str.292)
   ret ptr null
 
-if.then763:                                       ; preds = %if.end743
+if.then739:                                       ; preds = %if.end719
   %LLVMIntSGE = load i32, ptr @LLVMIntSGE, align 4
-  store i32 %LLVMIntSGE, ptr %p765, align 4
-  %uns767 = load i1, ptr %uns, align 1
-  br i1 %uns767, label %if.then768, label %if.else769
+  store i32 %LLVMIntSGE, ptr %p741, align 4
+  %uns743 = load i1, ptr %uns, align 1
+  br i1 %uns743, label %if.then744, label %if.else745
 
-if.else764:                                       ; preds = %if.end743
-  br label %if.end760
+if.else740:                                       ; preds = %if.end719
+  br label %if.end736
 
-if.end766:                                        ; preds = %if.else769, %if.then768
-  %objptr770 = load ptr, ptr %c, align 8
-  %fld771 = getelementptr inbounds nuw %CodegenContext, ptr %objptr770, i32 0, i32 2
-  %fldval772 = load ptr, ptr %fld771, align 8
-  %p773 = load i32, ptr %p765, align 4
-  %l774 = load ptr, ptr %l, align 8
-  %r775 = load ptr, ptr %r, align 8
-  %call776 = call ptr @LLVMBuildICmp(ptr %fldval772, i32 %p773, ptr %l774, ptr %r775, ptr @.str.258)
-  ret ptr %call776
+if.end742:                                        ; preds = %if.else745, %if.then744
+  %objptr746 = load ptr, ptr %c, align 8
+  %fld747 = getelementptr inbounds nuw %CodegenContext, ptr %objptr746, i32 0, i32 2
+  %fldval748 = load ptr, ptr %fld747, align 8
+  %p749 = load i32, ptr %p741, align 4
+  %l750 = load ptr, ptr %l, align 8
+  %r751 = load ptr, ptr %r, align 8
+  %call752 = call ptr @LLVMBuildICmp(ptr %fldval748, i32 %p749, ptr %l750, ptr %r751, ptr @.str.291)
+  ret ptr %call752
 
-if.then768:                                       ; preds = %if.then763
+if.then744:                                       ; preds = %if.then739
   %LLVMIntUGE = load i32, ptr @LLVMIntUGE, align 4
-  store i32 %LLVMIntUGE, ptr %p765, align 4
-  br label %if.end766
+  store i32 %LLVMIntUGE, ptr %p741, align 4
+  br label %if.end742
 
-if.else769:                                       ; preds = %if.then763
-  br label %if.end766
+if.else745:                                       ; preds = %if.then739
+  br label %if.end742
 }
 
 define ptr @gen_literal(ptr %0, ptr %1) {
@@ -30252,7 +31534,7 @@ if.else59:                                        ; preds = %if.end41
   br label %if.end55
 
 if.end66:                                         ; preds = %if.else70
-  call void @cg_fatal(ptr @.str.260)
+  call void @cg_fatal(ptr @.str.293)
   ret ptr null
 
 if.then69:                                        ; preds = %if.end55
@@ -30378,7 +31660,7 @@ entry:
   %objptr4 = load ptr, ptr %c, align 8
   %fld5 = getelementptr inbounds nuw %CodegenContext, ptr %objptr4, i32 0, i32 8
   %fldval6 = load ptr, ptr %fld5, align 8
-  %call7 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval3, ptr %fldval6, ptr @.str.271)
+  %call7 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval3, ptr %fldval6, ptr @.str.303)
   store ptr %call7, ptr %merge, align 8
   %objptr8 = load ptr, ptr %cond, align 8
   %fld9 = getelementptr inbounds nuw %ASTNode, ptr %objptr8, i32 0, i32 2
@@ -30401,7 +31683,7 @@ entry:
   %objptr24 = load ptr, ptr %c, align 8
   %fld25 = getelementptr inbounds nuw %CodegenContext, ptr %objptr24, i32 0, i32 8
   %fldval26 = load ptr, ptr %fld25, align 8
-  %call27 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval23, ptr %fldval26, ptr @.str.272)
+  %call27 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval23, ptr %fldval26, ptr @.str.304)
   store ptr %call27, ptr %then_bb, align 8
   %objptr28 = load ptr, ptr %c, align 8
   %fld29 = getelementptr inbounds nuw %CodegenContext, ptr %objptr28, i32 0, i32 0
@@ -30409,7 +31691,7 @@ entry:
   %objptr31 = load ptr, ptr %c, align 8
   %fld32 = getelementptr inbounds nuw %CodegenContext, ptr %objptr31, i32 0, i32 8
   %fldval33 = load ptr, ptr %fld32, align 8
-  %call34 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval30, ptr %fldval33, ptr @.str.273)
+  %call34 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval30, ptr %fldval33, ptr @.str.305)
   store ptr %call34, ptr %next_bb, align 8
   %objptr35 = load ptr, ptr %c, align 8
   %fld36 = getelementptr inbounds nuw %CodegenContext, ptr %objptr35, i32 0, i32 2
@@ -30495,7 +31777,7 @@ while.body:                                       ; preds = %loop.body
   %objptr79 = load ptr, ptr %c, align 8
   %fld80 = getelementptr inbounds nuw %CodegenContext, ptr %objptr79, i32 0, i32 8
   %fldval81 = load ptr, ptr %fld80, align 8
-  %call82 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval78, ptr %fldval81, ptr @.str.274)
+  %call82 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval78, ptr %fldval81, ptr @.str.306)
   store ptr %call82, ptr %ethen, align 8
   %objptr83 = load ptr, ptr %c, align 8
   %fld84 = getelementptr inbounds nuw %CodegenContext, ptr %objptr83, i32 0, i32 0
@@ -30503,7 +31785,7 @@ while.body:                                       ; preds = %loop.body
   %objptr86 = load ptr, ptr %c, align 8
   %fld87 = getelementptr inbounds nuw %CodegenContext, ptr %objptr86, i32 0, i32 8
   %fldval88 = load ptr, ptr %fld87, align 8
-  %call89 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval85, ptr %fldval88, ptr @.str.275)
+  %call89 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval85, ptr %fldval88, ptr @.str.307)
   store ptr %call89, ptr %enext, align 8
   %objptr90 = load ptr, ptr %c, align 8
   %fld91 = getelementptr inbounds nuw %CodegenContext, ptr %objptr90, i32 0, i32 2
@@ -30608,7 +31890,7 @@ entry:
   %objptr1 = load ptr, ptr %c, align 8
   %fld2 = getelementptr inbounds nuw %CodegenContext, ptr %objptr1, i32 0, i32 8
   %fldval3 = load ptr, ptr %fld2, align 8
-  %call = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval, ptr %fldval3, ptr @.str.276)
+  %call = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval, ptr %fldval3, ptr @.str.308)
   store ptr %call, ptr %body, align 8
   %objptr4 = load ptr, ptr %c, align 8
   %fld5 = getelementptr inbounds nuw %CodegenContext, ptr %objptr4, i32 0, i32 0
@@ -30616,7 +31898,7 @@ entry:
   %objptr7 = load ptr, ptr %c, align 8
   %fld8 = getelementptr inbounds nuw %CodegenContext, ptr %objptr7, i32 0, i32 8
   %fldval9 = load ptr, ptr %fld8, align 8
-  %call10 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval6, ptr %fldval9, ptr @.str.277)
+  %call10 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval6, ptr %fldval9, ptr @.str.309)
   store ptr %call10, ptr %contn, align 8
   %objptr11 = load ptr, ptr %c, align 8
   %fld12 = getelementptr inbounds nuw %CodegenContext, ptr %objptr11, i32 0, i32 0
@@ -30624,7 +31906,7 @@ entry:
   %objptr14 = load ptr, ptr %c, align 8
   %fld15 = getelementptr inbounds nuw %CodegenContext, ptr %objptr14, i32 0, i32 8
   %fldval16 = load ptr, ptr %fld15, align 8
-  %call17 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval13, ptr %fldval16, ptr @.str.278)
+  %call17 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval13, ptr %fldval16, ptr @.str.310)
   store ptr %call17, ptr %brk, align 8
   %objptr18 = load ptr, ptr %c, align 8
   %fld19 = getelementptr inbounds nuw %CodegenContext, ptr %objptr18, i32 0, i32 10
@@ -30692,7 +31974,7 @@ if.then:                                          ; preds = %entry
   %objptr59 = load ptr, ptr %c, align 8
   %fld60 = getelementptr inbounds nuw %CodegenContext, ptr %objptr59, i32 0, i32 8
   %fldval61 = load ptr, ptr %fld60, align 8
-  %call62 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval58, ptr %fldval61, ptr @.str.279)
+  %call62 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval58, ptr %fldval61, ptr @.str.311)
   store ptr %call62, ptr %inner, align 8
   %objptr63 = load ptr, ptr %c, align 8
   %fld64 = getelementptr inbounds nuw %CodegenContext, ptr %objptr63, i32 0, i32 2
@@ -30751,7 +32033,7 @@ if.else83:                                        ; preds = %if.end
 
 define void @gen_stmt(ptr %0, ptr %1) {
 entry:
-  %v99 = alloca ptr, align 8
+  %v93 = alloca ptr, align 8
   %has_val = alloca i1, align 1
   %r = alloca ptr, align 8
   %v = alloca ptr, align 8
@@ -30786,9 +32068,9 @@ if.else:                                          ; preds = %entry
   br label %if.end
 
 if.end3:                                          ; preds = %if.else6
-  %k77 = load i32, ptr %k, align 4
-  %eq78 = icmp eq i32 %k77, 0
-  br i1 %eq78, label %if.then79, label %if.else80
+  %k71 = load i32, ptr %k, align 4
+  %eq72 = icmp eq i32 %k71, 0
+  br i1 %eq72, label %if.then73, label %if.else74
 
 if.then5:                                         ; preds = %if.end
   %objptr7 = load ptr, ptr %st, align 8
@@ -30860,232 +32142,214 @@ if.else41:                                        ; preds = %if.then5
   br label %if.end35
 
 if.end55:                                         ; preds = %if.else59, %if.then58
-  %objptr70 = load ptr, ptr %c, align 8
-  %fld71 = getelementptr inbounds nuw %CodegenContext, ptr %objptr70, i32 0, i32 2
-  %fldval72 = load ptr, ptr %fld71, align 8
-  %v73 = load ptr, ptr %v, align 8
-  %slot74 = load ptr, ptr %slot, align 8
-  %call75 = call ptr @LLVMBuildStore(ptr %fldval72, ptr %v73, ptr %slot74)
+  %objptr64 = load ptr, ptr %c, align 8
+  %fld65 = getelementptr inbounds nuw %CodegenContext, ptr %objptr64, i32 0, i32 2
+  %fldval66 = load ptr, ptr %fld65, align 8
+  %v67 = load ptr, ptr %v, align 8
+  %slot68 = load ptr, ptr %slot, align 8
+  %call69 = call ptr @LLVMBuildStore(ptr %fldval66, ptr %v67, ptr %slot68)
   br label %if.end35
 
 if.then58:                                        ; preds = %if.then40
-  %nm60 = load ptr, ptr %nm, align 8
-  %objptr61 = load ptr, ptr %d, align 8
-  %fld62 = getelementptr inbounds nuw %ASTNode, ptr %objptr61, i32 0, i32 1
-  %fld63 = getelementptr inbounds nuw %Location, ptr %fld62, i32 0, i32 0
-  %fldval64 = load i32, ptr %fld63, align 4
-  %objptr65 = load ptr, ptr %d, align 8
-  %fld66 = getelementptr inbounds nuw %ASTNode, ptr %objptr65, i32 0, i32 1
-  %fld67 = getelementptr inbounds nuw %Location, ptr %fld66, i32 0, i32 1
-  %fldval68 = load i32, ptr %fld67, align 4
-  %call69 = call i32 (ptr, ...) @printf(ptr @.str.280, ptr %nm60, i32 %fldval64, i32 %fldval68)
-  call void @exit(i32 1)
+  %objptr60 = load ptr, ptr %d, align 8
+  %fld61 = getelementptr inbounds nuw %ASTNode, ptr %objptr60, i32 0, i32 1
+  %fldval62 = load %Location, ptr %fld61, align 8
+  %nm63 = load ptr, ptr %nm, align 8
+  call void @diag_fatal(%Location %fldval62, ptr @.str.312, ptr %nm63, ptr @.str.72)
   br label %if.end55
 
 if.else59:                                        ; preds = %if.then40
   br label %if.end55
 
-if.end76:                                         ; preds = %if.else80
-  %k125 = load i32, ptr %k, align 4
-  %eq126 = icmp eq i32 %k125, 1
-  br i1 %eq126, label %if.then127, label %if.else128
+if.end70:                                         ; preds = %if.else74
+  %k119 = load i32, ptr %k, align 4
+  %eq120 = icmp eq i32 %k119, 1
+  br i1 %eq120, label %if.then121, label %if.else122
 
-if.then79:                                        ; preds = %if.end3
-  %objptr81 = load ptr, ptr %st, align 8
-  %fld82 = getelementptr inbounds nuw %ASTNode, ptr %objptr81, i32 0, i32 2
-  %fld83 = getelementptr inbounds nuw %N_Stmt, ptr %fld82, i32 0, i32 1
-  %fldval84 = load ptr, ptr %fld83, align 8
-  store ptr %fldval84, ptr %r, align 8
-  %objptr85 = load ptr, ptr %r, align 8
-  %fld86 = getelementptr inbounds nuw %ASTNode, ptr %objptr85, i32 0, i32 2
-  %fld87 = getelementptr inbounds nuw %N_Ret, ptr %fld86, i32 0, i32 0
-  %fldval88 = load ptr, ptr %fld87, align 8
-  %ne89 = icmp ne ptr %fldval88, null
-  store i1 %ne89, ptr %has_val, align 1
-  %has_val91 = load i1, ptr %has_val, align 1
-  br i1 %has_val91, label %sc.rhs, label %sc.end
+if.then73:                                        ; preds = %if.end3
+  %objptr75 = load ptr, ptr %st, align 8
+  %fld76 = getelementptr inbounds nuw %ASTNode, ptr %objptr75, i32 0, i32 2
+  %fld77 = getelementptr inbounds nuw %N_Stmt, ptr %fld76, i32 0, i32 1
+  %fldval78 = load ptr, ptr %fld77, align 8
+  store ptr %fldval78, ptr %r, align 8
+  %objptr79 = load ptr, ptr %r, align 8
+  %fld80 = getelementptr inbounds nuw %ASTNode, ptr %objptr79, i32 0, i32 2
+  %fld81 = getelementptr inbounds nuw %N_Ret, ptr %fld80, i32 0, i32 0
+  %fldval82 = load ptr, ptr %fld81, align 8
+  %ne83 = icmp ne ptr %fldval82, null
+  store i1 %ne83, ptr %has_val, align 1
+  %has_val85 = load i1, ptr %has_val, align 1
+  br i1 %has_val85, label %sc.rhs, label %sc.end
 
-if.else80:                                        ; preds = %if.end3
-  br label %if.end76
+if.else74:                                        ; preds = %if.end3
+  br label %if.end70
 
-if.end90:                                         ; preds = %if.else98, %if.then97
+if.end84:                                         ; preds = %if.else92, %if.then91
   ret void
 
-sc.rhs:                                           ; preds = %if.then79
-  %objptr92 = load ptr, ptr %c, align 8
-  %fld93 = getelementptr inbounds nuw %CodegenContext, ptr %objptr92, i32 0, i32 9
-  %fldval94 = load ptr, ptr %fld93, align 8
-  %call95 = call i32 @LLVMGetTypeKind(ptr %fldval94)
+sc.rhs:                                           ; preds = %if.then73
+  %objptr86 = load ptr, ptr %c, align 8
+  %fld87 = getelementptr inbounds nuw %CodegenContext, ptr %objptr86, i32 0, i32 9
+  %fldval88 = load ptr, ptr %fld87, align 8
+  %call89 = call i32 @LLVMGetTypeKind(ptr %fldval88)
   %LLVMVoidTypeKind = load i32, ptr @LLVMVoidTypeKind, align 4
-  %ne96 = icmp ne i32 %call95, %LLVMVoidTypeKind
+  %ne90 = icmp ne i32 %call89, %LLVMVoidTypeKind
   br label %sc.end
 
-sc.end:                                           ; preds = %sc.rhs, %if.then79
-  %sc = phi i1 [ false, %if.then79 ], [ %ne96, %sc.rhs ]
-  br i1 %sc, label %if.then97, label %if.else98
+sc.end:                                           ; preds = %sc.rhs, %if.then73
+  %sc = phi i1 [ false, %if.then73 ], [ %ne90, %sc.rhs ]
+  br i1 %sc, label %if.then91, label %if.else92
 
-if.then97:                                        ; preds = %sc.end
-  %c100 = load ptr, ptr %c, align 8
-  %c101 = load ptr, ptr %c, align 8
-  %objptr102 = load ptr, ptr %r, align 8
-  %fld103 = getelementptr inbounds nuw %ASTNode, ptr %objptr102, i32 0, i32 2
-  %fld104 = getelementptr inbounds nuw %N_Ret, ptr %fld103, i32 0, i32 0
-  %fldval105 = load ptr, ptr %fld104, align 8
-  %call106 = call ptr @gen_expr(ptr %c101, ptr %fldval105)
-  %objptr107 = load ptr, ptr %c, align 8
-  %fld108 = getelementptr inbounds nuw %CodegenContext, ptr %objptr107, i32 0, i32 9
-  %fldval109 = load ptr, ptr %fld108, align 8
-  %objptr110 = load ptr, ptr %r, align 8
-  %fld111 = getelementptr inbounds nuw %ASTNode, ptr %objptr110, i32 0, i32 2
-  %fld112 = getelementptr inbounds nuw %N_Ret, ptr %fld111, i32 0, i32 0
-  %fldval113 = load ptr, ptr %fld112, align 8
-  %call114 = call ptr @coerce_e(ptr %c100, ptr %call106, ptr %fldval109, ptr %fldval113)
-  store ptr %call114, ptr %v99, align 8
-  %objptr115 = load ptr, ptr %c, align 8
-  %fld116 = getelementptr inbounds nuw %CodegenContext, ptr %objptr115, i32 0, i32 2
-  %fldval117 = load ptr, ptr %fld116, align 8
-  %v118 = load ptr, ptr %v99, align 8
-  %call119 = call ptr @LLVMBuildRet(ptr %fldval117, ptr %v118)
-  br label %if.end90
+if.then91:                                        ; preds = %sc.end
+  %c94 = load ptr, ptr %c, align 8
+  %c95 = load ptr, ptr %c, align 8
+  %objptr96 = load ptr, ptr %r, align 8
+  %fld97 = getelementptr inbounds nuw %ASTNode, ptr %objptr96, i32 0, i32 2
+  %fld98 = getelementptr inbounds nuw %N_Ret, ptr %fld97, i32 0, i32 0
+  %fldval99 = load ptr, ptr %fld98, align 8
+  %call100 = call ptr @gen_expr(ptr %c95, ptr %fldval99)
+  %objptr101 = load ptr, ptr %c, align 8
+  %fld102 = getelementptr inbounds nuw %CodegenContext, ptr %objptr101, i32 0, i32 9
+  %fldval103 = load ptr, ptr %fld102, align 8
+  %objptr104 = load ptr, ptr %r, align 8
+  %fld105 = getelementptr inbounds nuw %ASTNode, ptr %objptr104, i32 0, i32 2
+  %fld106 = getelementptr inbounds nuw %N_Ret, ptr %fld105, i32 0, i32 0
+  %fldval107 = load ptr, ptr %fld106, align 8
+  %call108 = call ptr @coerce_e(ptr %c94, ptr %call100, ptr %fldval103, ptr %fldval107)
+  store ptr %call108, ptr %v93, align 8
+  %objptr109 = load ptr, ptr %c, align 8
+  %fld110 = getelementptr inbounds nuw %CodegenContext, ptr %objptr109, i32 0, i32 2
+  %fldval111 = load ptr, ptr %fld110, align 8
+  %v112 = load ptr, ptr %v93, align 8
+  %call113 = call ptr @LLVMBuildRet(ptr %fldval111, ptr %v112)
+  br label %if.end84
 
-if.else98:                                        ; preds = %sc.end
-  %objptr120 = load ptr, ptr %c, align 8
-  %fld121 = getelementptr inbounds nuw %CodegenContext, ptr %objptr120, i32 0, i32 2
-  %fldval122 = load ptr, ptr %fld121, align 8
-  %call123 = call ptr @LLVMBuildRetVoid(ptr %fldval122)
-  br label %if.end90
+if.else92:                                        ; preds = %sc.end
+  %objptr114 = load ptr, ptr %c, align 8
+  %fld115 = getelementptr inbounds nuw %CodegenContext, ptr %objptr114, i32 0, i32 2
+  %fldval116 = load ptr, ptr %fld115, align 8
+  %call117 = call ptr @LLVMBuildRetVoid(ptr %fldval116)
+  br label %if.end84
 
-if.end124:                                        ; preds = %if.else128
-  %k153 = load i32, ptr %k, align 4
-  %eq154 = icmp eq i32 %k153, 2
-  br i1 %eq154, label %if.then155, label %if.else156
+if.end118:                                        ; preds = %if.else122
+  %k141 = load i32, ptr %k, align 4
+  %eq142 = icmp eq i32 %k141, 2
+  br i1 %eq142, label %if.then143, label %if.else144
 
-if.then127:                                       ; preds = %if.end76
-  %objptr130 = load ptr, ptr %c, align 8
-  %fld131 = getelementptr inbounds nuw %CodegenContext, ptr %objptr130, i32 0, i32 10
-  %fldval132 = load ptr, ptr %fld131, align 8
-  %eq133 = icmp eq ptr %fldval132, null
-  br i1 %eq133, label %if.then134, label %if.else135
+if.then121:                                       ; preds = %if.end70
+  %objptr124 = load ptr, ptr %c, align 8
+  %fld125 = getelementptr inbounds nuw %CodegenContext, ptr %objptr124, i32 0, i32 10
+  %fldval126 = load ptr, ptr %fld125, align 8
+  %eq127 = icmp eq ptr %fldval126, null
+  br i1 %eq127, label %if.then128, label %if.else129
 
-if.else128:                                       ; preds = %if.end76
-  br label %if.end124
+if.else122:                                       ; preds = %if.end70
+  br label %if.end118
 
-if.end129:                                        ; preds = %if.else135, %if.then134
-  %objptr145 = load ptr, ptr %c, align 8
-  %fld146 = getelementptr inbounds nuw %CodegenContext, ptr %objptr145, i32 0, i32 2
-  %fldval147 = load ptr, ptr %fld146, align 8
-  %objptr148 = load ptr, ptr %c, align 8
-  %fld149 = getelementptr inbounds nuw %CodegenContext, ptr %objptr148, i32 0, i32 10
-  %fldval150 = load ptr, ptr %fld149, align 8
-  %call151 = call ptr @LLVMBuildBr(ptr %fldval147, ptr %fldval150)
+if.end123:                                        ; preds = %if.else129, %if.then128
+  %objptr133 = load ptr, ptr %c, align 8
+  %fld134 = getelementptr inbounds nuw %CodegenContext, ptr %objptr133, i32 0, i32 2
+  %fldval135 = load ptr, ptr %fld134, align 8
+  %objptr136 = load ptr, ptr %c, align 8
+  %fld137 = getelementptr inbounds nuw %CodegenContext, ptr %objptr136, i32 0, i32 10
+  %fldval138 = load ptr, ptr %fld137, align 8
+  %call139 = call ptr @LLVMBuildBr(ptr %fldval135, ptr %fldval138)
   ret void
 
-if.then134:                                       ; preds = %if.then127
-  %objptr136 = load ptr, ptr %st, align 8
-  %fld137 = getelementptr inbounds nuw %ASTNode, ptr %objptr136, i32 0, i32 1
-  %fld138 = getelementptr inbounds nuw %Location, ptr %fld137, i32 0, i32 0
-  %fldval139 = load i32, ptr %fld138, align 4
-  %objptr140 = load ptr, ptr %st, align 8
-  %fld141 = getelementptr inbounds nuw %ASTNode, ptr %objptr140, i32 0, i32 1
-  %fld142 = getelementptr inbounds nuw %Location, ptr %fld141, i32 0, i32 1
-  %fldval143 = load i32, ptr %fld142, align 4
-  %call144 = call i32 (ptr, ...) @printf(ptr @.str.281, i32 %fldval139, i32 %fldval143)
-  call void @exit(i32 1)
-  br label %if.end129
+if.then128:                                       ; preds = %if.then121
+  %objptr130 = load ptr, ptr %st, align 8
+  %fld131 = getelementptr inbounds nuw %ASTNode, ptr %objptr130, i32 0, i32 1
+  %fldval132 = load %Location, ptr %fld131, align 8
+  call void @diag_fatal(%Location %fldval132, ptr @.str.313, ptr @.str.72, ptr @.str.72)
+  br label %if.end123
 
-if.else135:                                       ; preds = %if.then127
-  br label %if.end129
+if.else129:                                       ; preds = %if.then121
+  br label %if.end123
 
-if.end152:                                        ; preds = %if.else156
-  %k181 = load i32, ptr %k, align 4
-  %eq182 = icmp eq i32 %k181, 3
-  br i1 %eq182, label %if.then183, label %if.else184
+if.end140:                                        ; preds = %if.else144
+  %k163 = load i32, ptr %k, align 4
+  %eq164 = icmp eq i32 %k163, 3
+  br i1 %eq164, label %if.then165, label %if.else166
 
-if.then155:                                       ; preds = %if.end124
+if.then143:                                       ; preds = %if.end118
+  %objptr146 = load ptr, ptr %c, align 8
+  %fld147 = getelementptr inbounds nuw %CodegenContext, ptr %objptr146, i32 0, i32 11
+  %fldval148 = load ptr, ptr %fld147, align 8
+  %eq149 = icmp eq ptr %fldval148, null
+  br i1 %eq149, label %if.then150, label %if.else151
+
+if.else144:                                       ; preds = %if.end118
+  br label %if.end140
+
+if.end145:                                        ; preds = %if.else151, %if.then150
+  %objptr155 = load ptr, ptr %c, align 8
+  %fld156 = getelementptr inbounds nuw %CodegenContext, ptr %objptr155, i32 0, i32 2
+  %fldval157 = load ptr, ptr %fld156, align 8
   %objptr158 = load ptr, ptr %c, align 8
   %fld159 = getelementptr inbounds nuw %CodegenContext, ptr %objptr158, i32 0, i32 11
   %fldval160 = load ptr, ptr %fld159, align 8
-  %eq161 = icmp eq ptr %fldval160, null
-  br i1 %eq161, label %if.then162, label %if.else163
-
-if.else156:                                       ; preds = %if.end124
-  br label %if.end152
-
-if.end157:                                        ; preds = %if.else163, %if.then162
-  %objptr173 = load ptr, ptr %c, align 8
-  %fld174 = getelementptr inbounds nuw %CodegenContext, ptr %objptr173, i32 0, i32 2
-  %fldval175 = load ptr, ptr %fld174, align 8
-  %objptr176 = load ptr, ptr %c, align 8
-  %fld177 = getelementptr inbounds nuw %CodegenContext, ptr %objptr176, i32 0, i32 11
-  %fldval178 = load ptr, ptr %fld177, align 8
-  %call179 = call ptr @LLVMBuildBr(ptr %fldval175, ptr %fldval178)
+  %call161 = call ptr @LLVMBuildBr(ptr %fldval157, ptr %fldval160)
   ret void
 
-if.then162:                                       ; preds = %if.then155
-  %objptr164 = load ptr, ptr %st, align 8
-  %fld165 = getelementptr inbounds nuw %ASTNode, ptr %objptr164, i32 0, i32 1
-  %fld166 = getelementptr inbounds nuw %Location, ptr %fld165, i32 0, i32 0
-  %fldval167 = load i32, ptr %fld166, align 4
+if.then150:                                       ; preds = %if.then143
+  %objptr152 = load ptr, ptr %st, align 8
+  %fld153 = getelementptr inbounds nuw %ASTNode, ptr %objptr152, i32 0, i32 1
+  %fldval154 = load %Location, ptr %fld153, align 8
+  call void @diag_fatal(%Location %fldval154, ptr @.str.314, ptr @.str.72, ptr @.str.72)
+  br label %if.end145
+
+if.else151:                                       ; preds = %if.then143
+  br label %if.end145
+
+if.end162:                                        ; preds = %if.else166
+  %k173 = load i32, ptr %k, align 4
+  %eq174 = icmp eq i32 %k173, 4
+  br i1 %eq174, label %if.then175, label %if.else176
+
+if.then165:                                       ; preds = %if.end140
+  %c167 = load ptr, ptr %c, align 8
   %objptr168 = load ptr, ptr %st, align 8
-  %fld169 = getelementptr inbounds nuw %ASTNode, ptr %objptr168, i32 0, i32 1
-  %fld170 = getelementptr inbounds nuw %Location, ptr %fld169, i32 0, i32 1
-  %fldval171 = load i32, ptr %fld170, align 4
-  %call172 = call i32 (ptr, ...) @printf(ptr @.str.282, i32 %fldval167, i32 %fldval171)
-  call void @exit(i32 1)
-  br label %if.end157
-
-if.else163:                                       ; preds = %if.then155
-  br label %if.end157
-
-if.end180:                                        ; preds = %if.else184
-  %k191 = load i32, ptr %k, align 4
-  %eq192 = icmp eq i32 %k191, 4
-  br i1 %eq192, label %if.then193, label %if.else194
-
-if.then183:                                       ; preds = %if.end152
-  %c185 = load ptr, ptr %c, align 8
-  %objptr186 = load ptr, ptr %st, align 8
-  %fld187 = getelementptr inbounds nuw %ASTNode, ptr %objptr186, i32 0, i32 2
-  %fld188 = getelementptr inbounds nuw %N_Stmt, ptr %fld187, i32 0, i32 1
-  %fldval189 = load ptr, ptr %fld188, align 8
-  call void @gen_cond(ptr %c185, ptr %fldval189)
+  %fld169 = getelementptr inbounds nuw %ASTNode, ptr %objptr168, i32 0, i32 2
+  %fld170 = getelementptr inbounds nuw %N_Stmt, ptr %fld169, i32 0, i32 1
+  %fldval171 = load ptr, ptr %fld170, align 8
+  call void @gen_cond(ptr %c167, ptr %fldval171)
   ret void
 
-if.else184:                                       ; preds = %if.end152
-  br label %if.end180
+if.else166:                                       ; preds = %if.end140
+  br label %if.end162
 
-if.end190:                                        ; preds = %if.else194
-  %k201 = load i32, ptr %k, align 4
-  %eq202 = icmp eq i32 %k201, 6
-  br i1 %eq202, label %if.then203, label %if.else204
+if.end172:                                        ; preds = %if.else176
+  %k183 = load i32, ptr %k, align 4
+  %eq184 = icmp eq i32 %k183, 6
+  br i1 %eq184, label %if.then185, label %if.else186
 
-if.then193:                                       ; preds = %if.end180
-  %c195 = load ptr, ptr %c, align 8
-  %objptr196 = load ptr, ptr %st, align 8
-  %fld197 = getelementptr inbounds nuw %ASTNode, ptr %objptr196, i32 0, i32 2
-  %fld198 = getelementptr inbounds nuw %N_Stmt, ptr %fld197, i32 0, i32 1
-  %fldval199 = load ptr, ptr %fld198, align 8
-  call void @gen_loop(ptr %c195, ptr %fldval199)
+if.then175:                                       ; preds = %if.end162
+  %c177 = load ptr, ptr %c, align 8
+  %objptr178 = load ptr, ptr %st, align 8
+  %fld179 = getelementptr inbounds nuw %ASTNode, ptr %objptr178, i32 0, i32 2
+  %fld180 = getelementptr inbounds nuw %N_Stmt, ptr %fld179, i32 0, i32 1
+  %fldval181 = load ptr, ptr %fld180, align 8
+  call void @gen_loop(ptr %c177, ptr %fldval181)
   ret void
 
-if.else194:                                       ; preds = %if.end180
-  br label %if.end190
+if.else176:                                       ; preds = %if.end162
+  br label %if.end172
 
-if.end200:                                        ; preds = %if.else204
-  call void @cg_fatal(ptr @.str.283)
+if.end182:                                        ; preds = %if.else186
+  call void @cg_fatal(ptr @.str.315)
   ret void
 
-if.then203:                                       ; preds = %if.end190
-  %c205 = load ptr, ptr %c, align 8
-  %objptr206 = load ptr, ptr %st, align 8
-  %fld207 = getelementptr inbounds nuw %ASTNode, ptr %objptr206, i32 0, i32 2
-  %fld208 = getelementptr inbounds nuw %N_Stmt, ptr %fld207, i32 0, i32 1
-  %fldval209 = load ptr, ptr %fld208, align 8
-  %call210 = call ptr @gen_expr(ptr %c205, ptr %fldval209)
+if.then185:                                       ; preds = %if.end172
+  %c187 = load ptr, ptr %c, align 8
+  %objptr188 = load ptr, ptr %st, align 8
+  %fld189 = getelementptr inbounds nuw %ASTNode, ptr %objptr188, i32 0, i32 2
+  %fld190 = getelementptr inbounds nuw %N_Stmt, ptr %fld189, i32 0, i32 1
+  %fldval191 = load ptr, ptr %fld190, align 8
+  %call192 = call ptr @gen_expr(ptr %c187, ptr %fldval191)
   ret void
 
-if.else204:                                       ; preds = %if.end190
-  br label %if.end200
+if.else186:                                       ; preds = %if.end172
+  br label %if.end182
 }
 
 define ptr @gen_fn_proto(ptr %0, ptr %1) {
@@ -31256,7 +32520,7 @@ entry:
   %fld17 = getelementptr inbounds nuw %CodegenContext, ptr %objptr16, i32 0, i32 0
   %fldval18 = load ptr, ptr %fld17, align 8
   %fn19 = load ptr, ptr %fn, align 8
-  %call20 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval18, ptr %fn19, ptr @.str.284)
+  %call20 = call ptr @LLVMAppendBasicBlockInContext(ptr %fldval18, ptr %fn19, ptr @.str.316)
   store ptr %call20, ptr %entry15, align 8
   %objptr21 = load ptr, ptr %c, align 8
   %fld22 = getelementptr inbounds nuw %CodegenContext, ptr %objptr21, i32 0, i32 2
@@ -31635,7 +32899,7 @@ if.end67:                                         ; preds = %if.else71, %if.then
   br i1 %fldval75, label %if.then76, label %if.else77
 
 if.then70:                                        ; preds = %if.then57
-  call void @cg_fatal(ptr @.str.285)
+  call void @cg_fatal(ptr @.str.317)
   br label %if.end67
 
 if.else71:                                        ; preds = %if.then57
@@ -32089,18 +33353,18 @@ entry:
   br i1 %ne, label %if.then, label %if.else
 
 if.end:                                           ; preds = %if.else, %if.end26
-  %g164 = load ptr, ptr %g, align 8
-  %init165 = load ptr, ptr %init, align 8
-  call void @LLVMSetInitializer(ptr %g164, ptr %init165)
-  %c166 = load ptr, ptr %c, align 8
-  %nm167 = load ptr, ptr %nm, align 8
-  %g168 = load ptr, ptr %g, align 8
-  %ty169 = load ptr, ptr %ty, align 8
-  %objptr170 = load ptr, ptr %d, align 8
-  %fld171 = getelementptr inbounds nuw %ASTNode, ptr %objptr170, i32 0, i32 2
-  %fld172 = getelementptr inbounds nuw %N_VarDecl, ptr %fld171, i32 0, i32 1
-  %fldval173 = load ptr, ptr %fld172, align 8
-  call void @scope_define(ptr %c166, ptr %nm167, ptr %g168, ptr %ty169, ptr %fldval173)
+  %g152 = load ptr, ptr %g, align 8
+  %init153 = load ptr, ptr %init, align 8
+  call void @LLVMSetInitializer(ptr %g152, ptr %init153)
+  %c154 = load ptr, ptr %c, align 8
+  %nm155 = load ptr, ptr %nm, align 8
+  %g156 = load ptr, ptr %g, align 8
+  %ty157 = load ptr, ptr %ty, align 8
+  %objptr158 = load ptr, ptr %d, align 8
+  %fld159 = getelementptr inbounds nuw %ASTNode, ptr %objptr158, i32 0, i32 2
+  %fld160 = getelementptr inbounds nuw %N_VarDecl, ptr %fld159, i32 0, i32 1
+  %fldval161 = load ptr, ptr %fld160, align 8
+  call void @scope_define(ptr %c154, ptr %nm155, ptr %g156, ptr %ty157, ptr %fldval161)
   ret void
 
 if.then:                                          ; preds = %entry
@@ -32301,34 +33565,22 @@ elif.then123:                                     ; preds = %if.else33
   br i1 %eq141, label %if.then142, label %if.else143
 
 elif.else124:                                     ; preds = %if.else33
-  %nm154 = load ptr, ptr %nm, align 8
-  %objptr155 = load ptr, ptr %d, align 8
-  %fld156 = getelementptr inbounds nuw %ASTNode, ptr %objptr155, i32 0, i32 1
-  %fld157 = getelementptr inbounds nuw %Location, ptr %fld156, i32 0, i32 0
-  %fldval158 = load i32, ptr %fld157, align 4
-  %objptr159 = load ptr, ptr %d, align 8
-  %fld160 = getelementptr inbounds nuw %ASTNode, ptr %objptr159, i32 0, i32 1
-  %fld161 = getelementptr inbounds nuw %Location, ptr %fld160, i32 0, i32 1
-  %fldval162 = load i32, ptr %fld161, align 4
-  %call163 = call i32 (ptr, ...) @printf(ptr @.str.286, ptr %nm154, i32 %fldval158, i32 %fldval162)
-  call void @exit(i32 1)
+  %objptr148 = load ptr, ptr %d, align 8
+  %fld149 = getelementptr inbounds nuw %ASTNode, ptr %objptr148, i32 0, i32 1
+  %fldval150 = load %Location, ptr %fld149, align 8
+  %nm151 = load ptr, ptr %nm, align 8
+  call void @diag_fatal(%Location %fldval150, ptr @.str.318, ptr %nm151, ptr @.str.72)
   br label %if.end26
 
 if.end138:                                        ; preds = %if.else143, %if.then142
   br label %if.end26
 
 if.then142:                                       ; preds = %elif.then123
-  %nm144 = load ptr, ptr %nm, align 8
-  %objptr145 = load ptr, ptr %d, align 8
-  %fld146 = getelementptr inbounds nuw %ASTNode, ptr %objptr145, i32 0, i32 1
-  %fld147 = getelementptr inbounds nuw %Location, ptr %fld146, i32 0, i32 0
-  %fldval148 = load i32, ptr %fld147, align 4
-  %objptr149 = load ptr, ptr %d, align 8
-  %fld150 = getelementptr inbounds nuw %ASTNode, ptr %objptr149, i32 0, i32 1
-  %fld151 = getelementptr inbounds nuw %Location, ptr %fld150, i32 0, i32 1
-  %fldval152 = load i32, ptr %fld151, align 4
-  %call153 = call i32 (ptr, ...) @printf(ptr @.str.286, ptr %nm144, i32 %fldval148, i32 %fldval152)
-  call void @exit(i32 1)
+  %objptr144 = load ptr, ptr %d, align 8
+  %fld145 = getelementptr inbounds nuw %ASTNode, ptr %objptr144, i32 0, i32 1
+  %fldval146 = load %Location, ptr %fld145, align 8
+  %nm147 = load ptr, ptr %nm, align 8
+  call void @diag_fatal(%Location %fldval146, ptr @.str.318, ptr %nm147, ptr @.str.72)
   br label %if.end138
 
 if.else143:                                       ; preds = %elif.then123
@@ -32425,7 +33677,7 @@ if.then:                                          ; preds = %entry
   %LLVMCodeGenLevelDefault = load i32, ptr @LLVMCodeGenLevelDefault, align 4
   %LLVMRelocDefault = load i32, ptr @LLVMRelocDefault, align 4
   %LLVMCodeModelDefault = load i32, ptr @LLVMCodeModelDefault, align 4
-  %call44 = call ptr @LLVMCreateTargetMachine(ptr %target42, ptr %triple43, ptr @.str.287, ptr @.str.117, i32 %LLVMCodeGenLevelDefault, i32 %LLVMRelocDefault, i32 %LLVMCodeModelDefault)
+  %call44 = call ptr @LLVMCreateTargetMachine(ptr %target42, ptr %triple43, ptr @.str.319, ptr @.str.72, i32 %LLVMCodeGenLevelDefault, i32 %LLVMRelocDefault, i32 %LLVMCodeModelDefault)
   store ptr %call44, ptr %tm, align 8
   %tm45 = load ptr, ptr %tm, align 8
   %call46 = call ptr @LLVMCreateTargetDataLayout(ptr %tm45)
@@ -32733,7 +33985,7 @@ if.end:                                           ; preds = %if.else, %if.end2
   br i1 %ne15, label %if.then16, label %if.else17
 
 if.then:                                          ; preds = %entry
-  %call1 = call i32 (ptr, ...) @printf(ptr @.str.288)
+  %call1 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.320)
   %err3 = load ptr, ptr %err, align 8
   %ne4 = icmp ne ptr %err3, null
   br i1 %ne4, label %if.then5, label %if.else6
@@ -32747,7 +33999,7 @@ if.end2:                                          ; preds = %if.else6, %if.then5
 
 if.then5:                                         ; preds = %if.then
   %err7 = load ptr, ptr %err, align 8
-  %call8 = call i32 (ptr, ...) @printf(ptr @.str.289, ptr %err7)
+  %call8 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.321, ptr %err7)
   br label %if.end2
 
 if.else6:                                         ; preds = %if.then
@@ -32758,7 +34010,7 @@ if.end9:                                          ; preds = %if.else17, %if.then
 
 if.then16:                                        ; preds = %if.end
   %filename18 = load ptr, ptr %filename, align 8
-  %call19 = call i32 (ptr, ...) @printf(ptr @.str.290, ptr %filename18)
+  %call19 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.322, ptr %filename18)
   store i1 false, ptr %ok, align 1
   br label %if.end9
 
@@ -32811,10 +34063,10 @@ entry:
   %progname = alloca ptr, align 8
   store ptr %0, ptr %progname, align 8
   %progname1 = load ptr, ptr %progname, align 8
-  %call = call i32 (ptr, ...) @printf(ptr @.str.291, ptr %progname1)
-  %call2 = call i32 (ptr, ...) @printf(ptr @.str.292)
-  %call3 = call i32 (ptr, ...) @printf(ptr @.str.293)
-  %call4 = call i32 (ptr, ...) @printf(ptr @.str.294)
+  %call = call i32 (ptr, ...) @printf(ptr @.str.323, ptr %progname1)
+  %call2 = call i32 (ptr, ...) @printf(ptr @.str.324)
+  %call3 = call i32 (ptr, ...) @printf(ptr @.str.325)
+  %call4 = call i32 (ptr, ...) @printf(ptr @.str.326)
   ret void
 }
 
@@ -32840,7 +34092,7 @@ if.end:                                           ; preds = %if.else, %if.then
   store ptr %call5, ptr %buf, align 8
   %buf6 = load ptr, ptr %buf, align 8
   %base7 = load ptr, ptr %base, align 8
-  %call8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf6, i64 256, ptr @.str.295, ptr %base7)
+  %call8 = call i32 (ptr, i64, ptr, ...) @snprintf(ptr %buf6, i64 256, ptr @.str.67, ptr %base7)
   %buf9 = load ptr, ptr %buf, align 8
   %call10 = call ptr @strrchr(ptr %buf9, i32 46)
   store ptr %call10, ptr %dot, align 8
@@ -32868,6 +34120,19 @@ if.then14:                                        ; preds = %if.end
 
 if.else15:                                        ; preds = %if.end
   br label %if.end11
+}
+
+define %Location @no_loc() {
+entry:
+  %l = alloca %Location, align 8
+  %fld = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 2
+  store ptr null, ptr %fld, align 8
+  %fld1 = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 0
+  store i32 0, ptr %fld1, align 4
+  %fld2 = getelementptr inbounds nuw %Location, ptr %l, i32 0, i32 1
+  store i32 0, ptr %fld2, align 4
+  %l3 = load %Location, ptr %l, align 8
+  ret %Location %l3
 }
 
 define i32 @main(i32 %0, ptr %1) {
@@ -32920,11 +34185,11 @@ while.body:                                       ; preds = %loop.body
   %deref = load ptr, ptr %padd, align 8
   store ptr %deref, ptr %a, align 8
   %a5 = load ptr, ptr %a, align 8
-  %call = call i32 @strncmp(ptr %a5, ptr @.str.296, i64 7)
+  %call = call i32 @strncmp(ptr %a5, ptr @.str.327, i64 7)
   %eq = icmp eq i32 %call, 0
   br i1 %eq, label %if.then, label %if.else
 
-if.end:                                           ; preds = %elif.else36, %elif.then35, %if.end12, %if.then
+if.end:                                           ; preds = %elif.else35, %elif.then34, %if.end12, %if.then
   %i40 = load i32, ptr %i, align 4
   %add41 = add i32 %i40, 1
   store i32 %add41, ptr %i, align 4
@@ -32938,7 +34203,7 @@ if.then:                                          ; preds = %while.body
 
 if.else:                                          ; preds = %while.body
   %a8 = load ptr, ptr %a, align 8
-  %call9 = call i32 @strcmp(ptr %a8, ptr @.str.297)
+  %call9 = call i32 @strcmp(ptr %a8, ptr @.str.328)
   %eq10 = icmp eq i32 %call9, 0
   br i1 %eq10, label %elif.then, label %elif.else
 
@@ -32952,251 +34217,255 @@ elif.then:                                        ; preds = %if.else
   br i1 %ge, label %if.then15, label %if.else16
 
 elif.else:                                        ; preds = %if.else
-  %a23 = load ptr, ptr %a, align 8
-  %call24 = call i32 @strcmp(ptr %a23, ptr @.str.299)
-  %eq25 = icmp eq i32 %call24, 0
-  br i1 %eq25, label %sc.end, label %sc.rhs
+  %a22 = load ptr, ptr %a, align 8
+  %call23 = call i32 @strcmp(ptr %a22, ptr @.str.330)
+  %eq24 = icmp eq i32 %call23, 0
+  br i1 %eq24, label %sc.end, label %sc.rhs
 
 if.end12:                                         ; preds = %if.else16
-  %argv18 = load ptr, ptr %argv, align 8
-  %i19 = load i32, ptr %i, align 4
-  %sext20 = sext i32 %i19 to i64
-  %padd21 = getelementptr ptr, ptr %argv18, i64 %sext20
-  %deref22 = load ptr, ptr %padd21, align 8
-  store ptr %deref22, ptr %out_file, align 8
+  %argv17 = load ptr, ptr %argv, align 8
+  %i18 = load i32, ptr %i, align 4
+  %sext19 = sext i32 %i18 to i64
+  %padd20 = getelementptr ptr, ptr %argv17, i64 %sext19
+  %deref21 = load ptr, ptr %padd20, align 8
+  store ptr %deref21, ptr %out_file, align 8
   br label %if.end
 
 if.then15:                                        ; preds = %elif.then
-  %call17 = call i32 (ptr, ...) @printf(ptr @.str.298)
+  call void @diag_plain(ptr @.str.329)
   ret i32 1
 
 if.else16:                                        ; preds = %elif.then
   br label %if.end12
 
 sc.rhs:                                           ; preds = %elif.else
-  %a26 = load ptr, ptr %a, align 8
-  %call27 = call i32 @strcmp(ptr %a26, ptr @.str.300)
-  %eq28 = icmp eq i32 %call27, 0
+  %a25 = load ptr, ptr %a, align 8
+  %call26 = call i32 @strcmp(ptr %a25, ptr @.str.331)
+  %eq27 = icmp eq i32 %call26, 0
   br label %sc.end
 
 sc.end:                                           ; preds = %sc.rhs, %elif.else
-  %sc = phi i1 [ true, %elif.else ], [ %eq28, %sc.rhs ]
-  br i1 %sc, label %elif.then29, label %elif.else30
+  %sc = phi i1 [ true, %elif.else ], [ %eq27, %sc.rhs ]
+  br i1 %sc, label %elif.then28, label %elif.else29
 
-elif.then29:                                      ; preds = %sc.end
-  %argv31 = load ptr, ptr %argv, align 8
-  %deref32 = load ptr, ptr %argv31, align 8
-  call void @usage(ptr %deref32)
+elif.then28:                                      ; preds = %sc.end
+  %argv30 = load ptr, ptr %argv, align 8
+  %deref31 = load ptr, ptr %argv30, align 8
+  call void @usage(ptr %deref31)
   ret i32 0
 
-elif.else30:                                      ; preds = %sc.end
-  %source33 = load ptr, ptr %source, align 8
-  %eq34 = icmp eq ptr %source33, null
-  br i1 %eq34, label %elif.then35, label %elif.else36
+elif.else29:                                      ; preds = %sc.end
+  %source32 = load ptr, ptr %source, align 8
+  %eq33 = icmp eq ptr %source32, null
+  br i1 %eq33, label %elif.then34, label %elif.else35
 
-elif.then35:                                      ; preds = %elif.else30
-  %a37 = load ptr, ptr %a, align 8
-  store ptr %a37, ptr %source, align 8
+elif.then34:                                      ; preds = %elif.else29
+  %a36 = load ptr, ptr %a, align 8
+  store ptr %a36, ptr %source, align 8
   br label %if.end
 
-elif.else36:                                      ; preds = %elif.else30
-  %source38 = load ptr, ptr %source, align 8
-  %call39 = call i32 (ptr, ...) @printf(ptr @.str.301, ptr %source38)
+elif.else35:                                      ; preds = %elif.else29
+  %source37 = load ptr, ptr %source, align 8
+  %a38 = load ptr, ptr %a, align 8
+  %call39 = call i32 (i32, ptr, ...) @dprintf(i32 2, ptr @.str.332, ptr %source37, ptr %a38)
   br label %if.end
 
 if.end42:                                         ; preds = %if.else46
   store i1 true, ptr %emit_ir, align 1
-  %emit51 = load ptr, ptr %emit, align 8
-  %ne = icmp ne ptr %emit51, null
-  br i1 %ne, label %if.then52, label %if.else53
+  %emit50 = load ptr, ptr %emit, align 8
+  %ne = icmp ne ptr %emit50, null
+  br i1 %ne, label %if.then51, label %if.else52
 
 if.then45:                                        ; preds = %loop.end
-  %call47 = call i32 (ptr, ...) @printf(ptr @.str.302)
-  %argv48 = load ptr, ptr %argv, align 8
-  %deref49 = load ptr, ptr %argv48, align 8
-  call void @usage(ptr %deref49)
+  call void @diag_plain(ptr @.str.333)
+  %argv47 = load ptr, ptr %argv, align 8
+  %deref48 = load ptr, ptr %argv47, align 8
+  call void @usage(ptr %deref48)
   ret i32 1
 
 if.else46:                                        ; preds = %loop.end
   br label %if.end42
 
-if.end50:                                         ; preds = %if.else53, %if.end54
-  %source67 = load ptr, ptr %source, align 8
-  %call68 = call ptr @realpath(ptr %source67, ptr null)
-  store ptr %call68, ptr %full, align 8
-  %full70 = load ptr, ptr %full, align 8
-  %eq71 = icmp eq ptr %full70, null
-  br i1 %eq71, label %if.then72, label %if.else73
+if.end49:                                         ; preds = %if.else52, %if.end53
+  %source66 = load ptr, ptr %source, align 8
+  %call67 = call ptr @realpath(ptr %source66, ptr null)
+  store ptr %call67, ptr %full, align 8
+  %full69 = load ptr, ptr %full, align 8
+  %eq70 = icmp eq ptr %full69, null
+  br i1 %eq70, label %if.then71, label %if.else72
 
-if.then52:                                        ; preds = %if.end42
-  %emit55 = load ptr, ptr %emit, align 8
-  %call56 = call i32 @strcmp(ptr %emit55, ptr @.str.303)
-  %eq57 = icmp eq i32 %call56, 0
-  br i1 %eq57, label %if.then58, label %if.else59
+if.then51:                                        ; preds = %if.end42
+  %emit54 = load ptr, ptr %emit, align 8
+  %call55 = call i32 @strcmp(ptr %emit54, ptr @.str.334)
+  %eq56 = icmp eq i32 %call55, 0
+  br i1 %eq56, label %if.then57, label %if.else58
 
-if.else53:                                        ; preds = %if.end42
-  br label %if.end50
+if.else52:                                        ; preds = %if.end42
+  br label %if.end49
 
-if.end54:                                         ; preds = %elif.else64, %if.then58
-  br label %if.end50
+if.end53:                                         ; preds = %elif.else63, %if.then57
+  br label %if.end49
 
-if.then58:                                        ; preds = %if.then52
+if.then57:                                        ; preds = %if.then51
   store i1 false, ptr %emit_ir, align 1
-  br label %if.end54
+  br label %if.end53
 
-if.else59:                                        ; preds = %if.then52
-  %emit60 = load ptr, ptr %emit, align 8
-  %call61 = call i32 @strcmp(ptr %emit60, ptr @.str.304)
-  %ne62 = icmp ne i32 %call61, 0
-  br i1 %ne62, label %elif.then63, label %elif.else64
+if.else58:                                        ; preds = %if.then51
+  %emit59 = load ptr, ptr %emit, align 8
+  %call60 = call i32 @strcmp(ptr %emit59, ptr @.str.335)
+  %ne61 = icmp ne i32 %call60, 0
+  br i1 %ne61, label %elif.then62, label %elif.else63
 
-elif.then63:                                      ; preds = %if.else59
+elif.then62:                                      ; preds = %if.else58
+  %call64 = call %Location @no_loc()
   %emit65 = load ptr, ptr %emit, align 8
-  %call66 = call i32 (ptr, ...) @printf(ptr @.str.305, ptr %emit65)
+  call void @diag_at2(%Location %call64, ptr @.str.336, ptr %emit65, ptr @.str.72)
   ret i32 1
 
-elif.else64:                                      ; preds = %if.else59
-  br label %if.end54
+elif.else63:                                      ; preds = %if.else58
+  br label %if.end53
 
-if.end69:                                         ; preds = %if.else73
-  %full76 = load ptr, ptr %full, align 8
-  %call77 = call ptr @fopen(ptr %full76, ptr @.str.3)
-  store ptr %call77, ptr %f, align 8
-  %f79 = load ptr, ptr %f, align 8
-  %eq80 = icmp eq ptr %f79, null
-  br i1 %eq80, label %if.then81, label %if.else82
+if.end68:                                         ; preds = %if.else72
+  %full75 = load ptr, ptr %full, align 8
+  %call76 = call ptr @fopen(ptr %full75, ptr @.str.68)
+  store ptr %call76, ptr %f, align 8
+  %f78 = load ptr, ptr %f, align 8
+  %eq79 = icmp eq ptr %f78, null
+  br i1 %eq79, label %if.then80, label %if.else81
 
-if.then72:                                        ; preds = %if.end50
+if.then71:                                        ; preds = %if.end49
+  %call73 = call %Location @no_loc()
   %source74 = load ptr, ptr %source, align 8
-  %call75 = call i32 (ptr, ...) @printf(ptr @.str.306, ptr %source74)
+  call void @diag_at2(%Location %call73, ptr @.str.337, ptr %source74, ptr @.str.72)
   ret i32 1
 
-if.else73:                                        ; preds = %if.end50
-  br label %if.end69
+if.else72:                                        ; preds = %if.end49
+  br label %if.end68
 
-if.end78:                                         ; preds = %if.else82
-  %f85 = load ptr, ptr %f, align 8
-  %call86 = call i32 @str_init_file(ptr %src, ptr %f85)
-  %f87 = load ptr, ptr %f, align 8
-  %call88 = call i32 @fclose(ptr %f87)
-  %full90 = load ptr, ptr %full, align 8
-  %call91 = call i32 @preprocess(ptr %src, ptr %full90)
+if.end77:                                         ; preds = %if.else81
+  %f84 = load ptr, ptr %f, align 8
+  %call85 = call i32 @str_init_file(ptr %src, ptr %f84)
+  %f86 = load ptr, ptr %f, align 8
+  %call87 = call i32 @fclose(ptr %f86)
+  %full89 = load ptr, ptr %full, align 8
+  %source90 = load ptr, ptr %source, align 8
+  %call91 = call i32 @preprocess_named(ptr %src, ptr %full89, ptr %source90)
   %ne92 = icmp ne i32 %call91, 0
   br i1 %ne92, label %if.then93, label %if.else94
 
-if.then81:                                        ; preds = %if.end69
-  %full83 = load ptr, ptr %full, align 8
-  %call84 = call i32 (ptr, ...) @printf(ptr @.str.307, ptr %full83)
+if.then80:                                        ; preds = %if.end68
+  %call82 = call %Location @no_loc()
+  %source83 = load ptr, ptr %source, align 8
+  call void @diag_at2(%Location %call82, ptr @.str.338, ptr %source83, ptr @.str.72)
   ret i32 1
 
-if.else82:                                        ; preds = %if.end69
-  br label %if.end78
+if.else81:                                        ; preds = %if.end68
+  br label %if.end77
 
-if.end89:                                         ; preds = %if.else94
+if.end88:                                         ; preds = %if.else94
   call void @ast_init(ptr %ast)
-  call void @parse_unit(ptr %ast, ptr %src)
+  %source95 = load ptr, ptr %source, align 8
+  call void @parse_file(ptr %ast, ptr %src, ptr %source95)
   call void @generics_pass(ptr %ast)
   call void @meta_init(ptr %meta)
   call void @meta_pass(ptr %meta, ptr %ast)
   call void @check_init(ptr %ck, ptr %meta)
   %fld = getelementptr inbounds nuw %AST, ptr %ast, i32 0, i32 1
   %fldval = load ptr, ptr %fld, align 8
-  %call98 = call i1 @check_unit(ptr %ck, ptr %fldval)
-  %not = icmp eq i1 %call98, false
-  br i1 %not, label %if.then99, label %if.else100
+  %call97 = call i1 @check_unit(ptr %ck, ptr %fldval)
+  %not = icmp eq i1 %call97, false
+  br i1 %not, label %if.then98, label %if.else99
 
-if.then93:                                        ; preds = %if.end78
-  %full95 = load ptr, ptr %full, align 8
-  %call96 = call i32 (ptr, ...) @printf(ptr @.str.308, ptr %full95)
+if.then93:                                        ; preds = %if.end77
   ret i32 1
 
-if.else94:                                        ; preds = %if.end78
-  br label %if.end89
+if.else94:                                        ; preds = %if.end77
+  br label %if.end88
 
-if.end97:                                         ; preds = %if.else100
+if.end96:                                         ; preds = %if.else99
   call void @check_deinit(ptr %ck)
-  %emit_ir102 = load i1, ptr %emit_ir, align 1
-  br i1 %emit_ir102, label %if.then103, label %if.else104
+  %emit_ir101 = load i1, ptr %emit_ir, align 1
+  br i1 %emit_ir101, label %if.then102, label %if.else103
 
-if.then99:                                        ; preds = %if.end89
+if.then98:                                        ; preds = %if.end88
   call void @check_deinit(ptr %ck)
   ret i32 1
 
-if.else100:                                       ; preds = %if.end89
-  br label %if.end97
+if.else99:                                        ; preds = %if.end88
+  br label %if.end96
 
-if.end101:                                        ; preds = %loop.end127, %if.end115
+if.end100:                                        ; preds = %loop.end126, %if.end114
   call void @meta_deinit(ptr %meta)
   call void @ast_deinit(ptr %ast)
   call void @str_deinit(ptr %src)
   ret i32 0
 
-if.then103:                                       ; preds = %if.end97
-  %full105 = load ptr, ptr %full, align 8
-  %call106 = call ptr @module_name_of(ptr %full105)
-  call void @codegen_init(ptr %cg, ptr %call106, ptr %meta)
-  %fld107 = getelementptr inbounds nuw %AST, ptr %ast, i32 0, i32 1
-  %fldval108 = load ptr, ptr %fld107, align 8
-  call void @codegen_generate(ptr %fldval108, ptr %cg)
-  store ptr @.str.309, ptr %dest, align 8
-  %out_file110 = load ptr, ptr %out_file, align 8
-  %ne111 = icmp ne ptr %out_file110, null
-  br i1 %ne111, label %if.then112, label %if.else113
+if.then102:                                       ; preds = %if.end96
+  %full104 = load ptr, ptr %full, align 8
+  %call105 = call ptr @module_name_of(ptr %full104)
+  call void @codegen_init(ptr %cg, ptr %call105, ptr %meta)
+  %fld106 = getelementptr inbounds nuw %AST, ptr %ast, i32 0, i32 1
+  %fldval107 = load ptr, ptr %fld106, align 8
+  call void @codegen_generate(ptr %fldval107, ptr %cg)
+  store ptr @.str.339, ptr %dest, align 8
+  %out_file109 = load ptr, ptr %out_file, align 8
+  %ne110 = icmp ne ptr %out_file109, null
+  br i1 %ne110, label %if.then111, label %if.else112
 
-if.else104:                                       ; preds = %if.end97
+if.else103:                                       ; preds = %if.end96
   store i32 0, ptr %n, align 4
-  %fld121 = getelementptr inbounds nuw %AST, ptr %ast, i32 0, i32 1
-  %objptr = load ptr, ptr %fld121, align 8
-  %fld122 = getelementptr inbounds nuw %ASTNode, ptr %objptr, i32 0, i32 2
-  %fld123 = getelementptr inbounds nuw %N_TransUnit, ptr %fld122, i32 0, i32 1
-  %fldval124 = load ptr, ptr %fld123, align 8
-  store ptr %fldval124, ptr %ts, align 8
-  br label %loop.body125
+  %fld120 = getelementptr inbounds nuw %AST, ptr %ast, i32 0, i32 1
+  %objptr = load ptr, ptr %fld120, align 8
+  %fld121 = getelementptr inbounds nuw %ASTNode, ptr %objptr, i32 0, i32 2
+  %fld122 = getelementptr inbounds nuw %N_TransUnit, ptr %fld121, i32 0, i32 1
+  %fldval123 = load ptr, ptr %fld122, align 8
+  store ptr %fldval123, ptr %ts, align 8
+  br label %loop.body124
 
-if.end109:                                        ; preds = %if.else113, %if.then112
-  %dest116 = load ptr, ptr %dest, align 8
-  %call117 = call i1 @codegen_deinit(ptr %cg, ptr %dest116)
-  %not118 = icmp eq i1 %call117, false
-  br i1 %not118, label %if.then119, label %if.else120
+if.end108:                                        ; preds = %if.else112, %if.then111
+  %dest115 = load ptr, ptr %dest, align 8
+  %call116 = call i1 @codegen_deinit(ptr %cg, ptr %dest115)
+  %not117 = icmp eq i1 %call116, false
+  br i1 %not117, label %if.then118, label %if.else119
 
-if.then112:                                       ; preds = %if.then103
-  %out_file114 = load ptr, ptr %out_file, align 8
-  store ptr %out_file114, ptr %dest, align 8
-  br label %if.end109
+if.then111:                                       ; preds = %if.then102
+  %out_file113 = load ptr, ptr %out_file, align 8
+  store ptr %out_file113, ptr %dest, align 8
+  br label %if.end108
 
-if.else113:                                       ; preds = %if.then103
-  br label %if.end109
+if.else112:                                       ; preds = %if.then102
+  br label %if.end108
 
-if.end115:                                        ; preds = %if.else120
-  br label %if.end101
+if.end114:                                        ; preds = %if.else119
+  br label %if.end100
 
-if.then119:                                       ; preds = %if.end109
+if.then118:                                       ; preds = %if.end108
   ret i32 1
 
-if.else120:                                       ; preds = %if.end109
-  br label %if.end115
+if.else119:                                       ; preds = %if.end108
+  br label %if.end114
 
-loop.body125:                                     ; preds = %loop.cont126, %if.else104
-  %ts128 = load ptr, ptr %ts, align 8
-  %ne129 = icmp ne ptr %ts128, null
-  br i1 %ne129, label %while.body130, label %loop.end127
+loop.body124:                                     ; preds = %loop.cont125, %if.else103
+  %ts127 = load ptr, ptr %ts, align 8
+  %ne128 = icmp ne ptr %ts127, null
+  br i1 %ne128, label %while.body129, label %loop.end126
 
-loop.cont126:                                     ; preds = %while.body130
-  br label %loop.body125
+loop.cont125:                                     ; preds = %while.body129
+  br label %loop.body124
 
-loop.end127:                                      ; preds = %loop.body125
-  %n137 = load i32, ptr %n, align 4
-  %call138 = call i32 (ptr, ...) @printf(ptr @.str.310, i32 %n137)
-  br label %if.end101
+loop.end126:                                      ; preds = %loop.body124
+  %n136 = load i32, ptr %n, align 4
+  %call137 = call i32 (ptr, ...) @printf(ptr @.str.340, i32 %n136)
+  br label %if.end100
 
-while.body130:                                    ; preds = %loop.body125
-  %n131 = load i32, ptr %n, align 4
-  %add132 = add i32 %n131, 1
-  store i32 %add132, ptr %n, align 4
-  %objptr133 = load ptr, ptr %ts, align 8
-  %fld134 = getelementptr inbounds nuw %ASTNode, ptr %objptr133, i32 0, i32 2
-  %fld135 = getelementptr inbounds nuw %N_TUStmt, ptr %fld134, i32 0, i32 2
-  %fldval136 = load ptr, ptr %fld135, align 8
-  store ptr %fldval136, ptr %ts, align 8
-  br label %loop.cont126
+while.body129:                                    ; preds = %loop.body124
+  %n130 = load i32, ptr %n, align 4
+  %add131 = add i32 %n130, 1
+  store i32 %add131, ptr %n, align 4
+  %objptr132 = load ptr, ptr %ts, align 8
+  %fld133 = getelementptr inbounds nuw %ASTNode, ptr %objptr132, i32 0, i32 2
+  %fld134 = getelementptr inbounds nuw %N_TUStmt, ptr %fld133, i32 0, i32 2
+  %fldval135 = load ptr, ptr %fld134, align 8
+  store ptr %fldval135, ptr %ts, align 8
+  br label %loop.cont125
 }

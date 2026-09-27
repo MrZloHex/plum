@@ -1,1 +1,2 @@
-5:12: an index must be an integer, not F64
+error: an index must be an integer, not F64
+ --> index_float.pl:5:12

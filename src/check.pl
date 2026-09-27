@@ -16,7 +16,7 @@
 
 !USES <ast.pl>
 !USES <meta.pl>
-!USES <../lib/vec.pl>
+!USES <../lib/vector.pl>
 !USES <../extern/stdio.pl>
 !USES <../extern/stdlib.pl>
 !USES <../extern/string.pl>
@@ -48,7 +48,7 @@ TYPE CkSym: STRUCT
  \_
 
 TYPE CkScope: STRUCT
- | Vec       syms
+ | Vector<CkSym> syms
  | @CkScope  parent
  \_
 
@@ -211,16 +211,13 @@ ABYSS append_sig: [ @String s | @ASTNode sig ]
  \_
 
 ABYSS ck_error: [ @Checker c | @ASTNode at | @C1 msg ]
- | (printf)[ "%d:%d: %s\n" | at.loc.line | at.loc.col | msg ]
+ | (diag_at)[ at.loc | msg ]
  | c.errors = c.errors + 1
  | RET
  \_
 
 ABYSS ck_error2: [ @Checker c | @ASTNode at | @C1 fmt | @C1 a | @C1 b ]
- | @C1 buf = (malloc)[ 256 ] AS @C1
- | (snprintf)[ buf | 256 | fmt | a | b ]
- | (printf)[ "%d:%d: %s\n" | at.loc.line | at.loc.col | buf ]
- | (free)[ buf AS @ABYSS ]
+ | (diag_at2)[ at.loc | fmt | a | b ]
  | c.errors = c.errors + 1
  | RET
  \_
@@ -334,7 +331,7 @@ B1 ty_is_integral: [ Type t ]
 
 ABYSS ck_push: [ @Checker c ]
  | @CkScope s = (malloc)[ SIZE [ CkScope ] ] AS @CkScope
- | (vec_init)[ @(s.syms) | SIZE [ CkSym ] | 16 ]
+ | (s.syms.init)[ 16 ]
  | s.parent = c.scope
  | c.scope = s
  | RET
@@ -346,15 +343,15 @@ ABYSS ck_pop: [ @Checker c ]
  |  | RET
  |  \_
  | c.scope = s.parent
- | (vec_deinit)[ @(s.syms) ]
+ | (s.syms.deinit)[]
  | (free)[ s AS @ABYSS ]
  | RET
  \_
 
 B1 ck_declared_here: [ @Checker c | @C1 name ]
  | U64 i = 0
- | WHILE [ i < (vec_size)[ @(c.scope.syms) ] ]
- |  | @CkSym s = (vec_at)[ @(c.scope.syms) | i ] AS @CkSym
+ | WHILE [ i < (c.scope.syms.size)[] ]
+ |  | @CkSym s = (c.scope.syms.at)[ i ]
  |  | IF [ (strcmp)[ s.name | name ] == 0 ]
  |  |  | RET [ TRUE ]
  |  |  \_
@@ -367,18 +364,18 @@ ABYSS ck_define: [ @Checker c | @C1 name | Type t ]
  | CkSym s
  | s.name = name
  | s.ty = t
- | (vec_append)[ @(c.scope.syms) | @s AS @ABYSS ]
+ | (c.scope.syms.push)[ s ]
  | RET
  \_
 
 B1 ck_lookup: [ @Checker c | @C1 name | @Type out ]
  | @CkScope s = c.scope
  | WHILE [ s != 0 ]
- |  | U64 n = (vec_size)[ @(s.syms) ]
+ |  | U64 n = (s.syms.size)[]
  |  | U64 i = n
  |  | WHILE [ i > 0 ]
  |  |  | i = i - 1
- |  |  | @CkSym sym = (vec_at)[ @(s.syms) | i ] AS @CkSym
+ |  |  | @CkSym sym = (s.syms.at)[ i ]
  |  |  | IF [ (strcmp)[ sym.name | name ] == 0 ]
  |  |  |  | ?(out) = sym.ty
  |  |  |  | RET [ TRUE ]
@@ -1396,7 +1393,7 @@ B1 check_unit: [ @Checker c | @ASTNode root ]
  | (ck_pop)[ c ]
  |
  | IF [ c.errors > 0 ]
- |  | (printf)[ "%d type error(s)\n" | c.errors ]
+ |  | (diag_summary)[]
  |  | RET [ FALSE ]
  |  \_
  | RET [ TRUE ]

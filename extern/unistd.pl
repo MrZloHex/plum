@@ -2,3 +2,4 @@
 @C1 get_current_dir_name: []
 
 @C1 realpath: [ @C1 path | @C1 resolved ]
+I32 isatty: [ I32 fd ]

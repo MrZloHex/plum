@@ -1,1 +1,2 @@
-2:10: unknown identifier `nope`
+error: unknown identifier `nope`
+ --> undeclared.pl:2:10

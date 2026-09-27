@@ -1,1 +1,2 @@
-7:4: cannot initialise FN I32 [ I32 ] from FN I32 [ I32 | I32 ]
+error: cannot initialise FN I32 [ I32 ] from FN I32 [ I32 | I32 ]
+ --> fnptr_signature.pl:7:4

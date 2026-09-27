@@ -44,7 +44,7 @@ No C compiler is needed for `plc` itself.
 
 ```sh
 make help               # every target
-make test               # 43 programs must print exactly their .out files,
+make test               # 44 programs must print exactly their .out files,
                         #   and the driver must fail properly on bad input
 make typecheck          # 67 programs that must be rejected, each for its .err reason
 make fuzz               # thousands of mutated programs: plc must never crash
@@ -57,12 +57,12 @@ make seed-verify        # check the seed against the C compiler
 
 ```
 src/           plc, written in PLUM: preproc lexer parser generic meta check codegen
-lib/           runtime: string vec map stack arena
+lib/           runtime: string vector (typed) vec (untyped) map stack arena
 extern/        declarations of libc and the LLVM-C API
 seed/          the bootstrap seed, as LLVM IR
 bootstrap/     the C compiler that produced the first seed; frozen
 scripts/       bootstrap, seed refresh and verification
-test/          43 programs, plus typecheck/ for what must be rejected
+test/          44 programs, plus typecheck/ for what must be rejected
 editor/vim/    syntax highlighting
 syntax/        plum.ebnf, a grammar sketch (drifted; trust the compiler)
 examples/      sample programs, some aspirational

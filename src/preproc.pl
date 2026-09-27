@@ -9,12 +9,65 @@
 ; PLUM declarations do not depend on order, so the first copy serves all.
 
 !USES <../lib/string.pl>
+!USES <diag.pl>
 !USES <../extern/string.pl>
 !USES <../extern/stdio.pl>
 !USES <../extern/stdlib.pl>
 !USES <../extern/unistd.pl>
 
 I32 MAX_INCLUDE_DEPTH = 32
+
+; How a file is named in diagnostics: relative to the working directory
+; when it is under it, as the user would type it; absolute otherwise.
+@C1 pp_display: [ @C1 path ]
+ | @C1 canon = (realpath)[ path | NULL ]
+ | IF [ canon == NULL ]
+ |  | RET [ (strdup)[ path ] ]
+ |  \_
+ | @C1 cwd = (getcwd)[ NULL | 0 ]
+ | IF [ cwd == NULL ]
+ |  | RET [ canon ]
+ |  \_
+ | U64 n = (strlen)[ cwd ]
+ | IF [ (strncmp)[ canon | cwd | n ] == 0 && canon{n} == '/' ]
+ |  | @C1 rel = (strdup)[ canon + n + 1 ]
+ |  | (free)[ canon AS @ABYSS ]
+ |  | (free)[ cwd AS @ABYSS ]
+ |  | RET [ rel ]
+ |  \_
+ | (free)[ cwd AS @ABYSS ]
+ | RET [ canon ]
+ \_
+
+; Where offset `pos` of the text lies in the file it came from. Included
+; files already pasted in are skipped over by their markers.
+Location pp_where: [ @String s | U64 pos | @C1 name ]
+ | Location l
+ | l.file = name
+ | l.line = 1
+ | l.col = 1
+ | I32 depth = 0
+ | U64 i = 0
+ | WHILE [ i < pos && i < s.size ]
+ |  | I32 b = s.data{i} AS I32
+ |  | IF [ b == 1 ]
+ |  |  | depth += 1
+ |  |  \_
+ |  | IF [ b == 2 ]
+ |  |  | depth -= 1
+ |  |  \_
+ |  | IF [ depth == 0 && b != 2 ]
+ |  |  | IF [ b == 10 ]
+ |  |  |  | l.line += 1
+ |  |  |  | l.col = 1
+ |  |  | ELSE
+ |  |  |  | l.col += 1
+ |  |  |  \_
+ |  |  \_
+ |  | i += 1
+ |  \_
+ | RET [ l ]
+ \_
 
 ; canonical paths of every file included so far
 @@C1 pp_seen
@@ -68,11 +121,12 @@ B1 pp_first_visit: [ @C1 path ]
  | RET [ d ]
  \_
 
-I32 preproc_internal: [ @String src | I32 depth | @C1 dir ]
+I32 preproc_internal: [ @String src | I32 depth | @C1 dir | @C1 name ]
 
-I32 insert_file: [ @String dst | U64 at | @C1 path | I32 depth | @C1 dir ]
+; `at` is where the directive was, for diagnostics.
+I32 insert_file: [ @String dst | U64 at | @C1 path | I32 depth | @C1 dir | Location where ]
  | IF [ depth > MAX_INCLUDE_DEPTH ]
- |  | (printf)[ "preproc: include depth exceeded (%s)\n" | path ]
+ |  | (diag_at2)[ where | "USES nested more than %s deep, including `%s`; do files include each other?" | "32" | path ]
  |  | RET [ -1 ]
  |  \_
  |
@@ -97,10 +151,11 @@ I32 insert_file: [ @String dst | U64 at | @C1 path | I32 depth | @C1 dir ]
  |
  | @ABYSS f = (fopen)[ full | "r" ]
  | IF [ f == 0 ]
- |  | (printf)[ "preproc: cannot open \"%s\"\n" | full ]
+ |  | (diag_at2)[ where | "cannot open `%s` (looked for %s)" | path | full ]
  |  | (free)[ full AS @ABYSS ]
  |  | RET [ -1 ]
  |  \_
+ | @C1 shown = (pp_display)[ full ]
  |
  | String buf
  | (str_init_file)[ @buf | f ]
@@ -113,7 +168,7 @@ I32 insert_file: [ @String dst | U64 at | @C1 path | I32 depth | @C1 dir ]
  |  | RET [ -1 ]
  |  \_
  |
- | I32 rc = (preproc_internal)[ @buf | depth + 1 | sub_dir ]
+ | I32 rc = (preproc_internal)[ @buf | depth + 1 | sub_dir | shown ]
  | (free)[ sub_dir AS @ABYSS ]
  |
  | IF [ rc != 0 ]
@@ -121,35 +176,43 @@ I32 insert_file: [ @String dst | U64 at | @C1 path | I32 depth | @C1 dir ]
  |  | RET [ -1 ]
  |  \_
  |
- | (str_insert_str)[ dst | at | buf.data ]
+ | ; bracket it for the lexer: byte 1, the name, a newline ... byte 2
+ | String wrapped
+ | (str_init_cap)[ @wrapped | buf.size + (strlen)[ shown ] + 8 ]
+ | (str_append)[ @wrapped | 1 AS C1 ]
+ | (str_append_str)[ @wrapped | shown ]
+ | (str_append)[ @wrapped | '\n' ]
+ | (str_append_str)[ @wrapped | buf.data ]
+ | (str_append)[ @wrapped | '\n' ]
+ | (str_append)[ @wrapped | 2 AS C1 ]
+ | (str_insert_str)[ dst | at | wrapped.data ]
+ | (str_deinit)[ @wrapped ]
  | (str_deinit)[ @buf ]
  | RET [ 0 ]
  \_
 
-I32 preproc_uses: [ @String s | U64 pos | I32 depth | @C1 dir ]
+I32 preproc_uses: [ @String s | U64 pos | I32 depth | @C1 dir | @C1 name ]
+ | Location where = (pp_where)[ s | pos | name ]
  | U64 i = pos + 5
  |
  | WHILE [ i < s.size && (?(s.data + i) == ' ' || ?(s.data + i) == '\t') ]
  |  | i = i + 1
  |  \_
  |
- | IF [ i >= s.size ]
- |  | (printf)[ "preproc: expected '<' after !USES\n" ]
- |  | RET [ -1 ]
- |  \_
- | IF [ ?(s.data + i) != '<' ]
- |  | (printf)[ "preproc: expected '<' after !USES\n" ]
+ | IF [ i >= s.size || ?(s.data + i) != '<' ]
+ |  | (diag_at)[ where | "USES takes a file in angle brackets, as in !USES <io.pl>" ]
  |  | RET [ -1 ]
  |  \_
  | i = i + 1
  |
+ | ; the name ends at `>`, and never runs onto the next line
  | U64 name_begin = i
- | WHILE [ i < s.size && ?(s.data + i) != '>' ]
+ | WHILE [ i < s.size && ?(s.data + i) != '>' && ?(s.data + i) != '\n' ]
  |  | i = i + 1
  |  \_
  |
- | IF [ i >= s.size ]
- |  | (printf)[ "preproc: missing '>' for !USES\n" ]
+ | IF [ i >= s.size || ?(s.data + i) != '>' ]
+ |  | (diag_at)[ where | "this USES is never closed with `>`" ]
  |  | RET [ -1 ]
  |  \_
  |
@@ -162,7 +225,7 @@ I32 preproc_uses: [ @String s | U64 pos | I32 depth | @C1 dir ]
  | U64 directive_len = (i + 1) - pos
  | (str_remove_range)[ s | pos | directive_len ]
  |
- | IF [ (insert_file)[ s | pos | fname | depth | dir ] != 0 ]
+ | IF [ (insert_file)[ s | pos | fname | depth | dir | where ] != 0 ]
  |  | (free)[ fname AS @ABYSS ]
  |  | RET [ -1 ]
  |  \_
@@ -171,7 +234,7 @@ I32 preproc_uses: [ @String s | U64 pos | I32 depth | @C1 dir ]
  | RET [ 0 ]
  \_
 
-I32 preproc_internal: [ @String src | I32 depth | @C1 dir ]
+I32 preproc_internal: [ @String src | I32 depth | @C1 dir | @C1 name ]
  | U64 i = 0
  | WHILE [ i < src.size ]
  |  | C1 c = ?(src.data + i)
@@ -201,7 +264,7 @@ I32 preproc_internal: [ @String src | I32 depth | @C1 dir ]
  |  |  |  \_
  |  |  |
  |  |  | IF [ hit ]
- |  |  |  | IF [ (preproc_uses)[ src | i | depth | dir ] != 0 ]
+ |  |  |  | IF [ (preproc_uses)[ src | i | depth | dir | name ] != 0 ]
  |  |  |  |  | RET [ -1 ]
  |  |  |  |  \_
  |  |  |  | i = 0
@@ -213,7 +276,14 @@ I32 preproc_internal: [ @String src | I32 depth | @C1 dir ]
  | RET [ 0 ]
  \_
 
+I32 preprocess_named: [ @String src | @C1 path | @C1 name ]
+
 I32 preprocess: [ @String src | @C1 path ]
+ | RET [ (preprocess_named)[ src | path | (pp_display)[ path ] ] ]
+ \_
+
+; `name` is how diagnostics call the root file.
+I32 preprocess_named: [ @String src | @C1 path | @C1 name ]
  | IF [ src == 0 ]
  |  | RET [ -1 ]
  |  \_
@@ -228,7 +298,7 @@ I32 preprocess: [ @String src | @C1 path ]
  | pp_nseen = 0
  | (pp_first_visit)[ path ]
  |
- | I32 rc = (preproc_internal)[ src | 0 | dir ]
+ | I32 rc = (preproc_internal)[ src | 0 | dir | name ]
  | (free)[ dir AS @ABYSS ]
  | RET [ rc ]
  \_

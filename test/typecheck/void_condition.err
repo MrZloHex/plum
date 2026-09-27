@@ -1,1 +1,2 @@
-6:9: an ABYSS call has no value to use here
+error: an ABYSS call has no value to use here
+ --> void_condition.pl:6:9

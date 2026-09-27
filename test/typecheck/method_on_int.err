@@ -1,1 +1,2 @@
-4:10: I32 has no methods, so no `foo`
+error: I32 has no methods, so no `foo`
+ --> method_on_int.pl:4:10

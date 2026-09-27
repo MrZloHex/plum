@@ -1,1 +1,2 @@
-5:4: returning I32 from a function declared S
+error: returning I32 from a function declared S
+ --> ret_mismatch.pl:5:4

@@ -1,1 +1,2 @@
-3:4: `I32` takes no type arguments
+error: `I32` takes no type arguments
+ --> generic_base_args.pl:3:4

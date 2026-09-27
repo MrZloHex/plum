@@ -1,1 +1,2 @@
-7:10: I32 is not a function, so it cannot be called
+error: I32 is not a function, so it cannot be called
+ --> call_non_fn.pl:7:10

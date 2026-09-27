@@ -1,0 +1,10 @@
+empty 1, cap 8
+cap 32, last 361
+remove out of range: 0
+[ 1 4 9 16 25 36 49 64 81 100 121 144 169 196 225 256 ] size 16
+[ 1 4 -1 16 25 36 49 64 81 100 121 144 169 196 225 256 ] size 16
+[ ] size 0
+alpha=1 beta=20 gamma=3
+a bb ccc
+one two
+[exit 0]

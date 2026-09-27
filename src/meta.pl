@@ -12,7 +12,7 @@
 ;   * NT_CAST is walked through.
 
 !USES <ast.pl>
-!USES <../lib/vec.pl>
+!USES <../lib/vector.pl>
 !USES <../lib/map.pl>
 !USES <../extern/stdio.pl>
 !USES <../extern/stdlib.pl>
@@ -32,12 +32,12 @@ TYPE Symbol: STRUCT
  \_
 
 TYPE Scope: STRUCT
- | Vec syms
+ | Vector<Symbol> syms
  \_
 
 TYPE SymTab: STRUCT
- | Vec scopes
- | U64 curr
+ | Vector<Scope> scopes
+ | U64           curr
  \_
 
 TYPE Meta: STRUCT
@@ -49,36 +49,33 @@ TYPE Meta: STRUCT
 
 ABYSS symtab_push_scope: [ @SymTab st ]
  | Scope sc
- | (vec_init)[ @(sc.syms) | SIZE [ Symbol ] | 8 ]
- | (vec_append)[ @(st.scopes) | @sc AS @ABYSS ]
- | st.curr = (vec_size)[ @(st.scopes) ] - 1
+ | (sc.syms.init)[ 8 ]
+ | (st.scopes.push)[ sc ]
+ | st.curr = (st.scopes.size)[] - 1
  | RET
  \_
 
 ABYSS symtab_pop_scope: [ @SymTab st ]
- | U64 n = (vec_size)[ @(st.scopes) ]
- | IF [ n == 0 ]
+ | IF [ (st.scopes.empty)[] ]
  |  | RET
  |  \_
- | U64 idx = n - 1
- | @Scope sc = (vec_at)[ @(st.scopes) | idx ] AS @Scope
- | (vec_deinit)[ @(sc.syms) ]
- | (vec_remove)[ @(st.scopes) | idx ]
+ | ((st.scopes.last)[].syms.deinit)[]
+ | (st.scopes.pop)[]
  |
- | IF [ (vec_size)[ @(st.scopes) ] == 0 ]
+ | IF [ (st.scopes.empty)[] ]
  |  | st.curr = 0
  | ELSE
- |  | st.curr = (vec_size)[ @(st.scopes) ] - 1
+ |  | st.curr = (st.scopes.size)[] - 1
  |  \_
  | RET
  \_
 
 B1 symtab_insert: [ @SymTab st | @C1 name | I32 kind | @ASTNode type | @ASTNode decl ]
- | @Scope sc = (vec_at)[ @(st.scopes) | st.curr ] AS @Scope
+ | @Scope sc = (st.scopes.at)[ st.curr ]
  |
  | U64 i = 0
- | WHILE [ i < (vec_size)[ @(sc.syms) ] ]
- |  | @Symbol tmp = (vec_at)[ @(sc.syms) | i ] AS @Symbol
+ | WHILE [ i < (sc.syms.size)[] ]
+ |  | @Symbol tmp = (sc.syms.at)[ i ]
  |  | IF [ (strcmp)[ tmp.name | name ] == 0 ]
  |  |  | RET [ FALSE ]
  |  |  \_
@@ -90,7 +87,7 @@ B1 symtab_insert: [ @SymTab st | @C1 name | I32 kind | @ASTNode type | @ASTNode 
  | s.type = type
  | s.decl = decl
  | s.name = (strdup)[ name ]
- | (vec_append)[ @(sc.syms) | @s AS @ABYSS ]
+ | (sc.syms.push)[ s ]
  | RET [ TRUE ]
  \_
 
@@ -253,7 +250,7 @@ ABYSS collect_node: [ @ASTNode node | @Meta m ]
  \_
 
 ABYSS meta_init: [ @Meta m ]
- | (vec_init)[ @(m.symtab.scopes) | SIZE [ Scope ] | 8 ]
+ | (m.symtab.scopes.init)[ 8 ]
  | m.symtab.curr = 0
  | (map_init)[ @(m.str_lits) | 64 ]
  | (map_init)[ @(m.func_decls) | 64 ]
@@ -268,10 +265,10 @@ ABYSS meta_pass: [ @Meta m | @AST ast ]
  \_
 
 ABYSS meta_deinit: [ @Meta m ]
- | WHILE [ (vec_size)[ @(m.symtab.scopes) ] > 0 ]
+ | WHILE [ !(m.symtab.scopes.empty)[] ]
  |  | (symtab_pop_scope)[ @(m.symtab) ]
  |  \_
- | (vec_deinit)[ @(m.symtab.scopes) ]
+ | (m.symtab.scopes.deinit)[]
  | (map_deinit)[ @(m.str_lits) ]
  | (map_deinit)[ @(m.func_decls) ]
  | (map_deinit)[ @(m.types) ]

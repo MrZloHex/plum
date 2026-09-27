@@ -403,8 +403,9 @@ the IR is unoptimised (see below).
 * **Sum types** — `ENUM Option<T>` with payloads, which is what the
   `get` in `examples/vector.pl` returns. Generics are in place, so this is
   the tag, the payload union and a way to take them apart.
-* **Moving `lib/` onto generics**, so `lib/vec.pl` stops being `@ABYSS`
-  plus an element size. That needs a seed refresh first; see BOOTSTRAP.md.
+* **The rest of `lib/` onto generics.** `lib/vector.pl` is a typed
+  `Vector<T>` and the compiler's own tables use it; `map.pl` (still
+  `@ABYSS` values) and `stack.pl` are next, and `vec.pl` can then go.
 * **`SWITCH`** — ergonomics for the dispatch sites now written as `ELIF`
   chains.
 * **A real module system**, so `!USES` stops being textual inclusion.
@@ -413,7 +414,9 @@ the IR is unoptimised (see below).
 
 * The emitted IR is unoptimised, with every local in memory. Running
   `mem2reg` alone would transform it.
-* Diagnostics carry a line and column but no source excerpt.
+* Diagnostics show the file, line, column and the source line with a
+  caret, on stderr. The parser still stops at its first error; the type
+  checker reports them all.
 * No incremental compilation, no debug info.
 * The C compiler is frozen, and PLUM has since diverged from it (literal
   widths, truth values, generics and the rest), so the two no longer emit

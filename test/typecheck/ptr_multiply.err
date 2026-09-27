@@ -1,1 +1,2 @@
-4:15: on pointers only p + n, n + p, p - n and p - q are defined; cast to U64 for the rest
+error: on pointers only p + n, n + p, p - n and p - q are defined; cast to U64 for the rest
+ --> ptr_multiply.pl:4:15

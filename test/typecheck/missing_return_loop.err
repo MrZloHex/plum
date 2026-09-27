@@ -1,1 +1,2 @@
-2:1: `b` can reach its end without RET
+error: `b` can reach its end without RET
+ --> missing_return_loop.pl:2:1

@@ -36,6 +36,14 @@ ABYSS usage: [ @C1 progname ]
  | RET [ buf ]
  \_
 
+Location no_loc: []
+ | Location l
+ | l.file = NULL
+ | l.line = 0
+ | l.col = 0
+ | RET [ l ]
+ \_
+
 I32 main: [ I32 argc | @@C1 argv ]
  | @C1 out_file = 0
  | @C1 emit     = 0
@@ -50,7 +58,7 @@ I32 main: [ I32 argc | @@C1 argv ]
  |  | ELIF [ (strcmp)[ a | "-o" ] == 0 ]
  |  |  | i += 1
  |  |  | IF [ i >= argc ]
- |  |  |  | (printf)[ "Error: -o needs an argument.\n" ]
+ |  |  |  | (diag_plain)[ "-o needs a file name after it" ]
  |  |  |  | RET [ 1 ]
  |  |  |  \_
  |  |  | out_file = ?(argv + i)
@@ -60,14 +68,14 @@ I32 main: [ I32 argc | @@C1 argv ]
  |  | ELIF [ source == 0 ]
  |  |  | source = a
  |  | ELSE
- |  |  | (printf)[ "Warning: only `%s' is compiled; further input ignored.\n" | source ]
+ |  |  | (dprintf)[ 2 | "warning: only `%s` is compiled; `%s` is ignored\n" | source | a ]
  |  |  \_
  |  |
  |  | i += 1
  |  \_
  |
  | IF [ source == 0 ]
- |  | (printf)[ "Error: No input files provided.\n" ]
+ |  | (diag_plain)[ "no input file" ]
  |  | (usage)[ ?(argv) ]
  |  | RET [ 1 ]
  |  \_
@@ -78,20 +86,20 @@ I32 main: [ I32 argc | @@C1 argv ]
  |  | IF [ (strcmp)[ emit | "AST" ] == 0 ]
  |  |  | emit_ir = FALSE
  |  | ELIF [ (strcmp)[ emit | "IR" ] != 0 ]
- |  |  | (printf)[ "Error: --emit takes AST or IR, not `%s'.\n" | emit ]
+ |  |  | (diag_at2)[ (no_loc)[] | "--emit takes AST or IR, not `%s`%s" | emit | "" ]
  |  |  | RET [ 1 ]
  |  |  \_
  |  \_
  |
  | @C1 full = (realpath)[ source | 0 ]
  | IF [ full == 0 ]
- |  | (printf)[ "Failed to resolve source file: %s\n" | source ]
+ |  | (diag_at2)[ (no_loc)[] | "cannot find `%s`%s" | source | "" ]
  |  | RET [ 1 ]
  |  \_
  |
  | @ABYSS f = (fopen)[ full | "r" ]
  | IF [ f == 0 ]
- |  | (printf)[ "Failed to open source file: %s\n" | full ]
+ |  | (diag_at2)[ (no_loc)[] | "cannot open `%s`%s" | source | "" ]
  |  | RET [ 1 ]
  |  \_
  |
@@ -99,14 +107,14 @@ I32 main: [ I32 argc | @@C1 argv ]
  | (str_init_file)[ @src | f ]
  | (fclose)[ f ]
  |
- | IF [ (preprocess)[ @src | full ] != 0 ]
- |  | (printf)[ "Preprocessing failed: %s\n" | full ]
+ | ; the preprocessor has said what went wrong
+ | IF [ (preprocess_named)[ @src | full | source ] != 0 ]
  |  | RET [ 1 ]
  |  \_
  |
  | AST ast
  | (ast_init)[ @ast ]
- | (parse_unit)[ @ast | @src ]
+ | (parse_file)[ @ast | @src | source ]
  | (generics_pass)[ @ast ]
  |
  | Meta meta

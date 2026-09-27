@@ -1,1 +1,2 @@
-14:16: argument expects I32, got Pair
+error: argument expects I32, got Pair
+  --> fnptr_argtype.pl:14:16

@@ -1,1 +1,2 @@
-3:13: cannot take the address of a value that is not stored anywhere
+error: cannot take the address of a value that is not stored anywhere
+ --> addr_of_value.pl:3:13

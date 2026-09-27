@@ -1,1 +1,2 @@
-3:10: cannot dereference I32, it is not a pointer
+error: cannot dereference I32, it is not a pointer
+ --> deref_int.pl:3:10

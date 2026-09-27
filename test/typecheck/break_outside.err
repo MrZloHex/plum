@@ -1,1 +1,2 @@
-3:4: BREAK outside of a loop
+error: BREAK outside of a loop
+ --> break_outside.pl:3:4

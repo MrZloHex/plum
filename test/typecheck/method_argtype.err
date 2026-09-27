@@ -1,1 +1,2 @@
-17:13: argument expects I32, got Data
+error: argument expects I32, got Data
+  --> method_argtype.pl:17:13

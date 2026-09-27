@@ -1,1 +1,2 @@
-16:23: `OnA` works on `@A`, which this CLASS does not hold
+error: `OnA` works on `@A`, which this CLASS does not hold
+  --> iface_mismatch.pl:16:23

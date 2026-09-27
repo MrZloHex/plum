@@ -1,1 +1,2 @@
-7:4: `Box` is generic and needs type arguments, as in Box<I32>
+error: `Box` is generic and needs type arguments, as in Box<I32>
+ --> generic_bare.pl:7:4

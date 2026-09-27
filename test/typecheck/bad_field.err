@@ -1,1 +1,2 @@
-6:11: no field `nosuch` in `S`
+error: no field `nosuch` in `S`
+ --> bad_field.pl:6:11

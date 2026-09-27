@@ -1,1 +1,2 @@
-5:1: CLASS `D` has the name of an existing TYPE
+error: CLASS `D` has the name of an existing TYPE
+ --> class_name_clash.pl:5:1

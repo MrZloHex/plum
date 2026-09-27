@@ -21,7 +21,7 @@ TESTS=(
     generics vector floats indexing
     semantics fnptr
     generics_edge core order ptrmath numbers returns arena
-    fnptr_edge include_once
+    fnptr_edge include_once vectors
 )
 [[ $# -gt 0 ]] && TESTS=("$@")
 

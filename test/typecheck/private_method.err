@@ -1,1 +1,2 @@
-17:4: `secret` is PRIVATE to `Box`
+error: `secret` is PRIVATE to `Box`
+  --> private_method.pl:17:4

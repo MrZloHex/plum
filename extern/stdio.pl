@@ -12,4 +12,5 @@ I64    ftell:  [ @ABYSS f ]
 
 I32 snprintf: [ @C1 buf | U64 n | @C1 fmt | ... ]
 I32 fprintf:  [ @ABYSS f | @C1 fmt | ... ]
+I32 dprintf:  [ I32 fd | @C1 fmt | ... ]
 I32 fflush:   [ @ABYSS f ]

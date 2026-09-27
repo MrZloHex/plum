@@ -1,1 +1,2 @@
-6:4: `g` is defined by two interfaces of `C`
+error: `g` is defined by two interfaces of `C`
+ --> iface_twice.pl:6:4

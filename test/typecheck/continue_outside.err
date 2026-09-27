@@ -1,1 +1,2 @@
-4:7: CONTINUE outside of a loop
+error: CONTINUE outside of a loop
+ --> continue_outside.pl:4:7

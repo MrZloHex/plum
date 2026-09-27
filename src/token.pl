@@ -50,6 +50,7 @@ TYPE TokenType: ENUM
 TYPE Location: STRUCT
  | I32 line
  | I32 col
+ | @C1 file      ; as the user would name it, relative to the working directory
  \_
 
 TYPE Token: STRUCT
@@ -147,4 +148,75 @@ TYPE Token: STRUCT
  | ELSE
  |  | RET [ "SIZE" ]
  |  \_
+ \_
+
+; What a kind of token is, in words, for "expected ..." in a diagnostic.
+@C1 tok_kind_desc: [ I32 t ]
+ | IF [ t == TOK_EOF ]
+ |  | RET [ "the end of the file" ]
+ | ELIF [ t == TOK_NEWLINE ]
+ |  | RET [ "the end of the line" ]
+ | ELIF [ t == TOK_COLON ]
+ |  | RET [ "`:`" ]
+ | ELIF [ t == TOK_LBRACKET ]
+ |  | RET [ "`[`" ]
+ | ELIF [ t == TOK_RBRACKET ]
+ |  | RET [ "`]`" ]
+ | ELIF [ t == TOK_LPAREN ]
+ |  | RET [ "`(`" ]
+ | ELIF [ t == TOK_RPAREN ]
+ |  | RET [ "`)`" ]
+ | ELIF [ t == TOK_LBRACE ]
+ |  | RET [ "`{`" ]
+ | ELIF [ t == TOK_RBRACE ]
+ |  | RET [ "`}`" ]
+ | ELIF [ t == TOK_VBAR ]
+ |  | RET [ "`|`" ]
+ | ELIF [ t == TOK_DOT ]
+ |  | RET [ "`.`" ]
+ | ELIF [ t == TOK_AT ]
+ |  | RET [ "`@`" ]
+ | ELIF [ t == TOK_QMARK ]
+ |  | RET [ "`?`" ]
+ | ELIF [ t == TOK_ELLIPSIS ]
+ |  | RET [ "`...`" ]
+ | ELIF [ t == TOK_OPERATOR ]
+ |  | RET [ "an operator" ]
+ | ELIF [ t == TOK_END_BLOCK ]
+ |  | RET [ "the end of a block `\\_`" ]
+ | ELIF [ t == TOK_IDENTIFIER ]
+ |  | RET [ "a name" ]
+ | ELIF [ t == TOK_FLOAT || t == TOK_INTEGER ]
+ |  | RET [ "a number" ]
+ | ELIF [ t == TOK_CHARACTER ]
+ |  | RET [ "a character" ]
+ | ELIF [ t == TOK_STRING ]
+ |  | RET [ "a string" ]
+ | ELIF [ t == TOK_STRUCTURE ]
+ |  | RET [ "STRUCT" ]
+ | ELIF [ t == TOK_ENUMERATION ]
+ |  | RET [ "ENUM" ]
+ |  \_
+ | ; the rest are keywords, whose spelling says it all
+ | RET [ (token_str)[ t ] ]
+ \_
+
+; The token that was actually there, in words. Caller owns the result.
+@C1 tok_desc: [ Token t ]
+ | @C1 buf = (malloc)[ 128 ] AS @C1
+ | I32 k = t.kind
+ | IF [ k == TOK_IDENTIFIER ]
+ |  | (snprintf)[ buf | 128 | "the name `%s`" | t.lexeme ]
+ | ELIF [ k == TOK_INTEGER || k == TOK_FLOAT ]
+ |  | (snprintf)[ buf | 128 | "the number `%s`" | t.lexeme ]
+ | ELIF [ k == TOK_OPERATOR ]
+ |  | (snprintf)[ buf | 128 | "`%s`" | t.lexeme ]
+ | ELIF [ k == TOK_STRING || k == TOK_CHARACTER || k == TOK_EOF || k == TOK_NEWLINE || k == TOK_END_BLOCK ]
+ |  | (snprintf)[ buf | 128 | "%s" | (tok_kind_desc)[ k ] ]
+ | ELIF [ k >= TOK_TRUE && k != TOK_LBRACE && k != TOK_RBRACE ]
+ |  | (snprintf)[ buf | 128 | "`%s`" | (tok_kind_desc)[ k ] ]
+ | ELSE
+ |  | (snprintf)[ buf | 128 | "%s" | (tok_kind_desc)[ k ] ]
+ |  \_
+ | RET [ buf ]
  \_

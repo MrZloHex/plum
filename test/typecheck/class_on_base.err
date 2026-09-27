@@ -1,1 +1,2 @@
-2:1: a CLASS is built on a STRUCT, not on a pointer or a base type
+error: a CLASS is built on a STRUCT, not on a pointer or a base type
+ --> class_on_base.pl:2:1

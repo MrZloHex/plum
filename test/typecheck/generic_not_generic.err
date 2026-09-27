@@ -1,1 +1,2 @@
-6:4: `D` is not a generic type
+error: `D` is not a generic type
+ --> generic_not_generic.pl:6:4

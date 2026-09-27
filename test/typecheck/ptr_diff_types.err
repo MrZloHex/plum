@@ -1,1 +1,2 @@
-5:14: cannot subtract @I8 from @I32
+error: cannot subtract @I8 from @I32
+ --> ptr_diff_types.pl:5:14

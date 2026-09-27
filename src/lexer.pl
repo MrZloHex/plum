@@ -6,17 +6,29 @@
 ; "\_" becomes TOK_END_BLOCK.
 
 !USES <token.pl>
+!USES <diag.pl>
 !USES <../lib/string.pl>
 !USES <../extern/ctype.pl>
 !USES <../extern/string.pl>
 !USES <../extern/stdio.pl>
 !USES <../extern/stdlib.pl>
 
+; Which file the text being lexed came from. The preprocessor brackets each
+; included file with byte 1, its name and a newline before it, and byte 2
+; after it, so positions are reported in the files the user wrote. Frames
+; are never changed once made, so a copied Lexer can look ahead freely.
+TYPE SrcFrame: STRUCT
+ | @C1       file
+ | I32       line      ; where the includer resumes
+ | @SrcFrame parent
+ \_
+
 TYPE Lexer: STRUCT
- | @String src
- | U64     pos
- | I32     line
- | I32     col
+ | @String   src
+ | U64       pos
+ | I32       line
+ | I32       col
+ | @SrcFrame frame
  \_
 
 ABYSS lexer_init: [ @Lexer lx | @String source ]
@@ -24,6 +36,10 @@ ABYSS lexer_init: [ @Lexer lx | @String source ]
  | lx.pos  = 0
  | lx.line = 1
  | lx.col  = 1
+ | lx.frame = (malloc)[ SIZE [ SrcFrame ] ] AS @SrcFrame
+ | lx.frame.file = NULL
+ | lx.frame.line = 0
+ | lx.frame.parent = NULL
  |
  | ; Pad with NULs so lookahead past the end is safe. The C version appends
  ; a run of them; str_append_str would stop at the first NUL, so write them.
@@ -34,6 +50,19 @@ ABYSS lexer_init: [ @Lexer lx | @String source ]
  |  | i = i + 1
  |  \_
  | RET
+ \_
+
+; Name the root file, for diagnostics.
+ABYSS lexer_set_file: [ @Lexer lx | @C1 name ]
+ | lx.frame.file = name
+ \_
+
+Location lex_here: [ @Lexer lx ]
+ | Location l
+ | l.line = lx.line
+ | l.col = lx.col
+ | l.file = lx.frame.file
+ | RET [ l ]
  \_
 
 C1 lex_peek: [ @Lexer lx ]
@@ -109,8 +138,13 @@ Token lex_string: [ @Lexer lx | C1 term | I32 kind ]
  |  \_
  |
  | IF [ (lex_peek)[ lx ] != term ]
- |  | (printf)[ "UNTERMINATED SYMBOLIC LITERAL! At %d:%d\n" | lx.line | lx.col ]
- |  | (exit)[ 1 ]
+ |  | Location at = (lex_here)[ lx ]
+ |  | at.line = line
+ |  | at.col = col
+ |  | IF [ term == '"' ]
+ |  |  | (diag_fatal)[ at | "this string is never closed with `\"`%s%s" | "" | "" ]
+ |  |  \_
+ |  | (diag_fatal)[ at | "this character is never closed with `'`%s%s" | "" | "" ]
  |  \_
  | (lex_nextc)[ lx ]
  |
@@ -236,15 +270,54 @@ B1 is_op_start: [ C1 c ]
  | RET [ c == '+' || c == '-' || c == '*' || c == '/' || c == '%' || c == '<' || c == '>' || c == '=' || c == '!' || c == '&' || c == '^' || c == '~' ]
  \_
 
+Token lex_token: [ @Lexer lx ]
+
 Token lexer_next: [ @Lexer lx ]
+ | Token t = (lex_token)[ lx ]
+ | t.loc.file = lx.frame.file
+ | RET [ t ]
+ \_
+
+Token lex_token: [ @Lexer lx ]
  | LOOP
  |  | C1 c = (lex_peek)[ lx ]
+ |  |
+ |  | ; an included file starts: byte 1, its name, a newline
+ |  | IF [ (c AS I32) == 1 ]
+ |  |  | (lex_nextc)[ lx ]
+ |  |  | U64 start = lx.pos
+ |  |  | WHILE [ (lex_peek)[ lx ] != '\n' && (lex_peek)[ lx ] != '\0' ]
+ |  |  |  | (lex_nextc)[ lx ]
+ |  |  |  \_
+ |  |  | @SrcFrame f = (malloc)[ SIZE [ SrcFrame ] ] AS @SrcFrame
+ |  |  | f.file = (str_substr)[ lx.src | start | lx.pos - start ]
+ |  |  | f.line = lx.line
+ |  |  | f.parent = lx.frame
+ |  |  | (lex_nextc)[ lx ]
+ |  |  | lx.frame = f
+ |  |  | lx.line = 1
+ |  |  | lx.col = 1
+ |  |  | CONTINUE
+ |  |  \_
+ |  | ; and ends: byte 2, back on the line that included it
+ |  | IF [ (c AS I32) == 2 ]
+ |  |  | (lex_nextc)[ lx ]
+ |  |  | IF [ lx.frame.parent != NULL ]
+ |  |  |  | lx.line = lx.frame.line
+ |  |  |  | lx.frame = lx.frame.parent
+ |  |  |  \_
+ |  |  | CONTINUE
+ |  |  \_
  |  |
  |  | IF [ c == 0 ]
  |  |  | RET [ (make_tok)[ TOK_EOF | 0 | lx.line | lx.col | -1 ] ]
  |  |  \_
  |  |
  |  | IF [ c == '\n' || c == '\r' ]
+ |  |  | ; a NEWLINE is placed where the line it ends stops, so "expected
+ |  |  | ; `]`, found the end of the line" points at that line
+ |  |  | I32 end_line = lx.line
+ |  |  | I32 end_col = lx.col
  |  |  | IF [ c == '\r' && (lex_look)[ lx | 1 ] == '\n' ]
  |  |  |  | (lex_nextc)[ lx ]
  |  |  |  \_
@@ -258,7 +331,7 @@ Token lexer_next: [ @Lexer lx ]
  |  |  |  | lx.pos = lx.pos + 3
  |  |  |  | RET [ (make_tok)[ TOK_END_BLOCK | 0 | lx.line | 1 | indent ] ]
  |  |  |  \_
- |  |  | RET [ (make_tok)[ TOK_NEWLINE | 0 | lx.line | 1 | indent ] ]
+ |  |  | RET [ (make_tok)[ TOK_NEWLINE | 0 | end_line | end_col | indent ] ]
  |  |  \_
  |  |
  |  | IF [ c == ' ' ]
@@ -267,7 +340,7 @@ Token lexer_next: [ @Lexer lx ]
  |  |  \_
  |  |
  |  | IF [ c == '\t' ]
- |  |  | (printf)[ "TABS ARE RESTRICTED! Tab at %d:%d\n" | lx.line | lx.col ]
+ |  |  | (diag_at)[ (lex_here)[ lx ] | "a tab; PLUM is indented with spaces only" ]
  |  |  | (exit)[ 33 ]
  |  |  \_
  |  |
@@ -374,7 +447,9 @@ Token lexer_next: [ @Lexer lx ]
  |  |  | RET [ (make_tok)[ TOK_OPERATOR | (str_substr)[ lx.src | start | len ] | line | col | -1 ] ]
  |  |  \_
  |  |
- |  | (printf)[ "UNKNOWN CHARACTER ENCOUNTER!!! %d:%d:`%c`\n" | lx.line | lx.col | c ]
- |  | (exit)[ 1 ]
+ |  | @C1 ch = (malloc)[ 2 ] AS @C1
+ |  | ch{0} = c
+ |  | ch{1} = '\0'
+ |  | (diag_fatal)[ (lex_here)[ lx ] | "`%s` is not part of PLUM%s" | ch | "" ]
  |  \_
  \_

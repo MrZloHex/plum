@@ -1,1 +1,2 @@
-6:4: expected PUBLIC or PRIVATE, got `SECRET`
+error: expected PUBLIC or PRIVATE, found `SECRET`
+ --> iface_bad_section.pl:6:4

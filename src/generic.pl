@@ -15,7 +15,7 @@
 ; know obj's type, and look up "<that type>.method" among the functions.
 
 !USES <ast.pl>
-!USES <../lib/vec.pl>
+!USES <../lib/vector.pl>
 !USES <../lib/map.pl>
 !USES <../lib/string.pl>
 !USES <../extern/stdio.pl>
@@ -29,7 +29,7 @@ TYPE Generics: STRUCT
  | Map        class_tmpls  ; name -> NT_CLASS with gparams
  | Map        types        ; concrete name -> NT_TYPE_DEF, instances too
  | Map        done         ; instances and methods already made
- | Vec        work         ; @ASTNode instances still to be scanned
+ | Vector<@ASTNode> work   ; instances still to be scanned
  | @ASTNode   out_head     ; the instances, as NT_TU_STMTs
  | @@ASTNode  out_tail
  | I32        count
@@ -42,15 +42,14 @@ TYPE Subst: STRUCT
  \_
 
 ABYSS gn_error: [ @ASTNode at | @C1 fmt | @C1 a | @C1 b ]
- | @C1 buf = (malloc)[ 512 ] AS @C1
- | (snprintf)[ buf | 512 | fmt | a | b ]
- | IF [ at != 0 ]
- |  | (printf)[ "%d:%d: %s\n" | at.loc.line | at.loc.col | buf ]
- | ELSE
- |  | (printf)[ "%s\n" | buf ]
+ | Location none
+ | none.file = NULL
+ | none.line = 0
+ | none.col = 0
+ | IF [ at != NULL ]
+ |  | none = at.loc
  |  \_
- | (exit)[ 1 ]
- | RET
+ | (diag_fatal)[ none | fmt | a | b ]
  \_
 
 @ASTNode gn_ident: [ @Generics g | @C1 name | @ASTNode at ]
@@ -358,7 +357,7 @@ ABYSS emit: [ @Generics g | I32 kind | @ASTNode node ]
  | ts.as.tu_stmt.tu_stmt = node
  | ?(g.out_tail) = ts
  | g.out_tail = @(ts.as.tu_stmt.next_tu_stmt)
- | (vec_append)[ @(g.work) | @node AS @ABYSS ]
+ | (g.work.push)[ node ]
  | RET
  \_
 
@@ -367,7 +366,11 @@ ABYSS check_arity: [ @ASTNode at | @C1 what | @ASTNode params | @ASTNode args ]
  | I32 got = (list_len)[ args ]
  | IF [ want != got ]
  |  | @C1 buf = (malloc)[ 64 ] AS @C1
- |  | (snprintf)[ buf | 64 | "%d type argument(s), got %d" | want | got ]
+ |  | @C1 plural = "s"
+ |  | IF [ want == 1 ]
+ |  |  | plural = ""
+ |  |  \_
+ |  | (snprintf)[ buf | 64 | "%d type argument%s, got %d" | want | plural | got ]
  |  | (gn_error)[ at | "`%s` takes %s" | what | buf ]
  |  \_
  | RET
@@ -729,7 +732,7 @@ ABYSS generics_pass: [ @AST ast ]
  | (map_init)[ @(g.class_tmpls) | 64 ]
  | (map_init)[ @(g.types) | 256 ]
  | (map_init)[ @(g.done) | 256 ]
- | (vec_init)[ @(g.work) | 8 | 64 ]
+ | (g.work.init)[ 64 ]
  | g.out_head = 0
  | g.out_tail = @(g.out_head)
  | g.count = 0
@@ -796,15 +799,15 @@ ABYSS generics_pass: [ @AST ast ]
  |  \_
  |
  | U64 i = 0
- | WHILE [ i < (vec_size)[ @(g.work) ] ]
- |  | @ASTNode n = ?((vec_at)[ @(g.work) | i ] AS @@ASTNode)
+ | WHILE [ i < (g.work.size)[] ]
+ |  | @ASTNode n = ?((g.work.at)[ i ])
  |  | (resolve)[ @g | n ]
  |  | i = i + 1
  |  \_
  |
  | ?(link) = g.out_head
  |
- | (vec_deinit)[ @(g.work) ]
+ | (g.work.deinit)[]
  | (map_deinit)[ @(g.type_tmpls) ]
  | (map_deinit)[ @(g.iface_tmpls) ]
  | (map_deinit)[ @(g.class_tmpls) ]

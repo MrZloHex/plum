@@ -1,1 +1,2 @@
-16:10: `Box` has no method or field `put`
+error: `Box` has no method or field `put`
+  --> no_method.pl:16:10

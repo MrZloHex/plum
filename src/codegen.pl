@@ -10,7 +10,7 @@
 !USES <ast.pl>
 !USES <meta.pl>
 !USES <../extern/llvm.pl>
-!USES <../lib/vec.pl>
+!USES <../lib/vector.pl>
 !USES <../extern/stdio.pl>
 !USES <../extern/stdlib.pl>
 !USES <../extern/string.pl>
@@ -25,8 +25,8 @@ TYPE CGSym: STRUCT
  \_
 
 TYPE CGScope: STRUCT
- | Vec      syms
- | @CGScope parent
+ | Vector<CGSym> syms
+ | @CGScope      parent
  \_
 
 TYPE CGType: STRUCT
@@ -53,9 +53,9 @@ TYPE CodegenContext: STRUCT
  | @ABYSS   builder
  | @Meta    meta
  | @CGScope scope
- | Vec      types
- | Vec      consts
- | Vec      strs
+ | Vector<CGType>      types
+ | Vector<CGEnumConst> consts
+ | Vector<CGStr>       strs
  | @ABYSS   fn
  | @ABYSS   ret_type
  | @ABYSS   loop_break
@@ -75,8 +75,7 @@ TYPE LValue: STRUCT
  \_
 
 ABYSS cg_fatal: [ @C1 msg ]
- | (printf)[ "codegen: %s\n" | msg ]
- | (exit)[ 1 ]
+ | (diag_internal)[ "codegen: %s" | msg ]
  | RET
  \_
 
@@ -84,7 +83,7 @@ ABYSS cg_fatal: [ @C1 msg ]
 
 ABYSS scope_push: [ @CodegenContext c ]
  | @CGScope s = (malloc)[ SIZE [ CGScope ] ] AS @CGScope
- | (vec_init)[ @(s.syms) | SIZE [ CGSym ] | 16 ]
+ | (s.syms.init)[ 16 ]
  | s.parent = c.scope
  | c.scope = s
  | RET
@@ -96,7 +95,7 @@ ABYSS scope_pop: [ @CodegenContext c ]
  |  | RET
  |  \_
  | c.scope = s.parent
- | (vec_deinit)[ @(s.syms) ]
+ | (s.syms.deinit)[]
  | (free)[ s AS @ABYSS ]
  | RET
  \_
@@ -107,18 +106,18 @@ ABYSS scope_define: [ @CodegenContext c | @C1 name | @ABYSS v | @ABYSS t | @ASTN
  | sym.value = v
  | sym.type  = t
  | sym.ntype = ntype
- | (vec_append)[ @(c.scope.syms) | @sym AS @ABYSS ]
+ | (c.scope.syms.push)[ sym ]
  | RET
  \_
 
 @CGSym scope_lookup: [ @CodegenContext c | @C1 name ]
  | @CGScope s = c.scope
  | WHILE [ s != 0 ]
- |  | U64 n = (vec_size)[ @(s.syms) ]
+ |  | U64 n = (s.syms.size)[]
  |  | U64 i = n
  |  | WHILE [ i > 0 ]
  |  |  | i = i - 1
- |  |  | @CGSym sym = (vec_at)[ @(s.syms) | i ] AS @CGSym
+ |  |  | @CGSym sym = (s.syms.at)[ i ]
  |  |  | IF [ (strcmp)[ sym.name | name ] == 0 ]
  |  |  |  | RET [ sym ]
  |  |  |  \_
@@ -132,8 +131,8 @@ ABYSS scope_define: [ @CodegenContext c | @C1 name | @ABYSS v | @ABYSS t | @ASTN
 
 @CGType type_lookup: [ @CodegenContext c | @C1 name ]
  | U64 i = 0
- | WHILE [ i < (vec_size)[ @(c.types) ] ]
- |  | @CGType t = (vec_at)[ @(c.types) | i ] AS @CGType
+ | WHILE [ i < (c.types.size)[] ]
+ |  | @CGType t = (c.types.at)[ i ]
  |  | IF [ (strcmp)[ t.name | name ] == 0 ]
  |  |  | RET [ t ]
  |  |  \_
@@ -149,14 +148,14 @@ ABYSS scope_define: [ @CodegenContext c | @C1 name | @ABYSS v | @ABYSS t | @ASTN
  | t.record = 0
  | t.is_union = FALSE
  | t.body_set = FALSE
- | (vec_append)[ @(c.types) | @t AS @ABYSS ]
- | RET [ (vec_at)[ @(c.types) | (vec_size)[ @(c.types) ] - 1 ] AS @CGType ]
+ | (c.types.push)[ t ]
+ | RET [ (c.types.last)[] ]
  \_
 
 @CGType type_of_struct: [ @CodegenContext c | @ABYSS ty ]
  | U64 i = 0
- | WHILE [ i < (vec_size)[ @(c.types) ] ]
- |  | @CGType t = (vec_at)[ @(c.types) | i ] AS @CGType
+ | WHILE [ i < (c.types.size)[] ]
+ |  | @CGType t = (c.types.at)[ i ]
  |  | IF [ t.type == ty ]
  |  |  | RET [ t ]
  |  |  \_
@@ -169,14 +168,14 @@ ABYSS enum_const_add: [ @CodegenContext c | @C1 name | I64 v ]
  | CGEnumConst e
  | e.name = name
  | e.value = v
- | (vec_append)[ @(c.consts) | @e AS @ABYSS ]
+ | (c.consts.push)[ e ]
  | RET
  \_
 
 B1 enum_const_get: [ @CodegenContext c | @C1 name | @I64 out ]
  | U64 i = 0
- | WHILE [ i < (vec_size)[ @(c.consts) ] ]
- |  | @CGEnumConst e = (vec_at)[ @(c.consts) | i ] AS @CGEnumConst
+ | WHILE [ i < (c.consts.size)[] ]
+ |  | @CGEnumConst e = (c.consts.at)[ i ]
  |  | IF [ (strcmp)[ e.name | name ] == 0 ]
  |  |  | ?(out) = e.value
  |  |  | RET [ TRUE ]
@@ -227,8 +226,7 @@ B1 enum_const_get: [ @CodegenContext c | @C1 name | @I64 out ]
  | ELSE
  |  | @CGType ut = (type_lookup)[ c | tn.as.type.type.as.ident ]
  |  | IF [ ut == 0 ]
- |  |  | (printf)[ "codegen: unknown type `%s` at %d:%d\n" | tn.as.type.type.as.ident | tn.loc.line | tn.loc.col ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ tn.loc | "unknown type `%s`%s" | tn.as.type.type.as.ident | "" ]
  |  |  \_
  |  | base = ut.type
  |  \_
@@ -580,8 +578,8 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
 
 @ABYSS str_global: [ @CodegenContext c | @C1 lex ]
  | U64 i = 0
- | WHILE [ i < (vec_size)[ @(c.strs) ] ]
- |  | @CGStr s = (vec_at)[ @(c.strs) | i ] AS @CGStr
+ | WHILE [ i < (c.strs.size)[] ]
+ |  | @CGStr s = (c.strs.at)[ i ]
  |  | IF [ (strcmp)[ s.text | lex ] == 0 ]
  |  |  | RET [ s.global ]
  |  |  \_
@@ -593,7 +591,7 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
  |
  | @ABYSS arr = (LLVMArrayType)[ (LLVMInt8TypeInContext)[ c.ctx ] | (len AS I32) + 1 ]
  | @C1 name = (malloc)[ 32 ] AS @C1
- | (snprintf)[ name | 32 | ".str.%d" | (vec_size)[ @(c.strs) ] AS I32 ]
+ | (snprintf)[ name | 32 | ".str.%d" | (c.strs.size)[] AS I32 ]
  |
  | @ABYSS g = (LLVMAddGlobal)[ c.mod | arr | name ]
  | @ABYSS init = (LLVMConstStringInContext)[ c.ctx | text | len AS I32 | 0 ]
@@ -606,7 +604,7 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
  | CGStr entry
  | entry.text = lex
  | entry.global = g
- | (vec_append)[ @(c.strs) | @entry AS @ABYSS ]
+ | (c.strs.push)[ entry ]
  | RET [ g ]
  \_
 
@@ -730,8 +728,7 @@ B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
  |  |  \_
  |  |
  |  | IF [ (LLVMGetTypeKind)[ sty ] != LLVMStructTypeKind ]
- |  |  | (printf)[ "codegen: `.` applied to a non-aggregate at %d:%d\n" | n.loc.line | n.loc.col ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ n.loc | "`.` applied to a non-aggregate%s%s" | "" | "" ]
  |  |  \_
  |  |
  |  | @CGType ut = (type_of_struct)[ c | sty ]
@@ -747,8 +744,7 @@ B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
  |  | I32 idx = 0
  |  | @ASTNode ftype = 0
  |  | IF [ !(field_index)[ ut.record | fname.as.ident | @idx | @ftype AS @@ASTNode ] ]
- |  |  | (printf)[ "codegen: no field `%s` in `%s`\n" | fname.as.ident | ut.name ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ n.loc | "no field `%s` in `%s`" | fname.as.ident | ut.name ]
  |  |  \_
  |  |
  |  | IF [ ut.is_union ]
@@ -939,8 +935,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  |  |  \_
  |  |  \_
  |  | IF [ callee == 0 ]
- |  |  | (printf)[ "codegen: cannot tell what `%s` calls at %d:%d\n" | name | call.loc.line | call.loc.col ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ call.loc | "cannot tell what `%s` calls%s" | name | "" ]
  |  |  \_
  | ELSE
  |  | ; (name)[ ... ]: a variable holding a function pointer, else a function
@@ -955,8 +950,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  |  \_
  |  \_
  | IF [ callee == 0 ]
- |  | (printf)[ "codegen: call to undeclared function `%s`\n" | name ]
- |  | (exit)[ 1 ]
+ |  | (diag_fatal)[ call.loc | "call to undeclared function `%s`%s" | name | "" ]
  |  \_
  |
  | @ABYSS fty = 0
@@ -998,8 +992,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | WHILE [ a != 0 && n < 64 ]
  |  | @ABYSS v = (gen_expr)[ c | a.as.argument.argument ]
  |  | IF [ v == 0 ]
- |  |  | (printf)[ "codegen: could not evaluate argument %d to `%s`\n" | n + 1 | name ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ a.loc | "could not evaluate argument %s to `%s`" | (itoa)[ n + 1 ] | name ]
  |  |  \_
  |  |
  |  | IF [ n < nparams ]
@@ -1100,8 +1093,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | p = LLVMRealOGE
  |  \_
  | IF [ p < 0 ]
- |  | (printf)[ "codegen: operator not defined on floats at %d:%d\n" | n.loc.line | n.loc.col ]
- |  | (exit)[ 1 ]
+ |  | (diag_fatal)[ n.loc | "operator not defined on floats%s%s" | "" | "" ]
  |  \_
  | RET [ (LLVMBuildFCmp)[ c.builder | p | l | r | "fcmp" ] ]
  \_
@@ -1112,13 +1104,11 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | IF [ k == BOT_ASSIGN ]
  |  | LValue lv
  |  | IF [ !(gen_lvalue)[ c | n.as.bin_op.left | @lv ] ]
- |  |  | (printf)[ "codegen: left side of `=` is not assignable at %d:%d\n" | n.loc.line | n.loc.col ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ n.loc | "left side of `=` is not assignable%s%s" | "" | "" ]
  |  |  \_
  |  | @ABYSS v = (coerce_e)[ c | (gen_expr)[ c | n.as.bin_op.right ] | lv.type | n.as.bin_op.right ]
  |  | IF [ v == 0 ]
- |  |  | (printf)[ "codegen: could not evaluate the right side of `=` at %d:%d\n" | n.loc.line | n.loc.col ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ n.loc | "could not evaluate the right side of `=`%s%s" | "" | "" ]
  |  |  \_
  |  | (LLVMBuildStore)[ c.builder | v | lv.ptr ]
  |  | RET [ v ]
@@ -1127,8 +1117,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | IF [ k == BOT_MEMBER ]
  |  | LValue lv
  |  | IF [ !(gen_lvalue)[ c | n | @lv ] ]
- |  |  | (printf)[ "codegen: cannot resolve member access at %d:%d\n" | n.loc.line | n.loc.col ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ n.loc | "cannot resolve member access%s%s" | "" | "" ]
  |  |  \_
  |  | ; an array field reads as the address of its first element
  |  | IF [ (LLVMGetTypeKind)[ lv.type ] == LLVMArrayTypeKind ]
@@ -1140,8 +1129,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | IF [ k == BOT_INDEX ]
  |  | LValue lv
  |  | IF [ !(gen_lvalue)[ c | n | @lv ] ]
- |  |  | (printf)[ "codegen: cannot index this at %d:%d\n" | n.loc.line | n.loc.col ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ n.loc | "cannot index this%s%s" | "" | "" ]
  |  |  \_
  |  | RET [ (LLVMBuildLoad2)[ c.builder | lv.type | lv.ptr | "elemval" ] ]
  |  \_
@@ -1408,8 +1396,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | IF [ fn != 0 ]
  |  |  | RET [ fn ]
  |  |  \_
- |  | (printf)[ "codegen: unknown identifier `%s` at %d:%d\n" | n.as.ident | n.loc.line | n.loc.col ]
- |  | (exit)[ 1 ]
+ |  | (diag_fatal)[ n.loc | "unknown identifier `%s`%s" | n.as.ident | "" ]
  |  \_
  |
  | IF [ n.kind == NT_BIN_OP ]
@@ -1422,8 +1409,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | IF [ uk == UOT_REF ]
  |  |  | LValue lv
  |  |  | IF [ !(gen_lvalue)[ c | n.as.uny_op.operand | @lv ] ]
- |  |  |  | (printf)[ "codegen: cannot take the address of this expression at %d:%d\n" | n.loc.line | n.loc.col ]
- |  |  |  | (exit)[ 1 ]
+ |  |  |  | (diag_fatal)[ n.loc | "cannot take the address of this expression%s%s" | "" | "" ]
  |  |  |  \_
  |  |  | RET [ lv.ptr ]
  |  |  \_
@@ -1523,8 +1509,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | RET [ (LLVMConstInt)[ (LLVMInt64TypeInContext)[ c.ctx ] | sz | 0 ] ]
  |  \_
  |
- | (printf)[ "codegen: unhandled expression node %d at %d:%d\n" | n.kind | n.loc.line | n.loc.col ]
- | (exit)[ 1 ]
+ | (diag_fatal)[ n.loc | "unhandled expression node %s%s" | (itoa)[ n.kind ] | "" ]
  | RET [ 0 ]
  \_
 
@@ -1658,8 +1643,7 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  |  | IF [ d.as.var_decl.init != 0 ]
  |  |  | @ABYSS v = (coerce_e)[ c | (gen_expr)[ c | d.as.var_decl.init ] | ty | d.as.var_decl.init ]
  |  |  | IF [ v == 0 ]
- |  |  |  | (printf)[ "codegen: could not evaluate the initialiser of `%s` at %d:%d\n" | nm | d.loc.line | d.loc.col ]
- |  |  |  | (exit)[ 1 ]
+ |  |  |  | (diag_fatal)[ d.loc | "could not evaluate the initialiser of `%s`%s" | nm | "" ]
  |  |  |  \_
  |  |  | (LLVMBuildStore)[ c.builder | v | slot ]
  |  |  \_
@@ -1680,8 +1664,7 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  |
  | IF [ k == ST_BREAK ]
  |  | IF [ c.loop_break == 0 ]
- |  |  | (printf)[ "codegen: BREAK outside of a loop at %d:%d\n" | st.loc.line | st.loc.col ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ st.loc | "BREAK outside of a loop%s%s" | "" | "" ]
  |  |  \_
  |  | (LLVMBuildBr)[ c.builder | c.loop_break ]
  |  | RET
@@ -1689,8 +1672,7 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  |
  | IF [ k == ST_CONTINUE ]
  |  | IF [ c.loop_continue == 0 ]
- |  |  | (printf)[ "codegen: CONTINUE outside of a loop at %d:%d\n" | st.loc.line | st.loc.col ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ st.loc | "CONTINUE outside of a loop%s%s" | "" | "" ]
  |  |  \_
  |  | (LLVMBuildBr)[ c.builder | c.loop_continue ]
  |  | RET
@@ -1965,12 +1947,10 @@ ABYSS gen_global: [ @CodegenContext c | @ASTNode d ]
  |  |  | ; no function is open, so the builder folds all of it to a constant
  |  |  | init = (coerce_e)[ c | (gen_expr)[ c | d.as.var_decl.init ] | ty | d.as.var_decl.init ]
  |  |  | IF [ (LLVMIsConstant)[ init ] == 0 ]
- |  |  |  | (printf)[ "codegen: global `%s` needs a constant initialiser at %d:%d\n" | nm | d.loc.line | d.loc.col ]
- |  |  |  | (exit)[ 1 ]
+ |  |  |  | (diag_fatal)[ d.loc | "global `%s` needs a constant initialiser%s" | nm | "" ]
  |  |  |  \_
  |  | ELSE
- |  |  | (printf)[ "codegen: global `%s` needs a constant initialiser at %d:%d\n" | nm | d.loc.line | d.loc.col ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ d.loc | "global `%s` needs a constant initialiser%s" | nm | "" ]
  |  |  \_
  |  \_
  |
@@ -1990,9 +1970,9 @@ ABYSS codegen_init: [ @CodegenContext c | @C1 module_name | @Meta meta ]
  | c.loop_break = 0
  | c.loop_continue = 0
  |
- | (vec_init)[ @(c.types) | SIZE [ CGType ] | 16 ]
- | (vec_init)[ @(c.consts) | SIZE [ CGEnumConst ] | 16 ]
- | (vec_init)[ @(c.strs) | SIZE [ CGStr ] | 16 ]
+ | (c.types.init)[ 16 ]
+ | (c.consts.init)[ 16 ]
+ | (c.strs.init)[ 16 ]
  |
  | ; Without a data layout every ABI size query is meaningless, which is
  | ; what union layout and SIZE [ T ] are built on.
@@ -2077,16 +2057,16 @@ B1 codegen_deinit: [ @CodegenContext c | @C1 filename ]
  | B1 ok = TRUE
  | @C1 err = 0
  | IF [ (LLVMVerifyModule)[ c.mod | LLVMReturnStatusAction | @err AS @@C1 ] != 0 ]
- |  | (printf)[ "internal error: plc produced invalid LLVM IR; please report it\n" ]
+ |  | (dprintf)[ 2 | "internal compiler error: plc produced invalid LLVM IR; please report it\n" ]
  |  | IF [ err != 0 ]
- |  |  | (printf)[ "LLVM verify: %s\n" | err ]
+ |  |  | (dprintf)[ 2 | "%s\n" | err ]
  |  |  \_
  |  | ok = FALSE
  |  \_
  |
  | err = 0
  | IF [ (LLVMPrintModuleToFile)[ c.mod | filename | @err AS @@C1 ] != 0 ]
- |  | (printf)[ "failed to write %s\n" | filename ]
+ |  | (dprintf)[ 2 | "error: cannot write `%s`\n" | filename ]
  |  | ok = FALSE
  |  \_
  |
@@ -2094,9 +2074,9 @@ B1 codegen_deinit: [ @CodegenContext c | @C1 filename ]
  |  | (scope_pop)[ c ]
  |  \_
  |
- | (vec_deinit)[ @(c.types) ]
- | (vec_deinit)[ @(c.consts) ]
- | (vec_deinit)[ @(c.strs) ]
+ | (c.types.deinit)[]
+ | (c.consts.deinit)[]
+ | (c.strs.deinit)[]
  |
  | (LLVMDisposeBuilder)[ c.builder ]
  | (LLVMDisposeModule)[ c.mod ]

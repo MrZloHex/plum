@@ -1,1 +1,2 @@
-2:4: an ABYSS function cannot return a value
+error: an ABYSS function cannot return a value
+ --> void_returns.pl:2:4

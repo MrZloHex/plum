@@ -1,1 +1,2 @@
-3:1: `f` is declared again with a different signature
+error: `f` is declared again with a different signature
+ --> decl_conflict.pl:3:1

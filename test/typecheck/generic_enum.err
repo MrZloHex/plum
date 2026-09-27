@@ -1,1 +1,2 @@
-2:1: ENUM `Tag` cannot be generic: its constants do not depend on the parameters
+error: ENUM `Tag` cannot be generic: its constants do not depend on the parameters
+ --> generic_enum.pl:2:1

@@ -1,1 +1,2 @@
-6:18: `@f`: a function's name alone is already its address
+error: `@f`: a function's name alone is already its address
+ --> addr_of_function.pl:6:18

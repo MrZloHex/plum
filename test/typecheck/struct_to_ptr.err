@@ -1,1 +1,2 @@
-6:4: cannot initialise @Loc from Loc
+error: cannot initialise @Loc from Loc
+ --> struct_to_ptr.pl:6:4

@@ -1,1 +1,2 @@
-7:15: no field `nope` in `C`
+error: no field `nope` in `C`
+ --> method_body_error.pl:7:15

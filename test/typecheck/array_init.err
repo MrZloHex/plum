@@ -1,1 +1,2 @@
-3:4: array `a` cannot have an initialiser; assign its elements
+error: array `a` cannot have an initialiser; assign its elements
+ --> array_init.pl:3:4

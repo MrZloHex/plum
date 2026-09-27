@@ -1,1 +1,2 @@
-17:12: cannot dereference @ABYSS; cast it to a typed pointer first
+error: cannot dereference @ABYSS; cast it to a typed pointer first
+ --> deref_abyss.pl:5:12

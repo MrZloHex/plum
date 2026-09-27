@@ -1,1 +1,2 @@
-4:11: cannot index I32: it is neither an array nor a pointer
+error: cannot index I32: it is neither an array nor a pointer
+ --> index_scalar.pl:4:11

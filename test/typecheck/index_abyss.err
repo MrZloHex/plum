@@ -1,1 +1,2 @@
-17:11: cannot index @ABYSS; cast it to a typed pointer first
+error: cannot index @ABYSS; cast it to a typed pointer first
+ --> index_abyss.pl:5:11

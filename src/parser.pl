@@ -34,18 +34,19 @@ Token parser_peek: [ @Parser pr | I32 ahead ]
  \_
 
 ; The C version is a macro capturing __LINE__/__func__; PLUM has neither.
+@C1 itoa: [ I64 n ]
+ | @C1 buf = (malloc)[ 24 ] AS @C1
+ | (snprintf)[ buf | 24 | "%ld" | n ]
+ | RET [ buf ]
+ \_
+
 ABYSS unexpected: [ @Parser pr ]
- | (printf)[ "%d:%d: Unexpected %s\n" | pr.curr.loc.line | pr.curr.loc.col | (token_str)[ pr.curr.kind ] ]
- | (exit)[ 1 ]
- | RET
+ | (diag_fatal)[ pr.curr.loc | "unexpected %s here%s" | (tok_desc)[ pr.curr ] | "" ]
  \_
 
 ABYSS expect: [ @Parser pr | I32 t ]
  | IF [ pr.curr.kind != t ]
- |  | @C1 got  = (token_str)[ pr.curr.kind ]
- |  | @C1 want = (token_str)[ t ]
- |  | (printf)[ "%d:%d: Unexpected %s, expected %s\n" | pr.curr.loc.line | pr.curr.loc.col | got | want ]
- |  | (exit)[ 1 ]
+ |  | (diag_fatal)[ pr.curr.loc | "expected %s, found %s" | (tok_kind_desc)[ t ] | (tok_desc)[ pr.curr ] ]
  |  \_
  | (parser_next)[ pr ]
  | RET
@@ -66,8 +67,11 @@ ABYSS set_loc: [ @ASTNode node | Token tok ]
 
 ABYSS check_indent: [ @Parser pr | Token tok ]
  | IF [ tok.indent != pr.indent && tok.indent != 0 ]
- |  | (printf)[ "%d:%d: Wrong indentation %d, needed %d\n" | pr.curr.loc.line | pr.curr.loc.col | tok.indent | pr.indent ]
- |  | (exit)[ 1 ]
+ |  | ; the NEWLINE sits at the end of the line before the offending one
+ |  | Location at = tok.loc
+ |  | at.line = at.line + 1
+ |  | at.col = 1
+ |  | (diag_fatal)[ at | "this line is %s `|` deep, but the block it is in needs %s" | (itoa)[ tok.indent ] | (itoa)[ pr.indent ] ]
  |  \_
  | RET
  \_
@@ -193,8 +197,7 @@ B1 at_type_args: [ @Parser pr ]
 ; `>>` closes two lists at once: eat one `>` and leave the other.
 ABYSS expect_close_angle: [ @Parser pr ]
  | IF [ pr.curr.kind != TOK_OPERATOR || ?(pr.curr.lexeme) != '>' ]
- |  | (printf)[ "%d:%d: Unexpected %s, expected `>`\n" | pr.curr.loc.line | pr.curr.loc.col | (token_str)[ pr.curr.kind ] ]
- |  | (exit)[ 1 ]
+ |  | (diag_fatal)[ pr.curr.loc | "expected `>` to close the type arguments, found %s%s" | (tok_desc)[ pr.curr ] | "" ]
  |  \_
  | IF [ ?(pr.curr.lexeme + 1) == 0 ]
  |  | (parser_next)[ pr ]
@@ -315,8 +318,7 @@ ABYSS expect_close_angle: [ @Parser pr ]
  | ; a base type never has arguments, so after AS, `I32 <` is a comparison
  | IF [ !(bt >= 0 && pr.in_cast) && (at_type_args)[ pr ] ]
  |  | IF [ bt >= 0 ]
- |  |  | (printf)[ "%d:%d: `%s` takes no type arguments\n" | ident.loc.line | ident.loc.col | ident.lexeme ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ ident.loc | "`%s` takes no type arguments%s" | ident.lexeme | "" ]
  |  |  \_
  |  | type.as.type.args = (parse_type_args)[ pr ]
  |  \_
@@ -334,8 +336,7 @@ ABYSS parse_array_len: [ @Parser pr | @ASTNode type ]
  | (expect)[ pr | TOK_INTEGER ]
  | I64 len = (parse_int_lexeme)[ n.lexeme ]
  | IF [ len <= 0 ]
- |  | (printf)[ "%d:%d: an array needs a positive length\n" | n.loc.line | n.loc.col ]
- |  | (exit)[ 1 ]
+ |  | (diag_fatal)[ n.loc | "an array needs a positive length%s%s" | "" | "" ]
  |  \_
  | type.as.type.arr = len AS U64
  | (expect)[ pr | TOK_RBRACE ]
@@ -1073,8 +1074,7 @@ I32 binop_kind_of: [ Token op_tok ]
  | ELIF [ k == NT_CAST ]
  |  | e.as.expr.kind = ET_CAST
  | ELSE
- |  | (printf)[ "parse_expr: unexpected node kind %d\n" | k ]
- |  | (exit)[ 1 ]
+ |  | (diag_internal)[ "parse_expr: unexpected node kind %s" | (itoa)[ k ] ]
  |  \_
  |
  | RET [ e ]
@@ -1360,8 +1360,7 @@ I32 binop_kind_of: [ Token op_tok ]
  | Token at = pr.curr
  | @ASTNode recv = (parse_params)[ pr ]
  | IF [ recv == 0 || recv.as.parametre.vaarg || recv.as.parametre.next_param != 0 ]
- |  | (printf)[ "%d:%d: an IFACE takes exactly one receiver, as in [ @Data me ]\n" | at.loc.line | at.loc.col ]
- |  | (exit)[ 1 ]
+ |  | (diag_fatal)[ at.loc | "an IFACE takes exactly one receiver, as in [ @Data me ]%s%s" | "" | "" ]
  |  \_
  | ifc.as.iface.recv = recv
  |
@@ -1371,8 +1370,10 @@ I32 binop_kind_of: [ Token op_tok ]
  | LOOP
  |  | WHILE [ pr.curr.kind == TOK_NEWLINE ]
  |  |  | IF [ pr.curr.indent > 1 ]
- |  |  |  | (printf)[ "%d:%d: Wrong indentation %d, needed 1\n" | pr.curr.loc.line | pr.curr.loc.col | pr.curr.indent ]
- |  |  |  | (exit)[ 1 ]
+ |  |  |  | Location at = pr.curr.loc
+ |  |  |  | at.line = at.line + 1
+ |  |  |  | at.col = 1
+ |  |  |  | (diag_fatal)[ at | "this line is %s `|` deep, but a method starts at one%s" | (itoa)[ pr.curr.indent ] | "" ]
  |  |  |  \_
  |  |  | (parser_next)[ pr ]
  |  |  \_
@@ -1390,8 +1391,7 @@ I32 binop_kind_of: [ Token op_tok ]
  |  |  | ELIF [ (strcmp)[ sec.lexeme | "PRIVATE" ] == 0 ]
  |  |  |  | private = TRUE
  |  |  | ELSE
- |  |  |  | (printf)[ "%d:%d: expected PUBLIC or PRIVATE, got `%s`\n" | sec.loc.line | sec.loc.col | sec.lexeme ]
- |  |  |  | (exit)[ 1 ]
+ |  |  |  | (diag_fatal)[ sec.loc | "expected PUBLIC or PRIVATE, found `%s`%s" | sec.lexeme | "" ]
  |  |  |  \_
  |  |  | (expect)[ pr | TOK_COLON ]
  |  |  | CONTINUE
@@ -1410,8 +1410,7 @@ I32 binop_kind_of: [ Token op_tok ]
  |  |  | has_block = TRUE
  |  |  \_
  |  | IF [ !has_block ]
- |  |  | (printf)[ "%d:%d: method `%s` needs a body\n" | decl.loc.line | decl.loc.col | decl.as.fn_decl.ident.as.ident ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ decl.loc | "method `%s` needs a body%s" | decl.as.fn_decl.ident.as.ident | "" ]
  |  |  \_
  |  |
  |  | @ASTNode def = (ast_node_new)[ pr.ast ]
@@ -1524,12 +1523,20 @@ I32 binop_kind_of: [ Token op_tok ]
  | RET [ 0 ]
  \_
 
+ABYSS parse_file: [ @AST ast | @String source | @C1 name ]
+
 ABYSS parse_unit: [ @AST ast | @String source ]
+ | (parse_file)[ ast | source | NULL ]
+ \_
+
+; `name` is how diagnostics call the root file.
+ABYSS parse_file: [ @AST ast | @String source | @C1 name ]
  | Parser parser
  | parser.ast = ast
  | parser.indent = 1
  | parser.in_cast = FALSE
  | (lexer_init)[ @(parser.lexer) | source ]
+ | (lexer_set_file)[ @(parser.lexer) | name ]
  |
  | @@ASTNode tu_tail = @(ast.root.as.tu.tu_stmt)
  |
@@ -1544,8 +1551,7 @@ ABYSS parse_unit: [ @AST ast | @String source ]
  |  |  \_
  |  | ; a `|` line out here belongs to no block
  |  | IF [ line_indent != 0 ]
- |  |  | (printf)[ "%d:%d: a statement outside any block; top-level declarations start in column 1\n" | parser.curr.loc.line | parser.curr.loc.col ]
- |  |  | (exit)[ 1 ]
+ |  |  | (diag_fatal)[ parser.curr.loc | "a statement outside any block; top-level declarations start in column 1%s%s" | "" | "" ]
  |  |  \_
  |  |
  |  | @ASTNode ts = (parse_tu_stmt)[ @parser ]

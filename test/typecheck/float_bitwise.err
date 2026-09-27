@@ -1,1 +1,2 @@
-4:14: bitwise operator on a float
+error: bitwise operator on a float
+ --> float_bitwise.pl:4:14

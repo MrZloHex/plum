@@ -1,1 +1,2 @@
-15:10: @@C has no methods, so no `g`
+error: @@C has no methods, so no `g`
+  --> method_on_ptrptr.pl:15:10

@@ -1,1 +1,2 @@
-2:1: `nothing` cannot have type ABYSS
+error: `nothing` cannot have type ABYSS
+ --> global_abyss.pl:2:1

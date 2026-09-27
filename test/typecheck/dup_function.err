@@ -1,1 +1,2 @@
-5:1: function `f` is defined twice
+error: function `f` is defined twice
+ --> dup_function.pl:5:1

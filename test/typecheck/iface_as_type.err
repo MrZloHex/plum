@@ -1,1 +1,2 @@
-11:4: `F` is an interface, not a type
+error: `F` is an interface, not a type
+  --> iface_as_type.pl:11:4

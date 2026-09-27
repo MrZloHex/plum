@@ -1,1 +1,2 @@
-5:4: a statement outside any block; top-level declarations start in column 1
+error: a statement outside any block; top-level declarations start in column 1
+ --> stray_statement.pl:5:4

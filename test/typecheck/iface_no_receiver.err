@@ -1,1 +1,2 @@
-2:10: an IFACE takes exactly one receiver, as in [ @Data me ]
+error: an IFACE takes exactly one receiver, as in [ @Data me ]
+ --> iface_no_receiver.pl:2:10

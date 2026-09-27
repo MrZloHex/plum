@@ -1,1 +1,2 @@
-5:11: `.` applied to B1, which has no fields
+error: `.` applied to B1, which has no fields
+ --> not_then_field.pl:5:11

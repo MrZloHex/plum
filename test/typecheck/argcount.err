@@ -1,1 +1,2 @@
-5:10: too few arguments to `add`
+error: too few arguments to `add`
+ --> argcount.pl:5:10

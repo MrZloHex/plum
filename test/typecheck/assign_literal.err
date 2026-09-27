@@ -1,1 +1,2 @@
-3:6: the left side of `=` is not a variable, a field, an element or ?pointer
+error: the left side of `=` is not a variable, a field, an element or ?pointer
+ --> assign_literal.pl:3:6

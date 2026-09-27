@@ -1,13 +1,13 @@
- 2:1  NEWLINE     indent=0
+ 1:10 NEWLINE     indent=0
  2:1  TYPE
  2:6  IDENTIFIER  `Node`
  2:10 COLON
  2:12 STRUCTURE
- 3:1  NEWLINE     indent=1
+ 2:18 NEWLINE     indent=1
  3:4  IDENTIFIER  `I32`
  3:8  IDENTIFIER  `kind`
  4:1  END BLOCK   indent=0
- 5:1  NEWLINE     indent=0
+ 4:4  NEWLINE     indent=0
  5:1  IDENTIFIER  `I32`
  5:5  IDENTIFIER  `main`
  5:9  COLON
@@ -15,13 +15,13 @@
  5:13 IDENTIFIER  `I32`
  5:17 IDENTIFIER  `argc`
  5:22 RBRACKET
- 6:1  NEWLINE     indent=1
+ 5:23 NEWLINE     indent=1
  6:4  AT
  6:5  IDENTIFIER  `C1`
  6:8  IDENTIFIER  `s`
  6:10 OPERATOR    `=`
  6:12 STRING      `"hi\n"`
- 7:1  NEWLINE     indent=1
+ 6:18 NEWLINE     indent=1
  7:4  IF
  7:7  LBRACKET
  7:9  IDENTIFIER  `argc`
@@ -30,7 +30,7 @@
  7:19 OPERATOR    `&&`
  7:22 TRUE
  7:27 RBRACKET
- 8:1  NEWLINE     indent=2
+ 7:28 NEWLINE     indent=2
  8:7  LPAREN
  8:8  IDENTIFIER  `printf`
  8:14 RPAREN
@@ -40,12 +40,12 @@
  8:21 INTEGER     `42`
  8:24 RBRACKET
  9:1  END BLOCK   indent=1
-10:1  NEWLINE     indent=1
+ 9:7  NEWLINE     indent=1
 10:4  RET
 10:8  LBRACKET
 10:10 INTEGER     `0`
 10:12 RBRACKET
 11:1  END BLOCK   indent=0
-12:1  NEWLINE     indent=0
+11:4  NEWLINE     indent=0
 -- 49 tokens --
 [exit 0]

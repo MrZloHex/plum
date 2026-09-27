@@ -1,1 +1,2 @@
-9:15: argument expects I32, got S
+error: argument expects I32, got S
+ --> argtype.pl:9:15

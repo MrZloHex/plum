@@ -1,1 +1,2 @@
-4:13: `-` and `~` do not apply to pointers
+error: `-` and `~` do not apply to pointers
+ --> ptr_negate.pl:4:13

@@ -1,1 +1,2 @@
-3:10: ABYSS has no size
+error: ABYSS has no size
+ --> size_abyss.pl:3:10

@@ -1,1 +1,2 @@
-22:21: an ABYSS call has no value to use here
+error: an ABYSS call has no value to use here
+ --> void_vararg.pl:7:21

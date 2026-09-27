@@ -1,1 +1,2 @@
-13:13: `secret` is PRIVATE to `CA`
+error: `secret` is PRIVATE to `CA`
+  --> private_other_class.pl:13:13
