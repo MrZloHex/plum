@@ -1,0 +1,2 @@
+error: RET in a POSTLUDE: it runs while the block is left, and cannot leave it another way
+ --> postlude_ret.pl:3:13

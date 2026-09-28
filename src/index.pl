@@ -113,6 +113,11 @@ ABYSS ix_walk: [ @Index ix | @Meta m | @ASTNode n ]
  |  \_
  |
  | ; statements and expressions: only to reach the types inside them
+ | ; a POSTLUDE's statement
+ | IF [ k == NT_STMT ]
+ |  | (ix_walk)[ ix | m | n.as.stmt.stmt ]
+ |  | RET
+ |  \_
  | IF [ k == NT_BLOCK ]
  |  | @ASTNode s = n.as.block.stmts
  |  | WHILE [ s != 0 ]
@@ -142,9 +147,36 @@ ABYSS ix_walk: [ @Index ix | @Meta m | @ASTNode n ]
  |  | (ix_walk)[ ix | m | n.as.else_cond.block ]
  |  | RET
  |  \_
+ | IF [ k == NT_INIT ]
+ |  | @ASTNode it = n.as.list.item
+ |  | WHILE [ it != 0 ]
+ |  |  | (ix_walk)[ ix | m | it.as.init_item.value ]
+ |  |  | it = it.as.init_item.next
+ |  |  \_
+ |  | RET
+ |  \_
+ | IF [ k == NT_SWITCH ]
+ |  | (ix_walk)[ ix | m | n.as.switch.expr ]
+ |  | @ASTNode cs = n.as.switch.cases
+ |  | WHILE [ cs != 0 ]
+ |  |  | @ASTNode vl = cs.as.case.values
+ |  |  | WHILE [ vl != 0 ]
+ |  |  |  | (ix_walk)[ ix | m | vl.as.list.item ]
+ |  |  |  | vl = vl.as.list.next
+ |  |  |  \_
+ |  |  | (ix_walk)[ ix | m | cs.as.case.block ]
+ |  |  | cs = cs.as.case.next
+ |  |  \_
+ |  | (ix_walk)[ ix | m | n.as.switch.else_block ]
+ |  | RET
+ |  \_
  | IF [ k == NT_LOOP ]
+ |  | IF [ n.as.loop.init != 0 ]
+ |  |  | (ix_walk)[ ix | m | n.as.loop.init.as.stmt.stmt ]
+ |  |  \_
  |  | (ix_walk)[ ix | m | n.as.loop.expr ]
  |  | (ix_walk)[ ix | m | n.as.loop.block ]
+ |  | (ix_walk)[ ix | m | n.as.loop.step ]
  |  | RET
  |  \_
  | IF [ k == NT_RET ]

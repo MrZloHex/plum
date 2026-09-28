@@ -1,0 +1,2 @@
+error: the REQ of Mortal<UnitData> does not list `armour`, a field of `Unit`
+ --> req_uses_field.pl:8:23

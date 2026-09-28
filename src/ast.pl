@@ -47,6 +47,13 @@ TYPE ASTNodeType: ENUM
  | NT_METHOD
  | NT_REQ_IMPL
  | NT_STATIC_ASSERT
+ | NT_FN_TMPL          ; a generic function, T max<T>: [ ... ]
+ | NT_FN_INST          ; max<I32> in an expression: as.type holds it
+ | NT_SWITCH
+ | NT_CASE
+ | NT_VA_ARGS          ; `...` as a call's last argument: the caller's own
+ | NT_INIT             ; [ 1 | 2 ] or [ .x = 1 ]: as.list.item is the first NT_INIT_ITEM
+ | NT_INIT_ITEM
  \_
 
 TYPE TUStmtKind: ENUM
@@ -57,6 +64,7 @@ TYPE TUStmtKind: ENUM
  | TUST_IFACE
  | TUST_CLASS
  | TUST_STATIC_ASSERT
+ | TUST_FN_TMPL
  \_
 
 TYPE TypeDefKind: ENUM
@@ -103,6 +111,8 @@ TYPE StmtKind: ENUM
  | ST_LOOP
  | ST_VAR_DECL
  | ST_EXPR
+ | ST_SWITCH
+ | ST_POSTLUDE          ; stmt: the NT_STMT, or NT_BLOCK, run when the block is left
  \_
 
 TYPE ExprKind: ENUM
@@ -209,6 +219,7 @@ TYPE N_Enum: STRUCT
 TYPE N_EnumField: STRUCT
  | @ASTNode ident
  | @ASTNode next_field
+ | I64      value       ; as written after `=`, else one past the one before
  \_
 
 TYPE N_Record: STRUCT
@@ -275,9 +286,13 @@ TYPE N_Else: STRUCT
  | @ASTNode block
  \_
 
+; LOOP has no expr; WHILE an expr; FOR an expr, and an init (an NT_STMT)
+; and a step run after each pass, CONTINUE's too.
 TYPE N_Loop: STRUCT
  | @ASTNode expr
  | @ASTNode block
+ | @ASTNode init
+ | @ASTNode step
  \_
 
 TYPE N_VarDecl: STRUCT
@@ -365,6 +380,34 @@ TYPE N_ReqImpl: STRUCT
  | @ASTNode iface       ; NT_TYPE
  \_
 
+; SWITCH [ expr ], its CASEs in order, and the ELSE's block or 0.
+TYPE N_Switch: STRUCT
+ | @ASTNode expr
+ | @ASTNode cases       ; NT_CASE chain
+ | @ASTNode else_block
+ \_
+
+; CASE [ A | B ]: constants, any of which runs the block.
+TYPE N_Case: STRUCT
+ | @ASTNode values      ; NT_LIST of expressions
+ | @ASTNode block
+ | @ASTNode next
+ \_
+
+; One entry of an initialiser: `.name = value`, or a bare value.
+TYPE N_InitItem: STRUCT
+ | @ASTNode name        ; NT_IDENT, 0 when given in order
+ | @ASTNode value       ; an expression, or a nested NT_INIT
+ | @ASTNode next
+ \_
+
+; A generic function: generic.pl makes a copy of `def` per use.
+TYPE N_FnTmpl: STRUCT
+ | @ASTNode def         ; NT_FN_DEF
+ | @ASTNode gparams     ; NT_LIST of NT_IDENT
+ | @ASTNode reqs        ; NT_LIST of NT_REQ_IMPL, 0 without a REQ
+ \_
+
 TYPE N_Class: STRUCT
  | @ASTNode ident
  | @ASTNode gparams
@@ -419,6 +462,10 @@ TYPE NodeAs: UNION
  | N_Method    method
  | N_ReqImpl   req_impl
  | N_Assert    assert
+ | N_FnTmpl    fn_tmpl
+ | N_Switch    switch
+ | N_Case      case
+ | N_InitItem  init_item
  \_
 
 TYPE ASTNode: STRUCT

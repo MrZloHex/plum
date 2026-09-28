@@ -22,6 +22,8 @@ TESTS=(
     semantics fnptr
     generics_edge core order ptrmath numbers returns arena
     fnptr_edge include_once vectors anonymous req qualifiers req_impl req_method layout
+    method_ptr req_contract generic_fn
+    small_syntax for_loop switch postlude va_forward initialiser
 )
 [[ $# -gt 0 ]] && TESTS=("$@")
 

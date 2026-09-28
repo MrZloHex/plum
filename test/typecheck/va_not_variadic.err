@@ -1,0 +1,2 @@
+error: `...` passes on a variadic function's own arguments, and this function takes none
+ --> va_not_variadic.pl:4:21

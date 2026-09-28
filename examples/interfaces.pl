@@ -91,7 +91,7 @@ IFACE Mortal<T>: [ @T me ] REQ [ I32 hp | Named<T> ]
  \_
 
 ; only a player collects, so this one is written for PlayerData alone
-IFACE Collector: [ @PlayerData me ] REQ [ Named<PlayerData> ]
+IFACE Collector: [ @PlayerData me ] REQ [ I32 score | Named<PlayerData> ]
  | ABYSS collect: [ @Coin c ]
  |  | me.score += c.value
  |  | (me.say)[ "picks up a coin" ]

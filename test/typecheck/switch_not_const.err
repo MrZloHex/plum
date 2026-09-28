@@ -1,0 +1,2 @@
+error: a CASE value is a constant: a literal, a character or an enum constant
+ --> switch_not_const.pl:6:11

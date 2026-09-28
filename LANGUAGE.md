@@ -40,13 +40,21 @@ TYPE Kind: ENUM
  | K_ADD
  \_
 
+TYPE Reg: ENUM
+ | CR = 0x40                ; given
+ | SR                       ; one past the last: 0x41
+ | ALL = 0xFFFF_FFFF        ; any 32-bit pattern, or negative: = -1
+ \_
+
 TYPE MyInt: @I32          ; alias
 ```
 
 Structs may reference one another and themselves, so `@Node next` inside
 `TYPE Node` works. A union overlays every member at one address. Enum
-constants are `I32`, numbered from zero. `STRUCT` may be left out: a
-`TYPE Foo:` followed directly by fields is a struct.
+constants are `I32`, numbered from zero unless given, each one past the
+one before, as in C. `STRUCT` may be left out: a `TYPE Foo:` followed
+directly by fields is a struct. Blank lines and comments may sit between
+fields and constants.
 
 ### Arrays
 
@@ -73,9 +81,9 @@ array is a pointer to its first element: it passes to `@T` parameters, and
 `buf + 2`, `?buf` and `@buf` behave as in C. Indexing binds like `.`, so
 `pts{1}.x` and `s.text{0}` read left to right.
 
-A whole array cannot be assigned or given an initialiser; assign its
-elements. Array parameters are written as pointers. There is no bounds
-checking.
+A whole array cannot be assigned, but a declaration can give its
+elements, `I32 a{4} = [ 1 | 2 ]` (see Initialisers). Array parameters are
+written as pointers. There is no bounds checking.
 
 ### CONST and VOLATILE
 
@@ -235,8 +243,20 @@ I32 main: []
   ``error: `Coin` cannot IMPL Mortal<CoinData>: it has no field `hp` (I32)``.
   A class and the struct it holds count as one: `SPIBus<FakeBus>` is met
   by a class that takes `SPIBus<FakeBusData>`.
-  `REQ` does not yet limit the bodies to what it lists: a method using a
-  field it does not name still fails, as before, where it uses it.
+
+  A `REQ` is also the whole contract: the interface's methods use only
+  what it lists. Of the class (or the struct it holds) they may use the
+  fields it lists and the methods of the interface itself -- required ones
+  too -- and of each interface it names; of what a parameter stands for,
+  only the methods of the interface the REQ says it `IMPL`s, and no fields
+  at all. Everything else is an error where it is used, as a field, a
+  method call, a method pointer or an `OFFSET`:
+  ``error: the REQ of Collector does not list `score`, a field of `Player` ``.
+  Nothing is inherited: needing `Mortal<T>` gives `Mortal`'s methods, not
+  those of what `Mortal` itself needs. An interface with no `REQ` is not
+  limited. Other types the body meets, such as a `@Coin` parameter, are
+  not the contract's business -- unless one is the very type a parameter
+  stands for.
 * **Required methods.** A method written with no body is required: the
   interface needs it, and another interface of the same class must give
   it, with exactly that signature -- return type, parameters, `...` and
@@ -280,7 +300,52 @@ I32 main: []
   Inside an interface, `(Opt<T>.none)[]` names the class being built. An
   `ANONYMOUS` method cannot be called on an object, nor an ordinary one on
   the type, and `me` in one is an error. A type written in an expression
-  is only ever the left side of such a call.
+  is only ever the left side of such a call, or of a method pointer.
+* **Method pointers.** `Type.method` outside a call is the method's
+  address, as a function's name is. An ordinary method takes the
+  object's address first, as `me`; an `ANONYMOUS` one only its own
+  parameters:
+
+  ```plum
+   | FN ABYSS [ @Foo ] show = Foo.show     ; (show)[ @f ]
+   | FN I32 [ @Foo | I32 ] add = Foo.add   ; (add)[ @f | 1 ]
+   | FN Foo [ I32 ] make = Foo.at          ; ANONYMOUS: (make)[ 5 ]
+   | FN Box<I32> [ I32 ] b = Box<I32>.of   ; a generic class's, with its arguments
+  ```
+
+  `f.show` is an error: a method bound to its object would be a closure,
+  which one C pointer cannot hold. `PRIVATE` methods can be taken only
+  where they can be called.
+* **Generic functions** take type parameters after their name, and are
+  used with the arguments written out -- they are not inferred:
+
+  ```plum
+  T max<T>: [ T a | T b ]
+   | IF [ a > b ]
+   |  | RET [ a ]
+   |  \_
+   | RET [ b ]
+   \_
+
+  B1 less<T>: [ @T a | @T b ]
+      REQ [ T IMPL Ord<T> ]
+   | RET [ (a.cmp)[ b ] < 0 ]
+   \_
+
+   | I32 m = (max<I32>)[ 3 | 7 ]
+   | FN I32 [ I32 | I32 ] f = max<I32>     ; a pointer to that copy
+   | B1 lt = (less<Num>)[ @a | @b ]
+  ```
+
+  Each distinct use makes one ordinary function, named `max<I32>`; one
+  may call itself, as `(fact<T>)[ n - 1 ]`, and a generic class's methods
+  may use one with their own parameters, `(max<T>)[ ... ]`. A generic
+  function needs a body. Its `REQ` only says what the type parameters
+  `IMPL`, is checked at each use -- ``error: `less<P>` cannot be made: it
+  needs P to IMPL Ord<P>, and P is not a CLASS`` -- and is a full contract
+  as an interface's is: on a `T` the body may call only `Ord`'s methods,
+  and use no field. Without a `REQ`, the body is checked per copy, and an
+  error shows at the copy that has it.
 * **`NULL`** is the null pointer.
 
 This is all compile time. Every distinct use such as `Vector<I32>` is
@@ -313,6 +378,34 @@ I32 add: [ I32 a | I32 b ]            ; declaration + block = definition
 Structs pass and return **by value**. Recursion works. Everything lives at
 the top level — no nested functions and no modules. Methods live in an
 `IFACE`, described above.
+
+### Initialisers
+
+```plum
+TYPE Point: STRUCT
+ | I32 x
+ | I32 y
+ \_
+
+CONST U32 TABLE{8} = [ 1 | 2 | 4 | 8 ]       ; the other four are 0
+CONST Line ORIGIN = [ .b = [ 7 | 8 ] | .tag = "origin" ]
+@C1 NAMES{3} = [
+    "zero" |
+    "one" |
+    "two"
+]
+
+ | Point p = [ .y = 2 | .x = 1 ]      ; by name, in any order
+ | Point q = [ 3 ]                    ; in order: x = 3, y = 0
+ | Point ps{2} = [ [ 1 | 2 ] | [ .y = 4 ] ]
+ | Val v = [ .f = 1.5 ]               ; a UNION: one field
+```
+
+`[ ... ]` goes after the `=` of a declaration, local or global, whose
+type says what it builds: an array's elements in order, a struct's fields
+in order or all by name, a union's one field. Values nest, and whatever
+is left out is zero. A global's values must be constants, and a global
+`UNION` cannot take one yet. The list may run over several lines.
 
 ### Function pointers
 
@@ -349,7 +442,7 @@ class has one, and a function-pointer field otherwise.
 ```plum
  | I32 n = 0                     declaration, initialiser optional
  | n = n + 1                     assignment
- | n += 1                        also -=  *=  /=  %=
+ | n += 1                        also -= *= /= %= &= |= ^= <<= >>=
  |
  | IF [ c ]
  |  | ...
@@ -367,10 +460,46 @@ class has one, and a function-pointer field otherwise.
  |  | ...
  |  \_
  |
+ | FOR [ I32 i = 0 | i < n | i += 1 ]
+ |  | ...                         the step runs after CONTINUE too
+ |  \_
+ |
+ | SWITCH [ kind ]
+ | CASE [ K_NUM ]                CASE lines sit at the SWITCH's depth
+ |  | ...
+ | CASE [ K_ADD | K_SUB ]        any of several constants
+ |  | ...
+ | ELSE                          optional
+ |  | ...
+ |  \_
+ |
+ | POSTLUDE (buf.deinit)[]       run when this block is left, however
+ |
  | BREAK
  | CONTINUE
  | RET [ expr ]                  also  RET []  and bare  RET
 ```
+
+**`FOR [ init | cond | step ]`** is `init`, then a `WHILE [ cond ]` whose
+every pass, `CONTINUE`d or not, ends with `step`. A variable `init`
+declares belongs to the loop.
+
+**`SWITCH`** compares an integer or an enum with each `CASE`'s constants
+-- literals, characters, enum constants, `-` or `~` of one -- and runs the
+one block that matches, or the `ELSE`. There is no fallthrough; `BREAK`
+and `CONTINUE` inside act on the loop around the `SWITCH`. A value may
+appear in one `CASE` only. On a value of an `ENUM` type, a `SWITCH`
+without `ELSE` must have a `CASE` for every constant:
+``error: this SWITCH on `Color` has no CASE for `BLUE`; add one, or an
+ELSE``. Only a `SWITCH` with an `ELSE` counts as always leaving a function
+that every branch `RET`s from: a value no `CASE` names falls through.
+
+**`POSTLUDE stmt`**, or `POSTLUDE` over a block, runs when the block it is
+in is left: at its end, or by `RET`, `BREAK` or `CONTINUE`. Several run
+last-written first, each seeing the names it saw where it was written.
+A `RET`'s value is worked out before they run, so `RET [ s.len ]` then a
+`POSTLUDE (s.deinit)[]` is safe. A `POSTLUDE`'s statement cannot itself
+`RET`, or `BREAK` or `CONTINUE` out of it.
 
 Blocks nest as a run of `|`, and close with `\_`. The depth of that run is
 the block's nesting level — which is why the parser is hand-written; it is
@@ -505,7 +634,8 @@ It catches, with a line and column:
 * `OFFSET` of a field that is not there or behind a pointer, and a
   `STATIC_ASSERT` condition that is not an integer or `B1`
 * everything about `IFACE`, `CLASS` and generics listed in their section:
-  unmet `REQ`s and required methods, `ANONYMOUS` misuse, `PRIVATE` calls
+  unmet `REQ`s and required methods, a body using what its `REQ` does not
+  list, `ANONYMOUS` misuse, `PRIVATE` calls
 
 Some layout errors need the target's data layout, so codegen reports
 them: a `STATIC_ASSERT` that does not hold, `ALIGN` the target cannot
@@ -521,25 +651,31 @@ once accepted silently.
 
 | Missing | Workaround |
 |---|---|
-| Array initialisers, `I32 a{3} = ...` | assign the elements |
 | Multidimensional arrays | index a flat one: `grid{y * w + x}` |
-| `switch` | `ELIF` chains |
 | Ternary `?:` | `IF` |
-| `for` | `WHILE` |
 | `++` / `--` | `+= 1` |
-| `va_arg` (consuming varargs) | none — callers format first, as `src/trace.pl` does |
-| Generic functions | an `ANONYMOUS` method of a generic `CLASS`: `(Conv<I32>.from)[ x ]` |
+| `va_arg` (reading varargs one by one) | pass them on with `...` to a C `v` function |
 | Interface-typed values, dynamic dispatch | a struct of function pointers, as `examples/interfaces.pl`; at compile time, required methods and `REQ` |
 | Sum types, pattern matching | a generic class with a tag: `Option` and `Result` in `examples/` |
-| Struct and array constants, `CONST Pin LED = [ ... ]` | a function returning the value; array elements assigned one by one |
 | `SECTION`, `USED`, `WEAK`, `NORETURN`, `INLINE` | `--data-sections` and a linker script, as `examples/stm32g071/` does |
-| `&=` `\|=` `^=` `<<=` `>>=` | `x = x & m` |
 | Compile-time evaluation (`COMPTIME`) | `STATIC_ASSERT` for checks; tables computed at start-up |
 | Modules, namespaces | none |
 | Closures, exceptions | none |
 
 
-Calling a variadic function works; only *consuming* varargs is absent.
+Calling a variadic function works, and so does passing its arguments on:
+inside a function taking `...`, a call's last argument may be `...`, which
+hands them to C's `v` functions as one `va_list` -- declared there as
+`@ABYSS`:
+
+```plum
+I32 vfprintf: [ @ABYSS f | @C1 fmt | @ABYSS ap ]
+ABYSS error: [ @C1 fmt | ... ]
+ | (vfprintf)[ stderr | fmt | ... ]
+ \_
+```
+
+Only reading them one by one, C's `va_arg`, is absent.
 
 ---
 
@@ -569,18 +705,15 @@ wants debug info (see below).
 
 `examples/future.pl` sketches the direction; in rough order:
 
-* **Attributes** — `SECTION`, `USED`, `WEAK`, `NORETURN`, `INLINE` — and
-  **struct and array initialisers**: with them a vector table is written
-  as data, and `examples/stm32g071/startup.pl` loses its last hacks.
-* **Generic functions**, with `REQ` on their type parameters.
+* **Attributes** — `SECTION`, `USED`, `WEAK`, `NORETURN`, `INLINE`: with
+  them and initialisers a vector table is written as data, and
+  `examples/stm32g071/startup.pl` loses its last hacks.
 * **`COMPTIME`**: ordinary PLUM run by the compiler, for tables.
 * **A real module system**, `!USES <gpio.pl> AS gpio`, so `!USES` stops
   being textual inclusion.
 * **The rest of `lib/` onto generics.** `lib/vector.pl` is a typed
   `Vector<T>` and `lib/string.pl` a `String` class, and the compiler uses
   both; `map.pl` (still `@ABYSS` values) and `stack.pl` are next.
-* **`SWITCH`** — ergonomics for the dispatch sites now written as `ELIF`
-  chains.
 
 Deliberately not planned: garbage collection, a borrow checker,
 exceptions, runtime interfaces, and sum types with pattern matching.

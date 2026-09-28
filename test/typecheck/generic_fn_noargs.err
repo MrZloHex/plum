@@ -1,0 +1,2 @@
+error: `id` is generic: give its type arguments, as (id<I32>)[ ... ]
+  --> generic_fn_noargs.pl:15:10

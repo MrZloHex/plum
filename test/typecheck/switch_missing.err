@@ -1,0 +1,2 @@
+error: this SWITCH on `Color` has no CASE for `BLUE`; add one, or an ELSE
+ --> switch_missing.pl:8:4

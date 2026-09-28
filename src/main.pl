@@ -169,7 +169,9 @@ I32 main: [ I32 argc | @@C1 argv ]
  |  | RET [ 0 ]
  |  \_
  |
- | (generics_pass)[ @ast ]
+ | Map contracts
+ | (map_init)[ @contracts | 64 ]
+ | (generics_pass)[ @ast | @contracts ]
  |
  | Meta meta
  | (meta_init)[ @meta ]
@@ -177,6 +179,7 @@ I32 main: [ I32 argc | @@C1 argv ]
  |
  | Checker ck
  | (check_init)[ @ck | @meta ]
+ | ck.contracts = @contracts
  |
  | ; the index is wanted most when there are errors: keep going past them
  | IF [ emit_index ]

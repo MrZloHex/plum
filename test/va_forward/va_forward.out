@@ -1,0 +1,4 @@
+line 3: expected `]`, found `|` (1 of 2)
+line 9: no arguments at all
+003.1 z ok|
+[exit 0]

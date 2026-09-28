@@ -10,6 +10,7 @@
 ;                               a STRUCT "Cls<X>" laid out like D<X>, plus a
 ;                               function "Cls<X>.method" for every method of
 ;                               every IFACE, taking `@Cls<X> me` first
+;   T max<T>: [ T a | T b ]     (max<I32>)[ ... ] makes a function "max<I32>"
 ;
 ; A method call (obj.method)[ ... ] is left for check and codegen: they
 ; know obj's type, and look up "<that type>.method" among the functions.
@@ -28,10 +29,12 @@ TYPE Generics: STRUCT
  | Map        type_tmpls   ; name -> NT_TYPE_DEF with gparams
  | Map        iface_tmpls  ; name -> NT_IFACE
  | Map        class_tmpls  ; name -> NT_CLASS with gparams
+ | Map        fn_tmpls     ; name -> NT_FN_TMPL
  | Map        types        ; concrete name -> NT_TYPE_DEF, instances too
  | Map        done         ; instances and methods already made
  | Map        impls        ; class name -> NT_LIST of the interfaces it takes
  | Map        bases        ; class name -> the name of the struct it holds
+ | @Map       contracts    ; method name -> its contract, if its interface has a REQ
  | Vector<@ASTNode> work   ; instances still to be scanned
  | @ASTNode   out_head     ; the instances, as NT_TU_STMTs
  | @@ASTNode  out_tail
@@ -213,7 +216,7 @@ ABYSS append_type_name: [ @String s | @ASTNode tn ]
  | (memcpy)[ c AS @ABYSS | n AS @ABYSS | SIZE [ ASTNode ] ]
  | I32 k = n.kind
  |
- | IF [ k == NT_TYPE ]
+ | IF [ k == NT_TYPE || k == NT_FN_INST ]
  |  | c.as.type.type = (clone)[ g | n.as.type.type | s ]
  |  | c.as.type.args = (clone)[ g | n.as.type.args | s ]
  |  | IF [ n.as.type.kind == TT_USER_TYPE && n.as.type.args == 0 ]
@@ -306,9 +309,32 @@ ABYSS append_type_name: [ @String s | @ASTNode tn ]
  |  | c.as.else_cond.block = (clone)[ g | n.as.else_cond.block | s ]
  |  | RET [ c ]
  |  \_
+ | IF [ k == NT_INIT ]
+ |  | c.as.list.item = (clone)[ g | n.as.list.item | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_INIT_ITEM ]
+ |  | c.as.init_item.value = (clone)[ g | n.as.init_item.value | s ]
+ |  | c.as.init_item.next = (clone)[ g | n.as.init_item.next | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_SWITCH ]
+ |  | c.as.switch.expr = (clone)[ g | n.as.switch.expr | s ]
+ |  | c.as.switch.cases = (clone)[ g | n.as.switch.cases | s ]
+ |  | c.as.switch.else_block = (clone)[ g | n.as.switch.else_block | s ]
+ |  | RET [ c ]
+ |  \_
+ | IF [ k == NT_CASE ]
+ |  | c.as.case.values = (clone)[ g | n.as.case.values | s ]
+ |  | c.as.case.block = (clone)[ g | n.as.case.block | s ]
+ |  | c.as.case.next = (clone)[ g | n.as.case.next | s ]
+ |  | RET [ c ]
+ |  \_
  | IF [ k == NT_LOOP ]
  |  | c.as.loop.expr = (clone)[ g | n.as.loop.expr | s ]
  |  | c.as.loop.block = (clone)[ g | n.as.loop.block | s ]
+ |  | c.as.loop.init = (clone)[ g | n.as.loop.init | s ]
+ |  | c.as.loop.step = (clone)[ g | n.as.loop.step | s ]
  |  | RET [ c ]
  |  \_
  | IF [ k == NT_VAR_DECL ]
@@ -596,6 +622,50 @@ ABYSS check_required: [ @Generics g | @C1 cls | @Vector<ReqMethod> needs ]
  |  \_
  \_
 
+; BUS IMPL SPIBus<BUS>: the type put for BUS is a class that takes the
+; interface. `cls`, with the struct it holds, is the class being made,
+; whose interfaces are `impls`; NULL for a generic function. Errors say
+; `lead` first: "`Coin` cannot IMPL Mortal<CoinData>".
+ABYSS check_req_impl: [ @Generics g | @ASTNode it | @Subst s | @C1 cls | @C1 base | @ASTNode impls | @ASTNode where | @C1 lead ]
+ | C1 msg{768}
+ | @ASTNode subj = (clone)[ g | it.as.req_impl.subject | s ]
+ | @ASTNode need = (clone)[ g | it.as.req_impl.iface | s ]
+ | B1 need_iface = need.as.type.kind == TT_USER_TYPE && need.as.type.ptrs == 0
+ | IF [ !need_iface || !(gn_has)[ @(g.iface_tmpls) | need.as.type.type.as.ident ] ]
+ |  | (gn_error)[ it.as.req_impl.iface | "REQ: what follows IMPL must be an interface%s%s" | "" | "" ]
+ |  \_
+ | @C1 sn = (type_spelling)[ g | subj ]
+ | @C1 nn = (iface_spelling)[ g | need ]
+ |
+ | ; the class it names -- this one, when it names this one's struct
+ | @ASTNode list = 0
+ | @ABYSS found_list = 0
+ | B1 is_class = FALSE
+ | IF [ subj.as.type.kind == TT_USER_TYPE && subj.as.type.ptrs == 0 ]
+ |  | @C1 subn = subj.as.type.type.as.ident
+ |  | IF [ cls != NULL && ((strcmp)[ subn | cls ] == 0 || (strcmp)[ subn | base ] == 0) ]
+ |  |  | list = impls
+ |  |  | is_class = TRUE
+ |  | ELIF [ (map_get)[ @(g.impls) | subn | @found_list ] == 1 ]
+ |  |  | list = found_list AS @ASTNode
+ |  |  | is_class = TRUE
+ |  |  \_
+ |  \_
+ | IF [ !is_class ]
+ |  | (snprintf)[ msg | 768 | "%s: it needs %s to IMPL %s, and %s is not a CLASS" | lead | sn | nn | sn ]
+ |  | (gn_error)[ where | "%s%s" | msg | "" ]
+ |  \_
+ | B1 has = FALSE
+ | WHILE [ list != 0 && !has ]
+ |  | has = (same_iface)[ g | list.as.list.item | need ]
+ |  | list = list.as.list.next
+ |  \_
+ | IF [ !has ]
+ |  | (snprintf)[ msg | 768 | "%s: it needs %s to IMPL %s, and it does not" | lead | sn | nn ]
+ |  | (gn_error)[ where | "%s%s" | msg | "" ]
+ |  \_
+ \_
+
 ; What the interface's REQ asks of the class taking it: each field, with
 ; exactly its type, in the struct the class holds, and each interface in
 ; the class's own IMPL list. Checked before any method is, so a class
@@ -627,43 +697,8 @@ ABYSS check_reqs: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @
  |  |  |  | (gn_error)[ where | "%s%s" | msg | "" ]
  |  |  |  \_
  |  | ELIF [ it.kind == NT_REQ_IMPL ]
- |  |  | ; BUS IMPL SPIBus<BUS>: the type put for BUS, not this class
- |  |  | @ASTNode subj = (clone)[ g | it.as.req_impl.subject | s ]
- |  |  | @ASTNode need = (clone)[ g | it.as.req_impl.iface | s ]
- |  |  | B1 need_iface = need.as.type.kind == TT_USER_TYPE && need.as.type.ptrs == 0
- |  |  | IF [ !need_iface || !(gn_has)[ @(g.iface_tmpls) | need.as.type.type.as.ident ] ]
- |  |  |  | (gn_error)[ it.as.req_impl.iface | "REQ: what follows IMPL must be an interface%s%s" | "" | "" ]
- |  |  |  \_
- |  |  | @C1 sn = (type_spelling)[ g | subj ]
- |  |  | @C1 nn = (iface_spelling)[ g | need ]
- |  |  |
- |  |  | ; the class it names -- this one, when it names this one's struct
- |  |  | @ASTNode list = 0
- |  |  | @ABYSS found_list = 0
- |  |  | B1 is_class = FALSE
- |  |  | IF [ subj.as.type.kind == TT_USER_TYPE && subj.as.type.ptrs == 0 ]
- |  |  |  | @C1 subn = subj.as.type.type.as.ident
- |  |  |  | IF [ (strcmp)[ subn | cls ] == 0 || (strcmp)[ subn | base_td.as.type_def.ident.as.ident ] == 0 ]
- |  |  |  |  | list = impls
- |  |  |  |  | is_class = TRUE
- |  |  |  | ELIF [ (map_get)[ @(g.impls) | subn | @found_list ] == 1 ]
- |  |  |  |  | list = found_list AS @ASTNode
- |  |  |  |  | is_class = TRUE
- |  |  |  |  \_
- |  |  |  \_
- |  |  | IF [ !is_class ]
- |  |  |  | (snprintf)[ msg | 512 | "`%s` cannot IMPL %s: it needs %s to IMPL %s, and %s is not a CLASS" | cls | fname | sn | nn | sn ]
- |  |  |  | (gn_error)[ where | "%s%s" | msg | "" ]
- |  |  |  \_
- |  |  | B1 has = FALSE
- |  |  | WHILE [ list != 0 && !has ]
- |  |  |  | has = (same_iface)[ g | list.as.list.item | need ]
- |  |  |  | list = list.as.list.next
- |  |  |  \_
- |  |  | IF [ !has ]
- |  |  |  | (snprintf)[ msg | 512 | "`%s` cannot IMPL %s: it needs %s to IMPL %s, and it does not" | cls | fname | sn | nn ]
- |  |  |  | (gn_error)[ where | "%s%s" | msg | "" ]
- |  |  |  \_
+ |  |  | (snprintf)[ msg | 512 | "`%s` cannot IMPL %s" | cls | fname ]
+ |  |  | (check_req_impl)[ g | it | s | cls | base_td.as.type_def.ident.as.ident | impls | where | msg ]
  |  | ELSE
  |  |  | @ASTNode need = (clone)[ g | it | s ]
  |  |  | B1 is_iface = need.as.type.kind == TT_USER_TYPE && need.as.type.ptrs == 0
@@ -684,6 +719,108 @@ ABYSS check_reqs: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @
  |  |  \_
  |  | r = r.as.list.next
  |  \_
+ \_
+
+; --- contracts ------------------------------------------------------------
+;
+; An interface with a REQ uses only what the REQ lists. Each method made
+; from one keeps a contract: a Map from the name of each type its body
+; can meet -- the class, the struct it holds, what a parameter stands
+; for -- to a Grant, what the body may use of it. check.pl holds the body
+; to it; a type the map does not name is not the contract's business.
+
+TYPE Grant: STRUCT
+ | @C1 iface          ; the interface, as the class names it, for messages
+ | Map fields         ; name -> name
+ | Map methods
+ \_
+
+@Grant grant_of: [ @Map contract | @C1 subject | @C1 iface ]
+ | @ABYSS d = 0
+ | IF [ (map_get)[ contract | subject | @d ] == 1 ]
+ |  | RET [ d AS @Grant ]
+ |  \_
+ | @Grant gr = (malloc)[ SIZE [ Grant ] ] AS @Grant
+ | gr.iface = iface
+ | (map_init)[ @(gr.fields) | 16 ]
+ | (map_init)[ @(gr.methods) | 16 ]
+ | (map_put)[ contract | subject | gr AS @ABYSS ]
+ | RET [ gr ]
+ \_
+
+; Every method of the interface `name`, required ones too.
+ABYSS grant_methods: [ @Generics g | @Grant gr | @C1 name ]
+ | @ASTNode ifc = (gn_find)[ @(g.iface_tmpls) | name ]
+ | IF [ ifc == 0 ]
+ |  | RET
+ |  \_
+ | @ASTNode m = ifc.as.iface.methods
+ | WHILE [ m != 0 ]
+ |  | @C1 mn = m.as.method.def.as.fn_def.decl.as.fn_decl.ident.as.ident
+ |  | (map_put)[ @(gr.methods) | mn | mn AS @ABYSS ]
+ |  | m = m.as.method.next
+ |  \_
+ \_
+
+; What a parameter stands for gets only the methods of what the REQ says
+; it IMPLs -- nothing, if the REQ says nothing of it. A type already in
+; the contract, the class itself say, keeps what it has and gains those.
+ABYSS grant_params: [ @Generics g | @Map ct | @Subst s | @ASTNode reqs | @C1 fname ]
+ | @ASTNode a = s.args
+ | WHILE [ a != 0 ]
+ |  | @ASTNode at = a.as.list.item
+ |  | IF [ at.as.type.kind == TT_USER_TYPE ]
+ |  |  | @Grant pg = (grant_of)[ ct | at.as.type.type.as.ident | fname ]
+ |  |  | ; a class's struct is the same subject
+ |  |  | @ABYSS pb = 0
+ |  |  | @ABYSS had = 0
+ |  |  | IF [ (map_get)[ @(g.bases) | at.as.type.type.as.ident | @pb ] == 1 && (map_get)[ ct | pb AS @C1 | @had ] != 1 ]
+ |  |  |  | (map_put)[ ct | pb AS @C1 | pg AS @ABYSS ]
+ |  |  |  \_
+ |  |  \_
+ |  | a = a.as.list.next
+ |  \_
+ |
+ | @ASTNode r = reqs
+ | WHILE [ r != 0 ]
+ |  | @ASTNode it = r.as.list.item
+ |  | IF [ it.kind == NT_REQ_IMPL ]
+ |  |  | @ASTNode subj = (clone)[ g | it.as.req_impl.subject | s ]
+ |  |  | (resolve_type)[ g | subj ]
+ |  |  | @Grant sg = (grant_of)[ ct | subj.as.type.type.as.ident | fname ]
+ |  |  | (grant_methods)[ g | sg | it.as.req_impl.iface.as.type.type.as.ident ]
+ |  |  \_
+ |  | r = r.as.list.next
+ |  \_
+ \_
+
+@Map new_contract: []
+ | @Map ct = (malloc)[ SIZE [ Map ] ] AS @Map
+ | (map_init)[ ct | 16 ]
+ | RET [ ct ]
+ \_
+
+; The class may use its REQ's fields, and its methods: the interface's own
+; and those of every interface the REQ names.
+@Map make_contract: [ @Generics g | @C1 cls | @C1 base | @ASTNode ifc | @Subst s | @C1 fname ]
+ | @Map ct = (new_contract)[]
+ | @Grant recv = (grant_of)[ ct | cls | fname ]
+ | (map_put)[ ct | base | recv AS @ABYSS ]
+ | (grant_methods)[ g | recv | ifc.as.iface.ident.as.ident ]
+ | (grant_params)[ g | ct | s | ifc.as.iface.reqs | fname ]
+ |
+ | @ASTNode r = ifc.as.iface.reqs
+ | WHILE [ r != 0 ]
+ |  | @ASTNode it = r.as.list.item
+ |  | IF [ it.kind == NT_FIELD ]
+ |  |  | @C1 fld = it.as.rcrd_flds.ident.as.ident
+ |  |  | (map_put)[ @(recv.fields) | fld | fld AS @ABYSS ]
+ |  | ELIF [ it.kind != NT_REQ_IMPL ]
+ |  |  | (grant_methods)[ g | recv | it.as.type.type.as.ident ]
+ |  |  \_
+ |  | r = r.as.list.next
+ |  \_
+ | RET [ ct ]
  \_
 
 ; `impls` is every interface the class names, for check_reqs.
@@ -725,6 +862,10 @@ ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @
  |  | (gn_error)[ fref | "`%s` works on `%s`, which this CLASS does not hold" | fname | want.data ]
  |  \_
  | (check_reqs)[ g | cls | base_td | fref | ifc | @s | impls | where ]
+ | @Map ct = 0
+ | IF [ ifc.as.iface.reqs != 0 ]
+ |  | ct = (make_contract)[ g | cls | base | ifc | @s | (iface_spelling)[ g | fref ] ]
+ |  \_
  |
  | @C1 me = recv.as.parametre.ident.as.ident
  | @ASTNode m = ifc.as.iface.methods
@@ -748,6 +889,9 @@ ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @
  |  |  | (gn_error)[ decl | "`%s` is defined by two interfaces of `%s`" | decl.as.fn_decl.ident.as.ident | cls ]
  |  |  \_
  |  | (map_put)[ @(g.done) | mname | def AS @ABYSS ]
+ |  | IF [ ct != 0 ]
+ |  |  | (map_put)[ g.contracts | mname | ct AS @ABYSS ]
+ |  |  \_
  |  |
  |  | decl.as.fn_decl.ident = (gn_ident)[ g | mname | decl.as.fn_decl.ident ]
  |  | decl.as.fn_decl.owner = cls
@@ -838,6 +982,37 @@ ABYSS inst_class: [ @Generics g | @ASTNode at | @ASTNode cls | @C1 name | @ASTNo
  | RET
  \_
 
+; One copy of a generic function, named `name`: max<I32>. Its REQ may
+; only say what its type parameters IMPL, and holds its body to that.
+ABYSS inst_fn: [ @Generics g | @ASTNode at | @ASTNode ft | @C1 name | @ASTNode args ]
+ | @ASTNode tdecl = ft.as.fn_tmpl.def.as.fn_def.decl
+ | (check_arity)[ at | tdecl.as.fn_decl.ident.as.ident | ft.as.fn_tmpl.gparams | args ]
+ | Subst s
+ | s.params = ft.as.fn_tmpl.gparams
+ | s.args = args
+ |
+ | C1 lead{256}
+ | (snprintf)[ lead | 256 | "`%s` cannot be made" | name ]
+ | @ASTNode r = ft.as.fn_tmpl.reqs
+ | WHILE [ r != 0 ]
+ |  | @ASTNode it = r.as.list.item
+ |  | IF [ it.kind != NT_REQ_IMPL ]
+ |  |  | (gn_error)[ it | "a function's REQ says what its type parameters IMPL, as `T IMPL Ord<T>`%s%s" | "" | "" ]
+ |  |  \_
+ |  | (check_req_impl)[ g | it | @s | NULL | NULL | 0 | at | lead ]
+ |  | r = r.as.list.next
+ |  \_
+ |
+ | @ASTNode def = (clone)[ g | ft.as.fn_tmpl.def | @s ]
+ | def.as.fn_def.decl.as.fn_decl.ident = (gn_ident)[ g | name | tdecl.as.fn_decl.ident ]
+ | IF [ ft.as.fn_tmpl.reqs != 0 ]
+ |  | @Map ct = (new_contract)[]
+ |  | (grant_params)[ g | ct | @s | ft.as.fn_tmpl.reqs | name ]
+ |  | (map_put)[ g.contracts | name | ct AS @ABYSS ]
+ |  \_
+ | (emit)[ g | TUST_FN_DEF | def ]
+ \_
+
 ABYSS instantiate: [ @Generics g | @ASTNode at | @C1 tmpl | @C1 name | @ASTNode args ]
  | ; a template that instantiates itself with a bigger argument never
  | ; ends; its names grow with every round, which gives it away long
@@ -856,6 +1031,11 @@ ABYSS instantiate: [ @Generics g | @ASTNode at | @C1 tmpl | @C1 name | @ASTNode 
  | d = (gn_find)[ @(g.class_tmpls) | tmpl ]
  | IF [ d != 0 ]
  |  | (inst_class)[ g | at | d | name | args ]
+ |  | RET
+ |  \_
+ | d = (gn_find)[ @(g.fn_tmpls) | tmpl ]
+ | IF [ d != 0 ]
+ |  | (inst_fn)[ g | at | d | name | args ]
  |  | RET
  |  \_
  | IF [ (gn_has)[ @(g.iface_tmpls) | tmpl ] ]
@@ -920,6 +1100,13 @@ ABYSS resolve: [ @Generics g | @ASTNode n ]
  |  | (resolve_type)[ g | n ]
  |  | RET
  |  \_
+ | IF [ k == NT_FN_INST ]
+ |  | (resolve_type)[ g | n ]
+ |  | @C1 fname = n.as.type.type.as.ident
+ |  | n.kind = NT_IDENT
+ |  | n.as.ident = fname
+ |  | RET
+ |  \_
  | IF [ k == NT_FN_DECL ]
  |  | (resolve)[ g | n.as.fn_decl.type ]
  |  | (resolve)[ g | n.as.fn_decl.params ]
@@ -948,6 +1135,11 @@ ABYSS resolve: [ @Generics g | @ASTNode n ]
  |  |  | (resolve)[ g | f.as.rcrd_flds.type ]
  |  |  | f = f.as.rcrd_flds.next_field
  |  |  \_
+ |  | RET
+ |  \_
+ | ; a POSTLUDE's statement
+ | IF [ k == NT_STMT ]
+ |  | (resolve)[ g | n.as.stmt.stmt ]
  |  | RET
  |  \_
  | IF [ k == NT_BLOCK ]
@@ -983,9 +1175,36 @@ ABYSS resolve: [ @Generics g | @ASTNode n ]
  |  | (resolve)[ g | n.as.else_cond.block ]
  |  | RET
  |  \_
+ | IF [ k == NT_INIT ]
+ |  | @ASTNode it = n.as.list.item
+ |  | WHILE [ it != 0 ]
+ |  |  | (resolve)[ g | it.as.init_item.value ]
+ |  |  | it = it.as.init_item.next
+ |  |  \_
+ |  | RET
+ |  \_
+ | IF [ k == NT_SWITCH ]
+ |  | (resolve)[ g | n.as.switch.expr ]
+ |  | @ASTNode cs = n.as.switch.cases
+ |  | WHILE [ cs != 0 ]
+ |  |  | @ASTNode vl = cs.as.case.values
+ |  |  | WHILE [ vl != 0 ]
+ |  |  |  | (resolve)[ g | vl.as.list.item ]
+ |  |  |  | vl = vl.as.list.next
+ |  |  |  \_
+ |  |  | (resolve)[ g | cs.as.case.block ]
+ |  |  | cs = cs.as.case.next
+ |  |  \_
+ |  | (resolve)[ g | n.as.switch.else_block ]
+ |  | RET
+ |  \_
  | IF [ k == NT_LOOP ]
+ |  | IF [ n.as.loop.init != 0 ]
+ |  |  | (resolve)[ g | n.as.loop.init.as.stmt.stmt ]
+ |  |  \_
  |  | (resolve)[ g | n.as.loop.expr ]
  |  | (resolve)[ g | n.as.loop.block ]
+ |  | (resolve)[ g | n.as.loop.step ]
  |  | RET
  |  \_
  | IF [ k == NT_VAR_DECL ]
@@ -1007,8 +1226,19 @@ ABYSS resolve: [ @Generics g | @ASTNode n ]
  |  | RET
  |  \_
  | IF [ k == NT_FN_CALL ]
+ |  | @ASTNode id = n.as.fn_call.ident
+ |  | IF [ id != 0 && n.as.fn_call.recv == 0 && (gn_has)[ @(g.fn_tmpls) | id.as.ident ] ]
+ |  |  | (gn_error)[ n | "`%s` is generic: give its type arguments, as (%s<I32>)[ ... ]" | id.as.ident | id.as.ident ]
+ |  |  \_
  |  | (resolve)[ g | n.as.fn_call.recv ]
- |  | (resolve)[ g | n.as.fn_call.target ]
+ |  | ; (max<I32>)[ ... ]: called by name, as any function is
+ |  | @ASTNode tg = n.as.fn_call.target
+ |  | B1 inst = tg != 0 && tg.kind == NT_FN_INST
+ |  | (resolve)[ g | tg ]
+ |  | IF [ id == 0 && inst ]
+ |  |  | n.as.fn_call.ident = tg
+ |  |  | n.as.fn_call.target = 0
+ |  |  \_
  |  | @ASTNode a = n.as.fn_call.args
  |  | WHILE [ a != 0 ]
  |  |  | (resolve)[ g | a.as.argument.argument ]
@@ -1047,12 +1277,15 @@ B1 gn_template: [ @Map m | @C1 name | @ASTNode node | @Generics g ]
  | RET [ TRUE ]
  \_
 
-ABYSS generics_pass: [ @AST ast ]
+; `contracts` receives each method's contract, for check.pl.
+ABYSS generics_pass: [ @AST ast | @Map contracts ]
  | Generics g
  | g.ast = ast
+ | g.contracts = contracts
  | (map_init)[ @(g.type_tmpls) | 64 ]
  | (map_init)[ @(g.iface_tmpls) | 64 ]
  | (map_init)[ @(g.class_tmpls) | 64 ]
+ | (map_init)[ @(g.fn_tmpls) | 64 ]
  | (map_init)[ @(g.types) | 256 ]
  | (map_init)[ @(g.done) | 256 ]
  | (map_init)[ @(g.impls) | 64 ]
@@ -1083,6 +1316,12 @@ ABYSS generics_pass: [ @AST ast ]
  |  |  | drop = FALSE
  |  | ELIF [ k == TUST_IFACE ]
  |  |  | (gn_template)[ @(g.iface_tmpls) | node.as.iface.ident.as.ident | node | @g ]
+ |  | ELIF [ k == TUST_FN_TMPL ]
+ |  |  | @C1 fnm = node.as.fn_tmpl.def.as.fn_def.decl.as.fn_decl.ident.as.ident
+ |  |  | IF [ (gn_has)[ @(g.fn_tmpls) | fnm ] ]
+ |  |  |  | (gn_error)[ node | "generic function `%s` is defined twice%s" | fnm | "" ]
+ |  |  |  \_
+ |  |  | (gn_template)[ @(g.fn_tmpls) | fnm | node | @g ]
  |  | ELIF [ k == TUST_CLASS && node.as.klass.gparams != 0 ]
  |  |  | (gn_template)[ @(g.class_tmpls) | node.as.klass.ident.as.ident | node | @g ]
  |  | ELIF [ k == TUST_CLASS ]
@@ -1148,6 +1387,7 @@ ABYSS generics_pass: [ @AST ast ]
  | (map_deinit)[ @(g.type_tmpls) ]
  | (map_deinit)[ @(g.iface_tmpls) ]
  | (map_deinit)[ @(g.class_tmpls) ]
+ | (map_deinit)[ @(g.fn_tmpls) ]
  | (map_deinit)[ @(g.types) ]
  | (map_deinit)[ @(g.done) ]
  | (map_deinit)[ @(g.impls) ]

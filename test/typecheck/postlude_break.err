@@ -1,0 +1,2 @@
+error: BREAK or CONTINUE in a POSTLUDE: it runs while the block is left, and cannot leave it another way
+ --> postlude_break.pl:4:16

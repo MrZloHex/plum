@@ -1,0 +1,2 @@
+error: `less<P>` cannot be made: it needs P to IMPL Ord<P>, and P is not a CLASS
+  --> generic_fn_unmet.pl:20:11

@@ -1,0 +1,2 @@
+error: `get` is a method: bound to an object it is no function pointer; take `Point.get`, which takes the object's address first
+  --> method_ptr_bound.pl:13:27

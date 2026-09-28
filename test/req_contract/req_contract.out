@@ -1,0 +1,7 @@
+moved at 8
+chip: send
+sent 3, got 9 back, moved 1
+chip: send
+sent 41, got 3 back, moved 2
+count 7
+[exit 0]

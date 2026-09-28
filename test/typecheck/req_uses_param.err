@@ -1,0 +1,2 @@
+error: the REQ of Show<Point> does not list `x`, a field of `Point`
+  --> req_uses_param.pl:10:22

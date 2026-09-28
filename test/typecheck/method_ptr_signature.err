@@ -1,0 +1,2 @@
+error: cannot initialise FN I32 [ ] from FN I32 [ @Point ]
+  --> method_ptr_signature.pl:12:4

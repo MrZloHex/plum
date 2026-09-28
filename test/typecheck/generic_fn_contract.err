@@ -1,0 +1,2 @@
+error: the REQ of less<Num> does not list `secret`, a field of `Num`
+  --> generic_fn_contract.pl:13:12

@@ -1,0 +1,2 @@
+error: `...` goes to `printf` as one va_list: it must take one there, declared `@ABYSS ap`, as vprintf does
+ --> va_to_variadic.pl:4:20

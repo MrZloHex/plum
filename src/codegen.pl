@@ -64,6 +64,13 @@ TYPE CgEmit: ENUM
  | CG_OBJ
  \_
 
+; A POSTLUDE's statement, and the scope it was written in: it runs there,
+; whatever an inner block has since declared over its names.
+TYPE CGPostlude: STRUCT
+ | @ASTNode stmt
+ | @CGScope scope
+ \_
+
 TYPE CodegenContext: STRUCT
  | @ABYSS   ctx
  | @ABYSS   mod
@@ -77,6 +84,8 @@ TYPE CodegenContext: STRUCT
  | @ABYSS   ret_type
  | @ABYSS   loop_break
  | @ABYSS   loop_continue
+ | Vector<CGPostlude> postludes ; POSTLUDEs of the blocks open here, innermost last
+ | U64      loop_postludes   ; how many of them were there when the loop began
  | @ABYSS   tm          ; the target machine: layout, passes, machine code
  \_
 
@@ -1044,6 +1053,174 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | RET [ fty ]
  \_
 
+; `[ ... ]` into the object at `ptr`, declared `tn`, already zeroed:
+; each value given goes to its element or field.
+ABYSS gen_init_store: [ @CodegenContext c | @ABYSS ptr | @ASTNode tn | @ASTNode init | B1 unal ]
+
+ABYSS gen_init_value: [ @CodegenContext c | @ABYSS ptr | @ASTNode tn | @ASTNode v | B1 unal ]
+ | @ASTNode sv = (strip)[ v ]
+ | IF [ sv.kind == NT_INIT ]
+ |  | (gen_init_store)[ c | ptr | tn | sv | unal ]
+ |  | RET
+ |  \_
+ | @ABYSS ty = (map_type)[ c | tn ]
+ | @ABYSS val = (coerce_e)[ c | (gen_expr)[ c | v ] | ty | v ]
+ | (vstore)[ c | val | ptr | (tn_volatile)[ tn ] | unal ]
+ \_
+
+ABYSS gen_init_store: [ @CodegenContext c | @ABYSS ptr | @ASTNode tn | @ASTNode init | B1 unal ]
+ | @ASTNode it = init.as.list.item
+ | IF [ tn.as.type.arr > 0 ]
+ |  | ASTNode el = ?tn
+ |  | el.as.type.arr = 0
+ |  | @ABYSS aty = (map_type)[ c | tn ]
+ |  | @ABYSS i64 = (LLVMInt64TypeInContext)[ c.ctx ]
+ |  | @@ABYSS idx = (malloc)[ 16 ] AS @@ABYSS
+ |  | U64 i = 0
+ |  | WHILE [ it != 0 ]
+ |  |  | ?(idx) = (LLVMConstInt)[ i64 | 0 | 0 ]
+ |  |  | ?(idx + 1) = (LLVMConstInt)[ i64 | i | 0 ]
+ |  |  | @ABYSS ep = (LLVMBuildGEP2)[ c.builder | aty | ptr | idx | 2 | "elem" ]
+ |  |  | (gen_init_value)[ c | ep | @el | it.as.init_item.value | unal ]
+ |  |  | i += 1
+ |  |  | it = it.as.init_item.next
+ |  |  \_
+ |  | (free)[ idx AS @ABYSS ]
+ |  | RET
+ |  \_
+ | @ABYSS sty = (map_type)[ c | tn ]
+ | @CGType ut = (type_of_struct)[ c | sty ]
+ | @ASTNode f = ut.record.as.record.fields
+ | I32 pos = 0
+ | WHILE [ it != 0 ]
+ |  | I32 idx = pos
+ |  | @ASTNode ftn = 0
+ |  | IF [ it.as.init_item.name != 0 ]
+ |  |  | (field_index)[ ut.record | it.as.init_item.name.as.ident | @idx | @ftn AS @@ASTNode ]
+ |  | ELSE
+ |  |  | ftn = f.as.rcrd_flds.type
+ |  |  | f = f.as.rcrd_flds.next_field
+ |  |  \_
+ |  | @ABYSS fp = ptr
+ |  | IF [ !(ut.is_union) ]
+ |  |  | fp = (LLVMBuildStructGEP2)[ c.builder | sty | ptr | idx | "fld" ]
+ |  |  \_
+ |  | (gen_init_value)[ c | fp | ftn | it.as.init_item.value | (unal || ut.packed) ]
+ |  | pos += 1
+ |  | it = it.as.init_item.next
+ |  \_
+ \_
+
+; The same, as a constant, for a global.
+@ABYSS gen_init_const: [ @CodegenContext c | @ASTNode tn | @ASTNode init ]
+
+@ABYSS gen_init_cvalue: [ @CodegenContext c | @ASTNode tn | @ASTNode v ]
+ | @ASTNode sv = (strip)[ v ]
+ | IF [ sv.kind == NT_INIT ]
+ |  | RET [ (gen_init_const)[ c | tn | sv ] ]
+ |  \_
+ | @ABYSS val = (coerce_e)[ c | (gen_expr)[ c | v ] | (map_type)[ c | tn ] | v ]
+ | IF [ val == 0 || (LLVMIsConstant)[ val ] == 0 ]
+ |  | (diag_fatal)[ v.loc | "a global's initialiser is made of constants%s%s" | "" | "" ]
+ |  \_
+ | RET [ val ]
+ \_
+
+@ABYSS gen_init_const: [ @CodegenContext c | @ASTNode tn | @ASTNode init ]
+ | @ASTNode it = init.as.list.item
+ | IF [ tn.as.type.arr > 0 ]
+ |  | ASTNode el = ?tn
+ |  | el.as.type.arr = 0
+ |  | @ABYSS ety = (map_type)[ c | @el ]
+ |  | U32 n = tn.as.type.arr
+ |  | @@ABYSS vals = (malloc)[ (n AS U64) * 8 ] AS @@ABYSS
+ |  | U32 i = 0
+ |  | WHILE [ i < n ]
+ |  |  | ?(vals + i) = (LLVMConstNull)[ ety ]
+ |  |  | i += 1
+ |  |  \_
+ |  | i = 0
+ |  | WHILE [ it != 0 ]
+ |  |  | ?(vals + i) = (gen_init_cvalue)[ c | @el | it.as.init_item.value ]
+ |  |  | i += 1
+ |  |  | it = it.as.init_item.next
+ |  |  \_
+ |  | @ABYSS arr = (LLVMConstArray)[ ety | vals | n ]
+ |  | (free)[ vals AS @ABYSS ]
+ |  | RET [ arr ]
+ |  \_
+ | @ABYSS sty = (map_type)[ c | tn ]
+ | @CGType ut = (type_of_struct)[ c | sty ]
+ | IF [ ut.is_union ]
+ |  | (diag_fatal)[ init.loc | "a global UNION cannot take `[ ... ]` yet; set its field in code%s%s" | "" | "" ]
+ |  \_
+ | U32 n = (LLVMCountStructElementTypes)[ sty ]
+ | @@ABYSS vals = (malloc)[ (n AS U64) * 8 + 8 ] AS @@ABYSS
+ | U32 k = 0
+ | WHILE [ k < n ]
+ |  | ?(vals + k) = (LLVMConstNull)[ (LLVMStructGetTypeAtIndex)[ sty | k ] ]
+ |  | k += 1
+ |  \_
+ | @ASTNode f = ut.record.as.record.fields
+ | I32 pos = 0
+ | WHILE [ it != 0 ]
+ |  | I32 idx = pos
+ |  | @ASTNode ftn = 0
+ |  | IF [ it.as.init_item.name != 0 ]
+ |  |  | (field_index)[ ut.record | it.as.init_item.name.as.ident | @idx | @ftn AS @@ASTNode ]
+ |  | ELSE
+ |  |  | ftn = f.as.rcrd_flds.type
+ |  |  | f = f.as.rcrd_flds.next_field
+ |  |  \_
+ |  | ?(vals + idx) = (gen_init_cvalue)[ c | ftn | it.as.init_item.value ]
+ |  | pos += 1
+ |  | it = it.as.init_item.next
+ |  \_
+ | @ABYSS st = (LLVMConstNamedStruct)[ sty | vals | n ]
+ | (free)[ vals AS @ABYSS ]
+ | RET [ st ]
+ \_
+
+; `...` passed on: va_start into a buffer big enough for any target's
+; va_list (x86-64 needs 24 bytes, AArch64 32). Where va_list is a struct,
+; a function taking one gets its address; where it is a pointer -- ARM,
+; i386, RISC-V, Apple arm64, Windows -- that pointer. `store` gets the
+; buffer, for the va_end after the call.
+@ABYSS va_begin: [ @CodegenContext c | @@ABYSS store ]
+ | @ABYSS ptr = (LLVMPointerType)[ (LLVMInt8TypeInContext)[ c.ctx ] | 0 ]
+ | @ABYSS buf = (entry_alloca)[ c | (LLVMArrayType)[ (LLVMInt64TypeInContext)[ c.ctx ] | 4 ] | "va" ]
+ | (LLVMSetAlignment)[ buf | 16 ]
+ | (va_intrinsic)[ c | "llvm.va_start" | buf ]
+ | ?(store) = buf
+ |
+ | @C1 t = (LLVMGetTarget)[ c.mod ]
+ | B1 x64 = (strncmp)[ t | "x86_64" | 6 ] == 0
+ | B1 a64 = (strncmp)[ t | "aarch64" | 7 ] == 0 || (strncmp)[ t | "arm64" | 5 ] == 0
+ | B1 odd = (strstr)[ t | "windows" ] != NULL || (strstr)[ t | "mingw" ] != NULL || (strstr)[ t | "apple" ] != NULL || (strstr)[ t | "darwin" ] != NULL
+ | IF [ (x64 || a64) && !odd ]
+ |  | RET [ buf ]
+ |  \_
+ | RET [ (LLVMBuildLoad2)[ c.builder | ptr | buf | "va.ptr" ] ]
+ \_
+
+; llvm.va_start / llvm.va_end on `buf`, overloaded on the pointer type
+; since LLVM 19.
+ABYSS va_intrinsic: [ @CodegenContext c | @C1 name | @ABYSS buf ]
+ | U32 id = (LLVMLookupIntrinsicID)[ name | (strlen)[ name ] ]
+ | @@ABYSS tys = (malloc)[ 8 ] AS @@ABYSS
+ | ?(tys) = (LLVMTypeOf)[ buf ]
+ | U64 nt = 0
+ | IF [ (LLVMIntrinsicIsOverloaded)[ id ] ]
+ |  | nt = 1
+ |  \_
+ | @ABYSS fn = (LLVMGetIntrinsicDeclaration)[ c.mod | id | tys | nt ]
+ | @@ABYSS args = (malloc)[ 8 ] AS @@ABYSS
+ | ?(args) = buf
+ | (LLVMBuildCall2)[ c.builder | (LLVMGlobalGetValueType)[ fn ] | fn | args | 1 | "" ]
+ | (free)[ tys AS @ABYSS ]
+ | (free)[ args AS @ABYSS ]
+ \_
+
 @ABYSS gen_call: [ @CodegenContext c | @ASTNode call ]
  | @C1 name = "a function pointer"
  | U64 rptrs = 0
@@ -1132,7 +1309,14 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  \_
  |
  | @ASTNode a = call.as.fn_call.args
+ | @ABYSS va_buf = 0
  | WHILE [ a != 0 && n < 64 ]
+ |  | IF [ a.as.argument.argument.kind == NT_VA_ARGS ]
+ |  |  | ?(args + n) = (va_begin)[ c | @va_buf ]
+ |  |  | n = n + 1
+ |  |  | a = a.as.argument.next_arg
+ |  |  | CONTINUE
+ |  |  \_
  |  | @ABYSS v = (gen_expr)[ c | a.as.argument.argument ]
  |  | IF [ v == 0 ]
  |  |  | (diag_fatal)[ a.loc | "could not evaluate argument %s to `%s`" | (itoa)[ n + 1 ] | name ]
@@ -1172,6 +1356,9 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  \_
  |
  | @ABYSS r = (LLVMBuildCall2)[ c.builder | fty | callee | args | n | rname ]
+ | IF [ va_buf != 0 ]
+ |  | (va_intrinsic)[ c | "llvm.va_end" | va_buf ]
+ |  \_
  | (free)[ args AS @ABYSS ]
  | (free)[ ptypes AS @ABYSS ]
  | RET [ r ]
@@ -1258,6 +1445,16 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  \_
  |
  | IF [ k == BOT_MEMBER ]
+ |  | ; Type.method: the method's function, as a function's name is
+ |  | @C1 cls = (static_owner)[ c | n.as.bin_op.left ]
+ |  | IF [ cls != NULL ]
+ |  |  | @ASTNode mn = (strip)[ n.as.bin_op.right ]
+ |  |  | @ABYSS mf = (LLVMGetNamedFunction)[ c.mod | (method_name)[ cls | mn.as.ident ] ]
+ |  |  | IF [ mf == 0 ]
+ |  |  |  | (diag_fatal)[ n.loc | "`%s` has no method `%s`" | cls | mn.as.ident ]
+ |  |  |  \_
+ |  |  | RET [ mf ]
+ |  |  \_
  |  | LValue lv
  |  | IF [ !(gen_lvalue)[ c | n | @lv ] ]
  |  |  | (diag_fatal)[ n.loc | "cannot resolve member access%s%s" | "" | "" ]
@@ -1762,15 +1959,73 @@ ABYSS gen_cond: [ @CodegenContext c | @ASTNode cond ]
  | RET
  \_
 
+ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
+
+; One LLVM switch: each CASE's values jump to its block, anything else to
+; the ELSE, or past the end. No CASE falls into the next.
+ABYSS gen_switch: [ @CodegenContext c | @ASTNode sw ]
+ | @ABYSS v = (gen_expr)[ c | sw.as.switch.expr ]
+ | @ABYSS ty = (LLVMTypeOf)[ v ]
+ | @ABYSS done = (LLVMAppendBasicBlockInContext)[ c.ctx | c.fn | "switch.end" ]
+ | @ABYSS dflt = done
+ | IF [ sw.as.switch.else_block != 0 ]
+ |  | dflt = (LLVMAppendBasicBlockInContext)[ c.ctx | c.fn | "switch.else" ]
+ |  \_
+ | U32 n = 0
+ | @ASTNode cs = sw.as.switch.cases
+ | WHILE [ cs != 0 ]
+ |  | @ASTNode vl = cs.as.case.values
+ |  | WHILE [ vl != 0 ]
+ |  |  | n += 1
+ |  |  | vl = vl.as.list.next
+ |  |  \_
+ |  | cs = cs.as.case.next
+ |  \_
+ | @ABYSS ins = (LLVMBuildSwitch)[ c.builder | v | dflt | n ]
+ |
+ | cs = sw.as.switch.cases
+ | WHILE [ cs != 0 ]
+ |  | @ABYSS bb = (LLVMAppendBasicBlockInContext)[ c.ctx | c.fn | "switch.case" ]
+ |  | @ASTNode vl = cs.as.case.values
+ |  | WHILE [ vl != 0 ]
+ |  |  | ; constants, so this folds without emitting anything
+ |  |  | @ABYSS cv = (coerce)[ c | (gen_expr)[ c | vl.as.list.item ] | ty ]
+ |  |  | (LLVMAddCase)[ ins | cv | bb ]
+ |  |  | vl = vl.as.list.next
+ |  |  \_
+ |  | (LLVMPositionBuilderAtEnd)[ c.builder | bb ]
+ |  | (gen_block)[ c | cs.as.case.block ]
+ |  | IF [ (block_open)[ c ] ]
+ |  |  | (LLVMBuildBr)[ c.builder | done ]
+ |  |  \_
+ |  | cs = cs.as.case.next
+ |  \_
+ | IF [ sw.as.switch.else_block != 0 ]
+ |  | (LLVMPositionBuilderAtEnd)[ c.builder | dflt ]
+ |  | (gen_block)[ c | sw.as.switch.else_block ]
+ |  | IF [ (block_open)[ c ] ]
+ |  |  | (LLVMBuildBr)[ c.builder | done ]
+ |  |  \_
+ |  \_
+ | (LLVMPositionBuilderAtEnd)[ c.builder | done ]
+ \_
+
 ABYSS gen_loop: [ @CodegenContext c | @ASTNode loop ]
+ | ; FOR's declaration lives as long as the loop
+ | (scope_push)[ c ]
+ | IF [ loop.as.loop.init != 0 ]
+ |  | (gen_stmt)[ c | loop.as.loop.init ]
+ |  \_
  | @ABYSS body = (LLVMAppendBasicBlockInContext)[ c.ctx | c.fn | "loop.body" ]
  | @ABYSS contn = (LLVMAppendBasicBlockInContext)[ c.ctx | c.fn | "loop.cont" ]
  | @ABYSS brk = (LLVMAppendBasicBlockInContext)[ c.ctx | c.fn | "loop.end" ]
  |
  | @ABYSS save_b = c.loop_break
  | @ABYSS save_c = c.loop_continue
+ | U64 save_f = c.loop_postludes
  | c.loop_break = brk
  | c.loop_continue = contn
+ | c.loop_postludes = (c.postludes.size)[]
  |
  | (LLVMBuildBr)[ c.builder | body ]
  | (LLVMPositionBuilderAtEnd)[ c.builder | body ]
@@ -1790,12 +2045,17 @@ ABYSS gen_loop: [ @CodegenContext c | @ASTNode loop ]
  |  \_
  |
  | (LLVMPositionBuilderAtEnd)[ c.builder | contn ]
+ | IF [ loop.as.loop.step != 0 ]
+ |  | (gen_expr)[ c | loop.as.loop.step ]
+ |  \_
  | (LLVMBuildBr)[ c.builder | body ]
  |
  | c.loop_break = save_b
  | c.loop_continue = save_c
+ | c.loop_postludes = save_f
  |
  | (LLVMPositionBuilderAtEnd)[ c.builder | brk ]
+ | (scope_pop)[ c ]
  | RET
  \_
 
@@ -1814,6 +2074,13 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  |  | @ABYSS slot = (entry_alloca)[ c | ty | nm ]
  |  | (scope_define)[ c | nm | slot | ty | d.as.var_decl.type ]
  |  |
+ |  | ; [ ... ]: zero all of it, then store what is given
+ |  | @ASTNode li = (strip)[ d.as.var_decl.init ]
+ |  | IF [ li != 0 && li.kind == NT_INIT ]
+ |  |  | (vstore)[ c | (LLVMConstNull)[ ty ] | slot | (tn_volatile)[ d.as.var_decl.type ] | FALSE ]
+ |  |  | (gen_init_store)[ c | slot | d.as.var_decl.type | li | FALSE ]
+ |  |  | RET
+ |  |  \_
  |  | IF [ d.as.var_decl.init != 0 ]
  |  |  | @ABYSS v = (coerce_e)[ c | (gen_expr)[ c | d.as.var_decl.init ] | ty | d.as.var_decl.init ]
  |  |  | IF [ v == 0 ]
@@ -1827,12 +2094,23 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  | IF [ k == ST_RET ]
  |  | @ASTNode r = st.as.stmt.stmt
  |  | B1 has_val = r.as.ret.expr != 0
+ |  | ; the value first: every POSTLUDE of the function runs after it
  |  | IF [ has_val && (LLVMGetTypeKind)[ c.ret_type ] != LLVMVoidTypeKind ]
  |  |  | @ABYSS v = (coerce_e)[ c | (gen_expr)[ c | r.as.ret.expr ] | c.ret_type | r.as.ret.expr ]
+ |  |  | (run_postludes)[ c | 0 ]
  |  |  | (LLVMBuildRet)[ c.builder | v ]
  |  | ELSE
+ |  |  | (run_postludes)[ c | 0 ]
  |  |  | (LLVMBuildRetVoid)[ c.builder ]
  |  |  \_
+ |  | RET
+ |  \_
+ |
+ | IF [ k == ST_POSTLUDE ]
+ |  | CGPostlude f
+ |  | f.stmt = st.as.stmt.stmt
+ |  | f.scope = c.scope
+ |  | (c.postludes.push)[ f ]
  |  | RET
  |  \_
  |
@@ -1840,6 +2118,7 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  |  | IF [ c.loop_break == 0 ]
  |  |  | (diag_fatal)[ st.loc | "BREAK outside of a loop%s%s" | "" | "" ]
  |  |  \_
+ |  | (run_postludes)[ c | c.loop_postludes ]
  |  | (LLVMBuildBr)[ c.builder | c.loop_break ]
  |  | RET
  |  \_
@@ -1848,6 +2127,7 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  |  | IF [ c.loop_continue == 0 ]
  |  |  | (diag_fatal)[ st.loc | "CONTINUE outside of a loop%s%s" | "" | "" ]
  |  |  \_
+ |  | (run_postludes)[ c | c.loop_postludes ]
  |  | (LLVMBuildBr)[ c.builder | c.loop_continue ]
  |  | RET
  |  \_
@@ -1862,6 +2142,11 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  |  | RET
  |  \_
  |
+ | IF [ k == ST_SWITCH ]
+ |  | (gen_switch)[ c | st.as.stmt.stmt ]
+ |  | RET
+ |  \_
+ |
  | IF [ k == ST_EXPR ]
  |  | (gen_expr)[ c | st.as.stmt.stmt ]
  |  | RET
@@ -1871,15 +2156,39 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  | RET
  \_
 
+; Run the POSTLUDEs above `mark`, the last written first, each in its own
+; scope. They stay registered: another way out of the block runs them too.
+ABYSS run_postludes: [ @CodegenContext c | U64 mark ]
+ | U64 i = (c.postludes.size)[]
+ | WHILE [ i > mark && (block_open)[ c ] ]
+ |  | i -= 1
+ |  | CGPostlude f = ?((c.postludes.at)[ i ])
+ |  | @CGScope here = c.scope
+ |  | c.scope = f.scope
+ |  | IF [ f.stmt.kind == NT_BLOCK ]
+ |  |  | (gen_block)[ c | f.stmt ]
+ |  | ELSE
+ |  |  | (gen_stmt)[ c | f.stmt ]
+ |  |  \_
+ |  | c.scope = here
+ |  \_
+ \_
+
 ABYSS gen_block: [ @CodegenContext c | @ASTNode blk ]
  | IF [ blk == 0 ]
  |  | RET
  |  \_
  | (scope_push)[ c ]
+ | U64 mark = (c.postludes.size)[]
  | @ASTNode s = blk.as.block.stmts
  | WHILE [ s != 0 ]
  |  | (gen_stmt)[ c | s ]
  |  | s = s.as.stmt.next_stmt
+ |  \_
+ | ; falling off the end; RET, BREAK and CONTINUE ran them already
+ | (run_postludes)[ c | mark ]
+ | WHILE [ (c.postludes.size)[] > mark ]
+ |  | (c.postludes.pop)[]
  |  \_
  | (scope_pop)[ c ]
  | RET
@@ -1987,15 +2296,13 @@ ABYSS gen_type_def: [ @CodegenContext c | @ASTNode td ]
  |  | @CGType ut = (type_add)[ c | name ]
  |  | ut.type = (LLVMInt32TypeInContext)[ c.ctx ]
  |  |
- |  | I64 v = 0
  |  | @ASTNode f = td.as.type_def.tdef.as.enumeration.fields
  |  | WHILE [ f != 0 ]
  |  |  | I64 seen = 0
  |  |  | @C1 cn = f.as.enum_flds.ident.as.ident
  |  |  | IF [ !(enum_const_get)[ c | cn | @seen ] ]
- |  |  |  | (enum_const_add)[ c | cn | v ]
+ |  |  |  | (enum_const_add)[ c | cn | f.as.enum_flds.value ]
  |  |  |  \_
- |  |  | v = v + 1
  |  |  | f = f.as.enum_flds.next_field
  |  |  \_
  |  | RET
@@ -2101,7 +2408,7 @@ ABYSS gen_type_def: [ @CodegenContext c | @ASTNode td ]
  | RET
  \_
 
-; Built only from literals, enum constants, function names, SIZE and
+; Built only from literals, enum constants, function and method names, SIZE and
 ; arithmetic on those -- what a global may be initialised with.
 B1 is_const_expr: [ @CodegenContext c | @ASTNode e ]
  | @ASTNode n = (strip)[ e ]
@@ -2129,6 +2436,9 @@ B1 is_const_expr: [ @CodegenContext c | @ASTNode e ]
  | IF [ k == NT_BIN_OP ]
  |  | I32 bk = n.as.bin_op.kind
  |  | ; && and || branch; the others build no control flow
+ |  | IF [ bk == BOT_MEMBER && (static_owner)[ c | n.as.bin_op.left ] != NULL ]
+ |  |  | RET [ TRUE ]
+ |  |  \_
  |  | IF [ bk == BOT_ASSIGN || bk == BOT_MEMBER || bk == BOT_INDEX || bk == BOT_AND || bk == BOT_OR ]
  |  |  | RET [ FALSE ]
  |  |  \_
@@ -2145,7 +2455,9 @@ ABYSS gen_global: [ @CodegenContext c | @ASTNode d ]
  | @ABYSS init = (LLVMConstNull)[ ty ]
  | IF [ d.as.var_decl.init != 0 ]
  |  | @ASTNode lit = (strip)[ d.as.var_decl.init ]
- |  | IF [ lit != 0 && lit.kind == NT_LITERAL ]
+ |  | IF [ lit != 0 && lit.kind == NT_INIT ]
+ |  |  | init = (gen_init_const)[ c | d.as.var_decl.type | lit ]
+ |  | ELIF [ lit != 0 && lit.kind == NT_LITERAL ]
  |  |  | init = (gen_literal)[ c | lit ]
  |  |  | ; NULL, or any integer, into a pointer global
  |  |  | IF [ (LLVMGetTypeKind)[ ty ] == LLVMPointerTypeKind && (LLVMGetTypeKind)[ (LLVMTypeOf)[ init ] ] == LLVMIntegerTypeKind ]
@@ -2209,6 +2521,8 @@ ABYSS codegen_init: [ @CodegenContext c | @C1 module_name | @Meta meta ]
  | c.ret_type = 0
  | c.loop_break = 0
  | c.loop_continue = 0
+ | c.loop_postludes = 0
+ | (c.postludes.init)[ 8 ]
  | c.tm = 0
  |
  | (c.types.init)[ 16 ]

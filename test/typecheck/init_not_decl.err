@@ -1,0 +1,2 @@
+error: `[ ... ]` goes after the `=` of a declaration, whose type says what it builds
+ --> init_not_decl.pl:8:8

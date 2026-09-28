@@ -1,0 +1,2 @@
+error: give every field by name, or none: `.x = 1` and a bare value do not mix
+ --> init_mixed.pl:7:25

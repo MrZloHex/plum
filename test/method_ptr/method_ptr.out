@@ -1,0 +1,7 @@
+n = 5
+twice: 25
+n = 25
+table: 26, 1
+same: 1
+box: 42
+[exit 0]

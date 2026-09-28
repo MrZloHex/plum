@@ -1,0 +1,2 @@
+error: `Point` is a type, not a value, and has no method `put`
+  --> method_ptr_unknown.pl:12:31

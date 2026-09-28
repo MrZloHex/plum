@@ -267,6 +267,34 @@ ABYSS dump_fn_head: [ @String s | @C1 what | @ASTNode decl ]
  | (dump_params)[ s | decl.as.fn_decl.params ]
  \_
 
+; ` REQ [ I32 hp | Named<T> | BUS IMPL SPIBus<BUS> ]`, or nothing.
+ABYSS dump_reqs: [ @String s | @ASTNode rq ]
+ | IF [ rq == 0 ]
+ |  | RET
+ |  \_
+ | (s.append)[ " REQ [" ]
+ | WHILE [ rq != 0 ]
+ |  | (s.push)[ ' ' ]
+ |  | @ASTNode ri = rq.as.list.item
+ |  | IF [ ri.kind == NT_FIELD ]
+ |  |  | (dump_type)[ s | ri.as.rcrd_flds.type ]
+ |  |  | (s.push)[ ' ' ]
+ |  |  | (s.append)[ ri.as.rcrd_flds.ident.as.ident ]
+ |  | ELIF [ ri.kind == NT_REQ_IMPL ]
+ |  |  | (dump_type)[ s | ri.as.req_impl.subject ]
+ |  |  | (s.append)[ " IMPL " ]
+ |  |  | (dump_type)[ s | ri.as.req_impl.iface ]
+ |  | ELSE
+ |  |  | (dump_type)[ s | ri ]
+ |  |  \_
+ |  | rq = rq.as.list.next
+ |  | IF [ rq != 0 ]
+ |  |  | (s.append)[ " |" ]
+ |  |  \_
+ |  \_
+ | (s.append)[ " ]" ]
+ \_
+
 ABYSS dump_node: [ @ASTNode n | I32 depth ]
  | IF [ n == 0 ]
  |  | RET
@@ -283,6 +311,18 @@ ABYSS dump_node: [ @ASTNode n | I32 depth ]
  |  | (dump_fn_head)[ @s | "FN_DEF" | n.as.fn_def.decl ]
  |  | (dump_line)[ depth | @s | n.as.fn_def.decl.as.fn_decl.ident ]
  |  | (dump_block)[ n.as.fn_def.block | depth + 1 ]
+ | ELIF [ k == NT_FN_TMPL ]
+ |  | @ASTNode fd = n.as.fn_tmpl.def.as.fn_def.decl
+ |  | (s.append)[ "FN_DEF " ]
+ |  | (dump_type)[ @s | fd.as.fn_decl.type ]
+ |  | (s.push)[ ' ' ]
+ |  | (s.append)[ fd.as.fn_decl.ident.as.ident ]
+ |  | (dump_args)[ @s | n.as.fn_tmpl.gparams | TRUE ]
+ |  | (s.append)[ ": " ]
+ |  | (dump_params)[ @s | fd.as.fn_decl.params ]
+ |  | (dump_reqs)[ @s | n.as.fn_tmpl.reqs ]
+ |  | (dump_line)[ depth | @s | fd.as.fn_decl.ident ]
+ |  | (dump_block)[ n.as.fn_tmpl.def.as.fn_def.block | depth + 1 ]
  | ELIF [ k == NT_TYPE_DEF ]
  |  | (s.append)[ "TYPE " ]
  |  | (s.append)[ n.as.type_def.ident.as.ident ]
@@ -296,15 +336,13 @@ ABYSS dump_node: [ @ASTNode n | I32 depth ]
  |  |  | (s.append)[ ": ENUM" ]
  |  |  | (dump_line)[ depth | @s | n.as.type_def.ident ]
  |  |  | @ASTNode e = n.as.type_def.tdef.as.enumeration.fields
- |  |  | I32 v = 0
  |  |  | WHILE [ e != 0 ]
  |  |  |  | C1 num{24}
- |  |  |  | (snprintf)[ num | 24 | " = %d" | v ]
+ |  |  |  | (snprintf)[ num | 24 | " = %ld" | e.as.enum_flds.value ]
  |  |  |  | (s.append)[ "CONST " ]
  |  |  |  | (s.append)[ e.as.enum_flds.ident.as.ident ]
  |  |  |  | (s.append)[ num ]
  |  |  |  | (dump_line)[ depth + 1 | @s | e.as.enum_flds.ident ]
- |  |  |  | v += 1
  |  |  |  | e = e.as.enum_flds.next_field
  |  |  |  \_
  |  | ELSE
@@ -337,30 +375,7 @@ ABYSS dump_node: [ @ASTNode n | I32 depth ]
  |  | (dump_args)[ @s | n.as.iface.gparams | TRUE ]
  |  | (s.append)[ ": " ]
  |  | (dump_params)[ @s | n.as.iface.recv ]
- |  | IF [ n.as.iface.reqs != 0 ]
- |  |  | (s.append)[ " REQ [" ]
- |  |  | @ASTNode rq = n.as.iface.reqs
- |  |  | WHILE [ rq != 0 ]
- |  |  |  | (s.push)[ ' ' ]
- |  |  |  | @ASTNode ri = rq.as.list.item
- |  |  |  | IF [ ri.kind == NT_FIELD ]
- |  |  |  |  | (dump_type)[ @s | ri.as.rcrd_flds.type ]
- |  |  |  |  | (s.push)[ ' ' ]
- |  |  |  |  | (s.append)[ ri.as.rcrd_flds.ident.as.ident ]
- |  |  |  | ELIF [ ri.kind == NT_REQ_IMPL ]
- |  |  |  |  | (dump_type)[ @s | ri.as.req_impl.subject ]
- |  |  |  |  | (s.append)[ " IMPL " ]
- |  |  |  |  | (dump_type)[ @s | ri.as.req_impl.iface ]
- |  |  |  | ELSE
- |  |  |  |  | (dump_type)[ @s | ri ]
- |  |  |  |  \_
- |  |  |  | rq = rq.as.list.next
- |  |  |  | IF [ rq != 0 ]
- |  |  |  |  | (s.append)[ " |" ]
- |  |  |  |  \_
- |  |  |  \_
- |  |  | (s.append)[ " ]" ]
- |  |  \_
+ |  | (dump_reqs)[ @s | n.as.iface.reqs ]
  |  | (dump_line)[ depth | @s | n.as.iface.ident ]
  |  | ; the `+ PUBLIC:`, `+ PRIVATE:` and `+ ANONYMOUS:` sections, where
  |  | ; the source switches between them
@@ -417,6 +432,14 @@ ABYSS dump_node: [ @ASTNode n | I32 depth ]
  |  | ELIF [ sk == ST_CONTINUE ]
  |  |  | (s.append)[ "CONTINUE" ]
  |  |  | (dump_line)[ depth | @s | n ]
+ |  | ELIF [ sk == ST_POSTLUDE ]
+ |  |  | (s.append)[ "POSTLUDE" ]
+ |  |  | (dump_line)[ depth | @s | n ]
+ |  |  | IF [ n.as.stmt.stmt.kind == NT_BLOCK ]
+ |  |  |  | (dump_block)[ n.as.stmt.stmt | depth + 1 ]
+ |  |  | ELSE
+ |  |  |  | (dump_node)[ n.as.stmt.stmt | depth + 1 ]
+ |  |  |  \_
  |  | ELSE
  |  |  | (dump_node)[ n.as.stmt.stmt | depth ]
  |  |  \_
@@ -443,10 +466,61 @@ ABYSS dump_node: [ @ASTNode n | I32 depth ]
  |  |  | (dump_line)[ depth | @s | n.as.cond.else_part ]
  |  |  | (dump_block)[ n.as.cond.else_part.as.else_cond.block | depth + 1 ]
  |  |  \_
+ | ELIF [ k == NT_VA_ARGS ]
+ |  | (s.append)[ "..." ]
+ |  | (dump_line)[ depth | @s | n ]
+ | ELIF [ k == NT_INIT ]
+ |  | (s.append)[ "INIT" ]
+ |  | (dump_line)[ depth | @s | n ]
+ |  | @ASTNode it = n.as.list.item
+ |  | WHILE [ it != 0 ]
+ |  |  | IF [ it.as.init_item.name != 0 ]
+ |  |  |  | String fl
+ |  |  |  | (fl.init_cstr)[ "." ]
+ |  |  |  | (fl.append)[ it.as.init_item.name.as.ident ]
+ |  |  |  | (dump_line)[ depth + 1 | @fl | it ]
+ |  |  |  | (fl.deinit)[]
+ |  |  |  | (dump_node)[ it.as.init_item.value | depth + 2 ]
+ |  |  | ELSE
+ |  |  |  | (dump_node)[ it.as.init_item.value | depth + 1 ]
+ |  |  |  \_
+ |  |  | it = it.as.init_item.next
+ |  |  \_
+ | ELIF [ k == NT_SWITCH ]
+ |  | (s.append)[ "SWITCH" ]
+ |  | (dump_line)[ depth | @s | n ]
+ |  | (dump_node)[ n.as.switch.expr | depth + 1 ]
+ |  | @ASTNode cs = n.as.switch.cases
+ |  | WHILE [ cs != 0 ]
+ |  |  | String cl
+ |  |  | (cl.init_cstr)[ "CASE" ]
+ |  |  | (dump_line)[ depth | @cl | cs ]
+ |  |  | (cl.deinit)[]
+ |  |  | @ASTNode vl = cs.as.case.values
+ |  |  | WHILE [ vl != 0 ]
+ |  |  |  | (dump_node)[ vl.as.list.item | depth + 1 ]
+ |  |  |  | vl = vl.as.list.next
+ |  |  |  \_
+ |  |  | (dump_block)[ cs.as.case.block | depth + 1 ]
+ |  |  | cs = cs.as.case.next
+ |  |  \_
+ |  | IF [ n.as.switch.else_block != 0 ]
+ |  |  | String el
+ |  |  | (el.init_cstr)[ "ELSE" ]
+ |  |  | (dump_line)[ depth | @el | n.as.switch.else_block ]
+ |  |  | (el.deinit)[]
+ |  |  | (dump_block)[ n.as.switch.else_block | depth + 1 ]
+ |  |  \_
  | ELIF [ k == NT_LOOP ]
  |  | IF [ n.as.loop.expr == 0 ]
  |  |  | (s.append)[ "LOOP" ]
  |  |  | (dump_line)[ depth | @s | n ]
+ |  | ELIF [ n.as.loop.init != 0 ]
+ |  |  | (s.append)[ "FOR" ]
+ |  |  | (dump_line)[ depth | @s | n ]
+ |  |  | (dump_node)[ n.as.loop.init.as.stmt.stmt | depth + 1 ]
+ |  |  | (dump_node)[ n.as.loop.expr | depth + 1 ]
+ |  |  | (dump_node)[ n.as.loop.step | depth + 1 ]
  |  | ELSE
  |  |  | (s.append)[ "WHILE" ]
  |  |  | (dump_line)[ depth | @s | n ]
@@ -459,6 +533,11 @@ ABYSS dump_node: [ @ASTNode n | I32 depth ]
  | ELIF [ k == NT_TYPE ]
  |  | ; the class in an ANONYMOUS call
  |  | (s.append)[ "TYPE " ]
+ |  | (dump_type)[ @s | n ]
+ |  | (dump_line)[ depth | @s | n ]
+ | ELIF [ k == NT_FN_INST ]
+ |  | ; a generic function with its arguments
+ |  | (s.append)[ "FN " ]
  |  | (dump_type)[ @s | n ]
  |  | (dump_line)[ depth | @s | n ]
  | ELIF [ k == NT_IDENT ]

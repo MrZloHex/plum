@@ -247,6 +247,14 @@ I32 lex_keyword_kind: [ @C1 s ]
  |  | RET [ TOK_OFFSET ]
  | ELIF [ (strcmp)[ s | "STATIC_ASSERT" ] == 0 ]
  |  | RET [ TOK_STATIC_ASSERT ]
+ | ELIF [ (strcmp)[ s | "FOR" ] == 0 ]
+ |  | RET [ TOK_FOR ]
+ | ELIF [ (strcmp)[ s | "SWITCH" ] == 0 ]
+ |  | RET [ TOK_SWITCH ]
+ | ELIF [ (strcmp)[ s | "CASE" ] == 0 ]
+ |  | RET [ TOK_CASE ]
+ | ELIF [ (strcmp)[ s | "POSTLUDE" ] == 0 ]
+ |  | RET [ TOK_POSTLUDE ]
  | ELSE
  |  | RET [ -1 ]
  |  \_
@@ -395,6 +403,14 @@ Token lex_token: [ @Lexer lx ]
  |  |  | lx.pos = lx.pos + 2
  |  |  | RET [ (make_tok)[ TOK_OPERATOR | (lx.src.substr)[ lx.pos - 2 | 2 ] | line | col | -1 ] ]
  |  |  \_
+ |  | ; |= is compound assignment; a lone | separates, or is bitwise or
+ |  | IF [ c == '|' && (lex_look)[ lx | 1 ] == '=' ]
+ |  |  | I32 line = lx.line
+ |  |  | I32 col  = lx.col
+ |  |  | lx.col = lx.col + 2
+ |  |  | lx.pos = lx.pos + 2
+ |  |  | RET [ (make_tok)[ TOK_OPERATOR | (lx.src.substr)[ lx.pos - 2 | 2 ] | line | col | -1 ] ]
+ |  |  \_
  |  | IF [ c == '|' ]
  |  |  | (lex_nextc)[ lx ]
  |  |  | RET [ (make_tok)[ TOK_VBAR | 0 | lx.line | lx.col - 1 | -1 ] ]
@@ -448,6 +464,10 @@ Token lex_token: [ @Lexer lx ]
  |  |  | (lex_nextc)[ lx ]
  |  |  | C1 n = (lex_peek)[ lx ]
  |  |  | IF [ n == '=' || n == '<' || n == '>' ]
+ |  |  |  | (lex_nextc)[ lx ]
+ |  |  |  \_
+ |  |  | ; <<= and >>=
+ |  |  | IF [ (c == '<' || c == '>') && n == c && (lex_peek)[ lx ] == '=' ]
  |  |  |  | (lex_nextc)[ lx ]
  |  |  |  \_
  |  |  |

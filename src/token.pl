@@ -52,6 +52,10 @@ TYPE TokenType: ENUM
  | TOK_VOLATILE
  | TOK_OFFSET
  | TOK_STATIC_ASSERT
+ | TOK_FOR
+ | TOK_SWITCH
+ | TOK_CASE
+ | TOK_POSTLUDE
  \_
 
 TYPE Location: STRUCT
@@ -160,6 +164,14 @@ TYPE Token: STRUCT
  |  | RET [ "OFFSET" ]
  | ELIF [ t == TOK_STATIC_ASSERT ]
  |  | RET [ "STATIC_ASSERT" ]
+ | ELIF [ t == TOK_FOR ]
+ |  | RET [ "FOR" ]
+ | ELIF [ t == TOK_SWITCH ]
+ |  | RET [ "SWITCH" ]
+ | ELIF [ t == TOK_CASE ]
+ |  | RET [ "CASE" ]
+ | ELIF [ t == TOK_POSTLUDE ]
+ |  | RET [ "POSTLUDE" ]
  | ELSE
  |  | RET [ "SIZE" ]
  |  \_

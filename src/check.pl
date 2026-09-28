@@ -68,6 +68,11 @@ TYPE Checker: STRUCT
  | @Index    ix           ; where resolved names are noted, or 0
  | B1        anon         ; in an ANONYMOUS method, which has no `me`
  | I32       depth        ; aliases being resolved inside one another
+ | @Map      contracts    ; method name -> what its REQ lets it use, or 0
+ | @Map      contract     ; the one of the method being checked, or 0
+ | Location  denied       ; where it was last broken: `a += b` checks `a` twice
+ | B1        in_postlude   ; checking a POSTLUDE's statement: it cannot leave
+ | B1        va_fn        ; the function being checked takes `...`
  \_
 
 ; --- the index ------------------------------------------------------------
@@ -681,11 +686,41 @@ B1 ck_is_place: [ @Checker c | @ASTNode e ]
  \_
 
 ; `use` is the field's name as written, noted in the index.
+; In a method whose interface has a REQ: may it use `name`, a field or a
+; method of the type `subject`? Reports it if not.
+B1 ck_granted: [ @Checker c | @C1 subject | @C1 name | B1 field | @ASTNode at ]
+ | @ABYSS d = 0
+ | IF [ c.contract == 0 || subject == 0 || (map_get)[ c.contract | subject | @d ] != 1 ]
+ |  | RET [ TRUE ]
+ |  \_
+ | @Grant gr = d AS @Grant
+ | @ABYSS x = 0
+ | IF [ at.loc.file == c.denied.file && at.loc.line == c.denied.line && at.loc.col == c.denied.col ]
+ |  | RET [ FALSE ]
+ |  \_
+ | C1 msg{512}
+ | IF [ field ]
+ |  | IF [ (map_get)[ @(gr.fields) | name | @x ] == 1 ]
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | (snprintf)[ msg | 512 | "the REQ of %s does not list `%s`, a field of `%s`" | gr.iface | name | subject ]
+ | ELSE
+ |  | IF [ (map_get)[ @(gr.methods) | name | @x ] == 1 ]
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | (snprintf)[ msg | 512 | "the REQ of %s does not give `%s`, a method of `%s`" | gr.iface | name | subject ]
+ |  \_
+ | c.denied = at.loc
+ | (ck_error2)[ c | at | "%s%s" | msg | "" ]
+ | RET [ FALSE ]
+ \_
+
 B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode use ]
  | @ASTNode f = (ck_field_decl)[ base | field ]
  | IF [ f == NULL ]
  |  | RET [ FALSE ]
  |  \_
+ | (ck_granted)[ c | base.name | field | TRUE | use ]
  | (ck_ref)[ c | use | f | base.decl ]
  | ?(out) = (ty_decl)[ c | f.as.rcrd_flds.type ]
  | RET [ TRUE ]
@@ -719,6 +754,27 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode use ]
  |  | RET [ r.as.ident ]
  |  \_
  | RET [ NULL ]
+ \_
+
+; Type.name outside a call: a pointer to the method, like a function's
+; name. An ordinary one takes `me` first, so Foo.bar is FN R [ @Foo | ... ].
+Type ck_method_value: [ @Checker c | @ASTNode n | @C1 cls | @ASTNode fn ]
+ | @ABYSS d = 0
+ | IF [ (map_get)[ @(c.meta.func_decls) | (method_name)[ cls | fn.as.ident ] | @d AS @@ABYSS ] != 1 ]
+ |  | (ck_error2)[ c | n | "`%s` is a type, not a value, and has no method `%s`" | cls | fn.as.ident ]
+ |  | RET [ (ty_unknown)[] ]
+ |  \_
+ | @ASTNode decl = d AS @ASTNode
+ | IF [ decl.as.fn_decl.is_private ]
+ |  | IF [ c.owner == 0 || (strcmp)[ c.owner | decl.as.fn_decl.owner ] != 0 ]
+ |  |  | (ck_error2)[ c | n | "`%s` is PRIVATE to `%s`" | fn.as.ident | decl.as.fn_decl.owner ]
+ |  |  \_
+ |  \_
+ | (ck_granted)[ c | cls | fn.as.ident | FALSE | fn ]
+ | (ck_ref)[ c | fn | decl | 0 ]
+ | Type ft = (ty_make)[ TY_FN | 0 | 64 | FALSE ]
+ | ft.decl = decl
+ | RET [ ft ]
  \_
 
 ; What a call goes through -- an NT_FN_DECL or an FN type -- or 0 once an
@@ -764,6 +820,7 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode use ]
  |  |  | (ck_error2)[ c | n | "`%s` works on an object, as (x.%s)[ ... ], not on the type" | m | m ]
  |  |  | RET [ 0 ]
  |  |  \_
+ |  | (ck_granted)[ c | cls | m | FALSE | n.as.fn_call.ident ]
  |  | (ck_ref)[ c | n.as.fn_call.ident | sdecl | 0 ]
  |  | RET [ sdecl ]
  |  \_
@@ -810,6 +867,7 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode use ]
  |  |  |  | (ck_error2)[ c | n | "`%s` is PRIVATE to `%s`" | m | decl.as.fn_decl.owner ]
  |  |  |  \_
  |  |  \_
+ |  | (ck_granted)[ c | rt.name | m | FALSE | n.as.fn_call.ident ]
  |  | (ck_ref)[ c | n.as.fn_call.ident | decl | 0 ]
  |  | ?(skip_me) = TRUE
  |  | RET [ decl ]
@@ -865,6 +923,26 @@ Type ck_call: [ @Checker c | @ASTNode n ]
  | p = params
  | @ASTNode a = n.as.fn_call.args
  | WHILE [ a != 0 ]
+ |  | ; `...`: this function's own arguments, as the va_list C's vprintf
+ |  | ; and its kind take -- declared there as @ABYSS
+ |  | IF [ a.as.argument.argument.kind == NT_VA_ARGS ]
+ |  |  | IF [ !(c.va_fn) ]
+ |  |  |  | (ck_error)[ c | a.as.argument.argument | "`...` passes on a variadic function's own arguments, and this function takes none" ]
+ |  |  | ELIF [ p == 0 || (sig_is_va)[ p ] ]
+ |  |  |  | (ck_error2)[ c | a.as.argument.argument | "`...` goes to `%s` as one va_list: it must take one there, declared `@ABYSS ap`, as vprintf does%s" | name | "" ]
+ |  |  | ELSE
+ |  |  |  | Type vt = (ty_resolve)[ c | (sig_ptype)[ p ] ]
+ |  |  |  | IF [ vt.kind != TY_VOID || vt.ptrs != 1 ]
+ |  |  |  |  | (ck_error2)[ c | a.as.argument.argument | "`...` goes to `%s` as one va_list, so the parameter there is @ABYSS%s" | name | "" ]
+ |  |  |  |  \_
+ |  |  |  \_
+ |  |  | IF [ p != 0 && !(sig_is_va)[ p ] ]
+ |  |  |  | p = (sig_next)[ p ]
+ |  |  |  \_
+ |  |  | got = got + 1
+ |  |  | a = a.as.argument.next_arg
+ |  |  | CONTINUE
+ |  |  \_
  |  | Type at = (ck_value)[ c | a.as.argument.argument ]
  |  |
  |  | IF [ p != 0 && !(sig_is_va)[ p ] ]
@@ -900,8 +978,12 @@ Type ck_binop: [ @Checker c | @ASTNode n ]
  |
  | ; member access: the left side must be an aggregate, the field must exist
  | IF [ k == BOT_MEMBER ]
- |  | Type base = (ck_expr)[ c | n.as.bin_op.left ]
  |  | @ASTNode fn = (ck_strip)[ n.as.bin_op.right ]
+ |  | @C1 cls = (ck_static_owner)[ c | n.as.bin_op.left ]
+ |  | IF [ cls != NULL && fn != 0 && fn.kind == NT_IDENT ]
+ |  |  | RET [ (ck_method_value)[ c | n | cls | fn ] ]
+ |  |  \_
+ |  | Type base = (ck_expr)[ c | n.as.bin_op.left ]
  |  |
  |  | IF [ base.kind == TY_UNKNOWN ]
  |  |  | RET [ (ty_unknown)[] ]
@@ -933,6 +1015,13 @@ Type ck_binop: [ @Checker c | @ASTNode n ]
  |  |
  |  | Type ft = (ty_unknown)[]
  |  | IF [ !(ck_field)[ c | obj | fn.as.ident | @ft | fn ] ]
+ |  |  | ; a method bound to its object would be a closure, which one C
+ |  |  | ; pointer cannot hold: the type's method takes the object instead
+ |  |  | @ABYSS md = 0
+ |  |  | IF [ obj.name != 0 && (map_get)[ @(c.meta.func_decls) | (method_name)[ obj.name | fn.as.ident ] | @md AS @@ABYSS ] == 1 ]
+ |  |  |  | (ck_error2)[ c | n | "`%s` is a method: bound to an object it is no function pointer; take `%s`, which takes the object's address first" | fn.as.ident | (method_name)[ obj.name | fn.as.ident ] ]
+ |  |  |  | RET [ (ty_unknown)[] ]
+ |  |  |  \_
  |  |  | (ck_error2)[ c | n | "no field `%s` in `%s`" | fn.as.ident | obj.name ]
  |  |  | RET [ (ty_unknown)[] ]
  |  |  \_
@@ -1155,6 +1244,16 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  |  | RET [ (ck_binop)[ c | n ] ]
  |  \_
  |
+ | IF [ n.kind == NT_INIT ]
+ |  | (ck_error)[ c | n | "`[ ... ]` goes after the `=` of a declaration, whose type says what it builds" ]
+ |  | RET [ (ty_unknown)[] ]
+ |  \_
+ |
+ | IF [ n.kind == NT_VA_ARGS ]
+ |  | (ck_error)[ c | n | "`...` only passes a variadic function's arguments on, as a call's last argument" ]
+ |  | RET [ (ty_unknown)[] ]
+ |  \_
+ |
  | IF [ n.kind == NT_TYPE ]
  |  | (ck_error2)[ c | n | "`%s` is a type, not a value; a type is followed by an ANONYMOUS call, as (%s.method)[ ... ]" | n.as.type.type.as.ident | n.as.type.type.as.ident ]
  |  | RET [ (ty_unknown)[] ]
@@ -1189,6 +1288,7 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  |  |  |  | (ck_error2)[ c | step.as.list.item | "no field `%s` in `%s`" | fnm | ot.name ]
  |  |  |  | RET [ (ty_int)[ 64 | FALSE ] ]
  |  |  |  \_
+ |  |  | (ck_granted)[ c | ot.name | fnm | TRUE | step.as.list.item ]
  |  |  | (ck_ref)[ c | step.as.list.item | fd | ot.decl ]
  |  |  | ot = (ty_resolve)[ c | fd.as.rcrd_flds.type ]
  |  |  | IF [ fd.as.rcrd_flds.type.as.type.arr > 0 && step.as.list.next != 0 ]
@@ -1245,6 +1345,10 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  |  |  | Type vt = (ty_unknown)[]
  |  |  | IF [ t.kind == TY_FN && on.kind == NT_IDENT && !(ck_lookup)[ c | on.as.ident | @vt ] ]
  |  |  |  | (ck_error2)[ c | n | "`@%s`: a function's name alone is already its address%s" | on.as.ident | "" ]
+ |  |  |  | RET [ t ]
+ |  |  |  \_
+ |  |  | IF [ t.kind == TY_FN && on.kind == NT_BIN_OP && on.as.bin_op.kind == BOT_MEMBER && (ck_static_owner)[ c | on.as.bin_op.left ] != NULL ]
+ |  |  |  | (ck_error)[ c | n | "a method's name, Type.method, alone is already its address" ]
  |  |  |  | RET [ t ]
  |  |  |  \_
  |  |  | ; an array already reads as the address of its first element
@@ -1304,6 +1408,160 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  | RET [ NULL ]
  \_
 
+; An integer the compiler knows: a literal, a character, TRUE or FALSE,
+; an enum constant, and - or ~ of one. FALSE for anything else.
+B1 ck_const_int: [ @Checker c | @ASTNode e | @I64 out ]
+ | @ASTNode n = (ck_strip)[ e ]
+ | IF [ n == 0 ]
+ |  | RET [ FALSE ]
+ |  \_
+ | IF [ n.kind == NT_LITERAL ]
+ |  | I32 lk = n.as.literal.kind
+ |  | IF [ lk == LT_INTEGER ]
+ |  |  | ?(out) = n.as.literal.as.int_lit
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | IF [ lk == LT_CHARACTER ]
+ |  |  | ?(out) = (n.as.literal.as.char_lit AS I64) & 255
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | IF [ lk == LT_BOOLEAN ]
+ |  |  | ?(out) = n.as.literal.as.bool_lit AS I64
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | RET [ FALSE ]
+ |  \_
+ | IF [ n.kind == NT_IDENT ]
+ |  | @ASTNode en = 0
+ |  | @ASTNode ec = (ck_enum_const)[ c | n.as.ident | @en ]
+ |  | IF [ ec == NULL || (ck_find)[ c | n.as.ident ] != NULL ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | ?(out) = ec.as.enum_flds.value
+ |  | RET [ TRUE ]
+ |  \_
+ | IF [ n.kind == NT_UNY_OP && (n.as.uny_op.kind == UOT_NEG || n.as.uny_op.kind == UOT_BNOT) ]
+ |  | I64 v = 0
+ |  | IF [ !(ck_const_int)[ c | n.as.uny_op.operand | @v ] ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | IF [ n.as.uny_op.kind == UOT_NEG ]
+ |  |  | ?(out) = -v
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | ?(out) = ~v
+ |  | RET [ TRUE ]
+ |  \_
+ | RET [ FALSE ]
+ \_
+
+; `[ ... ]` for what `tn` declares: an array's elements in order, a
+; struct's fields in order or by name, a union's one field. What is left
+; out is zero.
+ABYSS ck_init: [ @Checker c | @ASTNode tn | @ASTNode init ]
+
+; One value of an initialiser, for a field or element declared `tn`.
+ABYSS ck_init_value: [ @Checker c | @ASTNode tn | @ASTNode v ]
+ | @ASTNode sv = (ck_strip)[ v ]
+ | IF [ sv.kind == NT_INIT ]
+ |  | (ck_init)[ c | tn | sv ]
+ |  | RET
+ |  \_
+ | Type want = (ty_resolve)[ c | tn ]
+ | IF [ tn.as.type.arr > 0 ]
+ |  | (ck_error)[ c | v | "an array takes its elements as `[ ... ]`" ]
+ |  | RET
+ |  \_
+ | Type got = (ck_expr)[ c | v ]
+ | IF [ !(ty_assignable)[ c | want | got ] ]
+ |  | @C1 sd = (ty_str)[ want ]
+ |  | @C1 si = (ty_str)[ got ]
+ |  | (ck_error2)[ c | v | "cannot initialise %s from %s" | sd | si ]
+ |  | (free)[ sd AS @ABYSS ]
+ |  | (free)[ si AS @ABYSS ]
+ |  | RET
+ |  \_
+ | (ck_keeps_quals)[ c | v | want | got ]
+ \_
+
+ABYSS ck_init: [ @Checker c | @ASTNode tn | @ASTNode init ]
+ | C1 num{64}
+ | @ASTNode it = init.as.list.item
+ | IF [ tn.as.type.arr > 0 ]
+ |  | ASTNode el = ?tn
+ |  | el.as.type.arr = 0
+ |  | U64 i = 0
+ |  | WHILE [ it != 0 ]
+ |  |  | IF [ it.as.init_item.name != 0 ]
+ |  |  |  | (ck_error)[ c | it | "an array's elements are given in order, without names" ]
+ |  |  |  \_
+ |  |  | IF [ i == tn.as.type.arr ]
+ |  |  |  | (snprintf)[ num | 64 | "%u" | tn.as.type.arr ]
+ |  |  |  | (ck_error2)[ c | it | "too many elements: the array holds %s%s" | num | "" ]
+ |  |  |  | RET
+ |  |  |  \_
+ |  |  | (ck_init_value)[ c | @el | it.as.init_item.value ]
+ |  |  | i += 1
+ |  |  | it = it.as.init_item.next
+ |  |  \_
+ |  | RET
+ |  \_
+ |
+ | Type t = (ty_resolve)[ c | tn ]
+ | IF [ t.kind == TY_UNKNOWN ]
+ |  | RET
+ |  \_
+ | IF [ t.kind != TY_RECORD || t.ptrs != 0 || t.decl == 0 ]
+ |  | @C1 s = (ty_str)[ t ]
+ |  | (ck_error2)[ c | init | "`[ ... ]` sets up a struct or an array, and %s is neither%s" | s | "" ]
+ |  | (free)[ s AS @ABYSS ]
+ |  | RET
+ |  \_
+ | @ASTNode rec = t.decl.as.type_def.tdef
+ | B1 is_union = rec.as.record.kind == TDRT_UNION
+ | @ASTNode f = rec.as.record.fields
+ | B1 named = it != 0 && it.as.init_item.name != 0
+ | I32 count = 0
+ | WHILE [ it != 0 ]
+ |  | IF [ (it.as.init_item.name != 0) != named ]
+ |  |  | (ck_error)[ c | it | "give every field by name, or none: `.x = 1` and a bare value do not mix" ]
+ |  |  | RET
+ |  |  \_
+ |  | IF [ is_union && count == 1 ]
+ |  |  | (ck_error2)[ c | it | "`%s` is a UNION: it holds one field, so it takes one value%s" | t.name | "" ]
+ |  |  | RET
+ |  |  \_
+ |  | @ASTNode fd = f
+ |  | IF [ named ]
+ |  |  | @C1 fnm = it.as.init_item.name.as.ident
+ |  |  | fd = (ck_field_decl)[ t | fnm ]
+ |  |  | IF [ fd == NULL ]
+ |  |  |  | (ck_error2)[ c | it.as.init_item.name | "no field `%s` in `%s`" | fnm | t.name ]
+ |  |  |  | RET
+ |  |  |  \_
+ |  |  | ; a field given twice
+ |  |  | @ASTNode prev = init.as.list.item
+ |  |  | WHILE [ prev != it ]
+ |  |  |  | IF [ (strcmp)[ prev.as.init_item.name.as.ident | fnm ] == 0 ]
+ |  |  |  |  | (ck_error2)[ c | it.as.init_item.name | "field `%s` is given twice%s" | fnm | "" ]
+ |  |  |  |  \_
+ |  |  |  | prev = prev.as.init_item.next
+ |  |  |  \_
+ |  |  | (ck_granted)[ c | t.name | fnm | TRUE | it.as.init_item.name ]
+ |  |  | (ck_ref)[ c | it.as.init_item.name | fd | t.decl ]
+ |  | ELIF [ f == 0 ]
+ |  |  | (ck_error2)[ c | it | "too many values: `%s` has no more fields%s" | t.name | "" ]
+ |  |  | RET
+ |  |  \_
+ |  | (ck_init_value)[ c | fd.as.rcrd_flds.type | it.as.init_item.value ]
+ |  | IF [ f != 0 ]
+ |  |  | f = f.as.rcrd_flds.next_field
+ |  |  \_
+ |  | count += 1
+ |  | it = it.as.init_item.next
+ |  \_
+ \_
+
 ; --- statements -----------------------------------------------------------
 
 ABYSS ck_block: [ @Checker c | @ASTNode blk ]
@@ -1315,6 +1573,8 @@ ABYSS ck_cond_expr: [ @Checker c | @ASTNode e | @C1 what ]
  |  \_
  | RET
  \_
+
+ABYSS ck_switch: [ @Checker c | @ASTNode sw ]
 
 ABYSS ck_stmt: [ @Checker c | @ASTNode st ]
  | I32 k = st.as.stmt.kind
@@ -1331,8 +1591,14 @@ ABYSS ck_stmt: [ @Checker c | @ASTNode st ]
  |  |  | (ck_error2)[ c | d | "`%s` is already declared in this scope%s" | nm | "" ]
  |  |  \_
  |  |
+ |  | @ASTNode li = (ck_strip)[ d.as.var_decl.init ]
+ |  | IF [ li != 0 && li.kind == NT_INIT ]
+ |  |  | (ck_init)[ c | d.as.var_decl.type | li ]
+ |  |  | (ck_define)[ c | nm | dt | d ]
+ |  |  | RET
+ |  |  \_
  |  | IF [ d.as.var_decl.init != 0 && dt.arr > 0 ]
- |  |  | (ck_error2)[ c | d | "array `%s` cannot have an initialiser; assign its elements%s" | nm | "" ]
+ |  |  | (ck_error2)[ c | d | "array `%s` takes its elements as `[ ... ]`%s" | nm | "" ]
  |  |  | (ck_define)[ c | nm | dt | d ]
  |  |  | RET
  |  |  \_
@@ -1353,6 +1619,32 @@ ABYSS ck_stmt: [ @Checker c | @ASTNode st ]
  |  |  \_
  |  |
  |  | (ck_define)[ c | nm | dt | d ]
+ |  | RET
+ |  \_
+ |
+ | IF [ k == ST_POSTLUDE ]
+ |  | ; checked where it is written, so it sees the names it sees here
+ |  | @ASTNode inner = st.as.stmt.stmt
+ |  | IF [ inner.kind == NT_STMT && inner.as.stmt.kind == ST_POSTLUDE ]
+ |  |  | (ck_error)[ c | inner | "a POSTLUDE's statement cannot be another POSTLUDE" ]
+ |  |  | RET
+ |  |  \_
+ |  | I32 outer_loops = c.loops
+ |  | B1 was = c.in_postlude
+ |  | c.loops = 0
+ |  | c.in_postlude = TRUE
+ |  | IF [ inner.kind == NT_BLOCK ]
+ |  |  | (ck_block)[ c | inner ]
+ |  | ELSE
+ |  |  | (ck_stmt)[ c | inner ]
+ |  |  \_
+ |  | c.loops = outer_loops
+ |  | c.in_postlude = was
+ |  | RET
+ |  \_
+ |
+ | IF [ k == ST_RET && c.in_postlude ]
+ |  | (ck_error)[ c | st | "RET in a POSTLUDE: it runs while the block is left, and cannot leave it another way" ]
  |  | RET
  |  \_
  |
@@ -1405,15 +1697,35 @@ ABYSS ck_stmt: [ @Checker c | @ASTNode st ]
  |
  | IF [ k == ST_LOOP ]
  |  | @ASTNode lp = st.as.stmt.stmt
+ |  | ; FOR's declaration lives as long as the loop
+ |  | (ck_push)[ c ]
+ |  | @C1 what = "WHILE"
+ |  | IF [ lp.as.loop.init != 0 ]
+ |  |  | (ck_stmt)[ c | lp.as.loop.init ]
+ |  |  | what = "FOR"
+ |  |  \_
  |  | IF [ lp.as.loop.expr != 0 ]
- |  |  | (ck_cond_expr)[ c | lp.as.loop.expr | "WHILE" ]
+ |  |  | (ck_cond_expr)[ c | lp.as.loop.expr | what ]
  |  |  \_
  |  | c.loops = c.loops + 1
  |  | (ck_block)[ c | lp.as.loop.block ]
  |  | c.loops = c.loops - 1
+ |  | IF [ lp.as.loop.step != 0 ]
+ |  |  | (ck_expr)[ c | lp.as.loop.step ]
+ |  |  \_
+ |  | (ck_pop)[ c ]
  |  | RET
  |  \_
  |
+ | IF [ k == ST_SWITCH ]
+ |  | (ck_switch)[ c | st.as.stmt.stmt ]
+ |  | RET
+ |  \_
+ |
+ | IF [ (k == ST_BREAK || k == ST_CONTINUE) && c.loops == 0 && c.in_postlude ]
+ |  | (ck_error)[ c | st | "BREAK or CONTINUE in a POSTLUDE: it runs while the block is left, and cannot leave it another way" ]
+ |  | RET
+ |  \_
  | IF [ k == ST_BREAK || k == ST_CONTINUE ]
  |  | IF [ c.loops == 0 ]
  |  |  | @C1 what = "BREAK"
@@ -1455,6 +1767,89 @@ ABYSS ck_block: [ @Checker c | @ASTNode blk ]
 B1 block_ends: [ @ASTNode blk ]
 
 ; C functions that never return
+; The scrutinee an integer or an enum; each CASE value a constant, and
+; none twice. On an ENUM with no ELSE, every constant must have a CASE:
+; adding one to the enum then finds every SWITCH to update.
+ABYSS ck_switch: [ @Checker c | @ASTNode sw ]
+ | Type t = (ck_value)[ c | sw.as.switch.expr ]
+ | IF [ t.kind != TY_UNKNOWN && !(ty_is_integral)[ t ] ]
+ |  | @C1 s = (ty_str)[ t ]
+ |  | (ck_error2)[ c | sw.as.switch.expr | "SWITCH takes an integer or an enum, not %s%s" | s | "" ]
+ |  | (free)[ s AS @ABYSS ]
+ |  \_
+ |
+ | Vector<I64> seen
+ | (seen.init)[ 16 ]
+ | C1 num{32}
+ | @ASTNode cs = sw.as.switch.cases
+ | WHILE [ cs != 0 ]
+ |  | @ASTNode v = cs.as.case.values
+ |  | WHILE [ v != 0 ]
+ |  |  | @ASTNode e = v.as.list.item
+ |  |  | (ck_expr)[ c | e ]
+ |  |  | I64 val = 0
+ |  |  | IF [ !(ck_const_int)[ c | e | @val ] ]
+ |  |  |  | (ck_error)[ c | e | "a CASE value is a constant: a literal, a character or an enum constant" ]
+ |  |  | ELSE
+ |  |  |  | U64 i = 0
+ |  |  |  | WHILE [ i < (seen.size)[] ]
+ |  |  |  |  | IF [ ?((seen.at)[ i ]) == val ]
+ |  |  |  |  |  | (snprintf)[ num | 32 | "%ld" | val ]
+ |  |  |  |  |  | (ck_error2)[ c | e | "this SWITCH has a CASE for %s already%s" | num | "" ]
+ |  |  |  |  |  | BREAK
+ |  |  |  |  |  \_
+ |  |  |  |  | i += 1
+ |  |  |  |  \_
+ |  |  |  | (seen.push)[ val ]
+ |  |  |  \_
+ |  |  | v = v.as.list.next
+ |  |  \_
+ |  | (ck_block)[ c | cs.as.case.block ]
+ |  | cs = cs.as.case.next
+ |  \_
+ | IF [ sw.as.switch.else_block != 0 ]
+ |  | (ck_block)[ c | sw.as.switch.else_block ]
+ |  \_
+ |
+ | IF [ t.kind == TY_ENUM && t.ptrs == 0 && t.decl != 0 && sw.as.switch.else_block == 0 ]
+ |  | String miss
+ |  | (miss.init_cstr)[ "" ]
+ |  | I32 missing = 0
+ |  | @ASTNode f = t.decl.as.type_def.tdef.as.enumeration.fields
+ |  | WHILE [ f != 0 ]
+ |  |  | B1 has = FALSE
+ |  |  | U64 i = 0
+ |  |  | WHILE [ i < (seen.size)[] && !has ]
+ |  |  |  | has = ?((seen.at)[ i ]) == f.as.enum_flds.value
+ |  |  |  | i += 1
+ |  |  |  \_
+ |  |  | IF [ !has ]
+ |  |  |  | IF [ missing < 3 ]
+ |  |  |  |  | IF [ missing > 0 ]
+ |  |  |  |  |  | (miss.append)[ ", " ]
+ |  |  |  |  |  \_
+ |  |  |  |  | (miss.push)[ '`' ]
+ |  |  |  |  | (miss.append)[ f.as.enum_flds.ident.as.ident ]
+ |  |  |  |  | (miss.push)[ '`' ]
+ |  |  |  |  \_
+ |  |  |  | missing += 1
+ |  |  |  \_
+ |  |  | f = f.as.enum_flds.next_field
+ |  |  \_
+ |  | IF [ missing > 3 ]
+ |  |  | (snprintf)[ num | 32 | " and %d more" | missing - 3 ]
+ |  |  | (miss.append)[ num ]
+ |  |  \_
+ |  | IF [ missing == 1 ]
+ |  |  | (ck_error2)[ c | sw | "this SWITCH on `%s` has no CASE for %s; add one, or an ELSE" | t.name | miss.data ]
+ |  | ELIF [ missing > 1 ]
+ |  |  | (ck_error2)[ c | sw | "this SWITCH on `%s` has no CASE for %s; add them, or an ELSE" | t.name | miss.data ]
+ |  |  \_
+ |  | (miss.deinit)[]
+ |  \_
+ | (seen.deinit)[]
+ \_
+
 B1 is_noreturn_call: [ @ASTNode e ]
  | @ASTNode n = (ck_strip)[ e ]
  | IF [ n == 0 || n.kind != NT_FN_CALL || n.as.fn_call.ident == 0 || n.as.fn_call.recv != 0 ]
@@ -1474,6 +1869,20 @@ B1 has_break: [ @ASTNode blk ]
  |  | I32 k = s.as.stmt.kind
  |  | IF [ k == ST_BREAK ]
  |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | ; a BREAK in a SWITCH leaves the loop around it
+ |  | IF [ k == ST_SWITCH ]
+ |  |  | @ASTNode sw = s.as.stmt.stmt
+ |  |  | @ASTNode cs = sw.as.switch.cases
+ |  |  | WHILE [ cs != 0 ]
+ |  |  |  | IF [ (has_break)[ cs.as.case.block ] ]
+ |  |  |  |  | RET [ TRUE ]
+ |  |  |  |  \_
+ |  |  |  | cs = cs.as.case.next
+ |  |  |  \_
+ |  |  | IF [ (has_break)[ sw.as.switch.else_block ] ]
+ |  |  |  | RET [ TRUE ]
+ |  |  |  \_
  |  |  \_
  |  | IF [ k == ST_COND ]
  |  |  | @ASTNode cond = s.as.stmt.stmt
@@ -1527,6 +1936,21 @@ B1 stmt_ends: [ @ASTNode st ]
  |  |  \_
  |  | RET [ (block_ends)[ cond.as.cond.else_part.as.else_cond.block ] ]
  |  \_
+ | ; only with an ELSE: a value no CASE names falls through
+ | IF [ k == ST_SWITCH ]
+ |  | @ASTNode sw = st.as.stmt.stmt
+ |  | IF [ sw.as.switch.else_block == 0 || !(block_ends)[ sw.as.switch.else_block ] ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | @ASTNode cs = sw.as.switch.cases
+ |  | WHILE [ cs != 0 ]
+ |  |  | IF [ !(block_ends)[ cs.as.case.block ] ]
+ |  |  |  | RET [ FALSE ]
+ |  |  |  \_
+ |  |  | cs = cs.as.case.next
+ |  |  \_
+ |  | RET [ TRUE ]
+ |  \_
  | RET [ FALSE ]
  \_
 
@@ -1549,6 +1973,17 @@ ABYSS ck_fn: [ @Checker c | @ASTNode def ]
  | c.ret_type = (ty_resolve)[ c | decl.as.fn_decl.type ]
  | c.owner = decl.as.fn_decl.owner
  | c.anon = decl.as.fn_decl.is_anon
+ | c.contract = 0
+ | c.va_fn = FALSE
+ | @ASTNode vp = decl.as.fn_decl.params
+ | WHILE [ vp != 0 ]
+ |  | c.va_fn = c.va_fn || vp.as.parametre.vaarg
+ |  | vp = vp.as.parametre.next_param
+ |  \_
+ | @ABYSS ct = 0
+ | IF [ c.contracts != 0 && (map_get)[ c.contracts | decl.as.fn_decl.ident.as.ident | @ct ] == 1 ]
+ |  | c.contract = ct AS @Map
+ |  \_
  |
  | (ck_push)[ c ]
  | @ASTNode p = decl.as.fn_decl.params
@@ -1588,6 +2023,11 @@ ABYSS check_init: [ @Checker c | @Meta m ]
  | c.ix = 0
  | c.anon = FALSE
  | c.depth = 0
+ | c.contracts = 0
+ | c.contract = 0
+ | c.denied.file = NULL
+ | c.in_postlude = FALSE
+ | c.va_fn = FALSE
  | c.ret_type = (ty_void)[]
  | RET
  \_
@@ -1798,7 +2238,10 @@ B1 check_unit: [ @Checker c | @ASTNode root ]
  |  |  |  \_
  |  |  | ; the initialiser is checked like a local's; whether it is constant
  |  |  | ; enough is for codegen, which has to fold it
- |  |  | IF [ d.as.var_decl.init != 0 ]
+ |  |  | @ASTNode gli = (ck_strip)[ d.as.var_decl.init ]
+ |  |  | IF [ gli != 0 && gli.kind == NT_INIT ]
+ |  |  |  | (ck_init)[ c | d.as.var_decl.type | gli ]
+ |  |  | ELIF [ d.as.var_decl.init != 0 ]
  |  |  |  | Type git = (ck_expr)[ c | d.as.var_decl.init ]
  |  |  |  | IF [ !(ty_assignable)[ c | gt | git ] ]
  |  |  |  |  | @C1 sd = (ty_str)[ gt ]

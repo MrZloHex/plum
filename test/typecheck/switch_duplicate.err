@@ -1,0 +1,2 @@
+error: this SWITCH has a CASE for 2 already
+ --> switch_duplicate.pl:7:11

@@ -1,2 +1,2 @@
-error: array `a` cannot have an initialiser; assign its elements
+error: array `a` takes its elements as `[ ... ]`
  --> array_init.pl:3:4

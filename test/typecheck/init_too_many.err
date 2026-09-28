@@ -1,0 +1,2 @@
+error: too many elements: the array holds 2
+ --> init_too_many.pl:3:25

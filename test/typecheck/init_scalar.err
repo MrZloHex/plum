@@ -1,0 +1,2 @@
+error: `[ ... ]` sets up a struct or an array, and I32 is neither
+ --> init_scalar.pl:3:12

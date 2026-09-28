@@ -1,0 +1,2 @@
+error: the REQ of Mortal<UnitData> does not give `shout`, a method of `Unit`
+  --> req_uses_method.pl:13:11

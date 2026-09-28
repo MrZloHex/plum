@@ -1,2 +1,2 @@
-error: `Point` is a type, not a value; a type is followed by an ANONYMOUS call, as (Point.method)[ ... ]
-  --> type_as_value.pl:20:12
+error: `Point` is a type, not a value, and has no method `x`
+  --> type_as_value.pl:20:17

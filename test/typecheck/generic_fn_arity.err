@@ -1,0 +1,2 @@
+error: `id` takes 1 type argument, got 2
+  --> generic_fn_arity.pl:15:11

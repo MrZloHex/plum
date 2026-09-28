@@ -1,0 +1,2 @@
+error: the REQ of ChipOps<ChipData<Bus> | Bus> does not give `reset`, a method of `Bus`
+  --> req_uses_bus.pl:22:15

@@ -1,0 +1,2 @@
+error: no field `z` in `Point`
+ --> init_no_field.pl:7:17

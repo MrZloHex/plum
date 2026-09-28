@@ -198,9 +198,36 @@ ABYSS collect_node: [ @ASTNode node | @Meta m ]
  |  | RET
  |  \_
  |
+ | IF [ k == NT_INIT ]
+ |  | @ASTNode it = node.as.list.item
+ |  | WHILE [ it != 0 ]
+ |  |  | (collect_node)[ it.as.init_item.value | m ]
+ |  |  | it = it.as.init_item.next
+ |  |  \_
+ |  | RET
+ |  \_
+ | IF [ k == NT_SWITCH ]
+ |  | (collect_node)[ node.as.switch.expr | m ]
+ |  | @ASTNode cs = node.as.switch.cases
+ |  | WHILE [ cs != 0 ]
+ |  |  | @ASTNode vl = cs.as.case.values
+ |  |  | WHILE [ vl != 0 ]
+ |  |  |  | (collect_node)[ vl.as.list.item | m ]
+ |  |  |  | vl = vl.as.list.next
+ |  |  |  \_
+ |  |  | (collect_node)[ cs.as.case.block | m ]
+ |  |  | cs = cs.as.case.next
+ |  |  \_
+ |  | (collect_node)[ node.as.switch.else_block | m ]
+ |  | RET
+ |  \_
  | IF [ k == NT_LOOP ]
+ |  | IF [ node.as.loop.init != 0 ]
+ |  |  | (collect_node)[ node.as.loop.init.as.stmt.stmt | m ]
+ |  |  \_
  |  | (collect_node)[ node.as.loop.expr | m ]
  |  | (collect_node)[ node.as.loop.block | m ]
+ |  | (collect_node)[ node.as.loop.step | m ]
  |  | RET
  |  \_
  |
