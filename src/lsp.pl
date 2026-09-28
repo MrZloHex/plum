@@ -149,43 +149,43 @@ ABYSS lsp_send: [ @String body ]
 ; `{"jsonrpc":"2.0","id":<id>,"result":` -- the caller appends the result
 ; and lsp_finish closes it.
 ABYSS lsp_reply: [ @String o | @JNode id ]
- | (str_init_cap)[ o | 256 ]
- | (str_append_str)[ o | "{\"jsonrpc\":\"2.0\",\"id\":" ]
+ | (o.init)[ 256 ]
+ | (o.append)[ "{\"jsonrpc\":\"2.0\",\"id\":" ]
  | IF [ id == NULL ]
- |  | (str_append_str)[ o | "null" ]
+ |  | (o.append)[ "null" ]
  | ELSE
  |  | (jw_raw)[ o | id.raw | id.raw_len ]
  |  \_
- | (str_append_str)[ o | ",\"result\":" ]
+ | (o.append)[ ",\"result\":" ]
  \_
 
 ABYSS lsp_finish: [ @String o ]
- | (str_append)[ o | '}' ]
+ | (o.push)[ '}' ]
  | (lsp_send)[ o ]
- | (str_deinit)[ o ]
+ | (o.deinit)[]
  \_
 
 ABYSS lsp_reply_null: [ @JNode id ]
  | String o
  | (lsp_reply)[ @o | id ]
- | (str_append_str)[ @o | "null" ]
+ | (o.append)[ "null" ]
  | (lsp_finish)[ @o ]
  \_
 
 ABYSS lsp_reply_error: [ @JNode id | I32 code | @C1 msg ]
  | String o
- | (str_init_cap)[ @o | 256 ]
- | (str_append_str)[ @o | "{\"jsonrpc\":\"2.0\",\"id\":" ]
+ | (o.init)[ 256 ]
+ | (o.append)[ "{\"jsonrpc\":\"2.0\",\"id\":" ]
  | IF [ id == NULL ]
- |  | (str_append_str)[ @o | "null" ]
+ |  | (o.append)[ "null" ]
  | ELSE
  |  | (jw_raw)[ @o | id.raw | id.raw_len ]
  |  \_
- | (str_append_str)[ @o | ",\"error\":{\"code\":" ]
+ | (o.append)[ ",\"error\":{\"code\":" ]
  | (jw_int)[ @o | code ]
- | (str_append_str)[ @o | ",\"message\":" ]
+ | (o.append)[ ",\"message\":" ]
  | (jw_str)[ @o | msg ]
- | (str_append)[ @o | '}' ]
+ | (o.push)[ '}' ]
  | (lsp_finish)[ @o ]
  \_
 
@@ -234,21 +234,21 @@ I32 hex_val: [ C1 h ]
  \_
 
 ABYSS jw_uri: [ @String o | @C1 path ]
- | (str_append_str)[ o | "\"file://" ]
+ | (o.append)[ "\"file://" ]
  | U64 i = 0
  | WHILE [ path{i} != '\0' ]
  |  | C1 c = path{i}
  |  | B1 plain = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
  |  | IF [ plain || c == '/' || c == '-' || c == '.' || c == '_' || c == '~' ]
- |  |  | (str_append)[ o | c ]
+ |  |  | (o.push)[ c ]
  |  | ELSE
  |  |  | C1 buf{4}
  |  |  | (snprintf)[ buf | 4 | "%%%02X" | (c AS I32) & 255 ]
- |  |  | (str_append_str)[ o | buf ]
+ |  |  | (o.append)[ buf ]
  |  |  \_
  |  | i += 1
  |  \_
- | (str_append)[ o | '"' ]
+ | (o.push)[ '"' ]
  \_
 
 ; One pointer per file, however it was named.
@@ -432,7 +432,7 @@ ABYSS lsp_run_index: [ @Doc d | @String out ]
  | I32 inp{2}
  | I32 outp{2}
  | IF [ (pipe)[ inp ] != 0 || (pipe)[ outp ] != 0 ]
- |  | (str_init_cstr)[ out | "" ]
+ |  | (out.init_cstr)[ "" ]
  |  | RET
  |  \_
  |
@@ -461,7 +461,7 @@ ABYSS lsp_run_index: [ @Doc d | @String out ]
  |  | (lsp_write_all)[ inp{1} | d.text.data | d.text.size ]
  |  \_
  | (close)[ inp{1} ]
- | (str_init_fd)[ out | outp{0} ]
+ | (out.init_fd)[ outp{0} ]
  | (close)[ outp{0} ]
  | IF [ pid > 0 ]
  |  | I32 status = 0
@@ -486,33 +486,33 @@ I32 lsp_fields: [ @C1 line | @@C1 f | I32 max ]
  \_
 
 ABYSS jw_range: [ @String o | I32 line | I32 from | I32 to ]
- | (str_append_str)[ o | "{\"start\":{\"line\":" ]
+ | (o.append)[ "{\"start\":{\"line\":" ]
  | (jw_int)[ o | line ]
- | (str_append_str)[ o | ",\"character\":" ]
+ | (o.append)[ ",\"character\":" ]
  | (jw_int)[ o | from ]
- | (str_append_str)[ o | "},\"end\":{\"line\":" ]
+ | (o.append)[ "},\"end\":{\"line\":" ]
  | (jw_int)[ o | line ]
- | (str_append_str)[ o | ",\"character\":" ]
+ | (o.append)[ ",\"character\":" ]
  | (jw_int)[ o | to ]
- | (str_append_str)[ o | "}}" ]
+ | (o.append)[ "}}" ]
  \_
 
 ; Problems in this document sit under the word they point at; those in a
 ; file it includes, and those with no place at all, go on its first line.
 ABYSS lsp_publish: [ @Lsp ls | @Doc d | @Vector<Problem> probs ]
  | String o
- | (str_init_cap)[ @o | 512 ]
- | (str_append_str)[ @o | "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":" ]
+ | (o.init)[ 512 ]
+ | (o.append)[ "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":" ]
  | (jw_str)[ @o | d.uri ]
- | (str_append_str)[ @o | ",\"diagnostics\":[" ]
+ | (o.append)[ ",\"diagnostics\":[" ]
  |
  | U64 i = 0
  | WHILE [ i < (probs.size)[] ]
  |  | @Problem p = (probs.at)[ i ]
  |  | IF [ i > 0 ]
- |  |  | (str_append)[ @o | ',' ]
+ |  |  | (o.push)[ ',' ]
  |  |  \_
- |  | (str_append_str)[ @o | "{\"range\":" ]
+ |  | (o.append)[ "{\"range\":" ]
  |  | IF [ p.file == d.path ]
  |  |  | I32 line = p.line - 1
  |  |  | I32 len = 1
@@ -523,30 +523,30 @@ ABYSS lsp_publish: [ @Lsp ls | @Doc d | @Vector<Problem> probs ]
  |  |  | I32 from = (doc_from_byte)[ ls | d | line | p.col - 1 ]
  |  |  | I32 to = (doc_from_byte)[ ls | d | line | p.col - 1 + len ]
  |  |  | (jw_range)[ @o | line | from | to ]
- |  |  | (str_append_str)[ @o | ",\"message\":" ]
+ |  |  | (o.append)[ ",\"message\":" ]
  |  |  | (jw_str)[ @o | p.msg ]
  |  | ELSE
  |  |  | (jw_range)[ @o | 0 | 0 | 0 ]
  |  |  | String m
- |  |  | (str_init_cap)[ @m | 256 ]
+ |  |  | (m.init)[ 256 ]
  |  |  | IF [ p.file != NULL ]
  |  |  |  | C1 at{32}
- |  |  |  | (str_append_str)[ @m | p.file ]
+ |  |  |  | (m.append)[ p.file ]
  |  |  |  | (snprintf)[ at | 32 | ":%d:%d: " | p.line | p.col ]
- |  |  |  | (str_append_str)[ @m | at ]
+ |  |  |  | (m.append)[ at ]
  |  |  |  \_
- |  |  | (str_append_str)[ @m | p.msg ]
- |  |  | (str_append_str)[ @o | ",\"message\":" ]
+ |  |  | (m.append)[ p.msg ]
+ |  |  | (o.append)[ ",\"message\":" ]
  |  |  | (jw_str)[ @o | m.data ]
- |  |  | (str_deinit)[ @m ]
+ |  |  | (m.deinit)[]
  |  |  \_
- |  | (str_append_str)[ @o | ",\"severity\":1,\"source\":\"plc\"}" ]
+ |  | (o.append)[ ",\"severity\":1,\"source\":\"plc\"}" ]
  |  | i += 1
  |  \_
  |
- | (str_append_str)[ @o | "]}}" ]
+ | (o.append)[ "]}}" ]
  | (lsp_send)[ @o ]
- | (str_deinit)[ @o ]
+ | (o.deinit)[]
  \_
 
 ABYSS lsp_analyse: [ @Lsp ls | @Doc d ]
@@ -607,7 +607,7 @@ ABYSS lsp_analyse: [ @Lsp ls | @Doc d ]
  |
  | (lsp_publish)[ ls | d | @probs ]
  | (probs.deinit)[]
- | (str_deinit)[ @out ]
+ | (out.deinit)[]
  \_
 
 ; --- requests ----------------------------------------------------------------
@@ -627,13 +627,13 @@ ABYSS lsp_initialize: [ @Lsp ls | @JNode id | @JNode params ]
  |
  | String o
  | (lsp_reply)[ @o | id ]
- | (str_append_str)[ @o | "{\"capabilities\":{" ]
+ | (o.append)[ "{\"capabilities\":{" ]
  | IF [ ls.utf8 ]
- |  | (str_append_str)[ @o | "\"positionEncoding\":\"utf-8\"," ]
+ |  | (o.append)[ "\"positionEncoding\":\"utf-8\"," ]
  |  \_
- | (str_append_str)[ @o | "\"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," ]
- | (str_append_str)[ @o | "\"definitionProvider\":true,\"declarationProvider\":true,\"hoverProvider\":true}," ]
- | (str_append_str)[ @o | "\"serverInfo\":{\"name\":\"plc\"}}" ]
+ | (o.append)[ "\"textDocumentSync\":{\"openClose\":true,\"change\":1,\"save\":{\"includeText\":false}}," ]
+ | (o.append)[ "\"definitionProvider\":true,\"declarationProvider\":true,\"hoverProvider\":true}," ]
+ | (o.append)[ "\"serverInfo\":{\"name\":\"plc\"}}" ]
  | (lsp_finish)[ @o ]
  \_
 
@@ -654,10 +654,10 @@ ABYSS lsp_open: [ @Lsp ls | @JNode params ]
  |  | (free)[ p AS @ABYSS ]
  |  | (d.facts.init)[ 1024 ]
  |  | (ls.docs.push)[ d ]
- |  | (str_init_cstr)[ @(d.text) | text ]
+ |  | (d.text.init_cstr)[ text ]
  | ELSE
- |  | (str_deinit)[ @(d.text) ]
- |  | (str_init_cstr)[ @(d.text) | text ]
+ |  | (d.text.deinit)[]
+ |  | (d.text.init_cstr)[ text ]
  |  \_
  | (lsp_analyse)[ ls | d ]
  \_
@@ -677,8 +677,8 @@ ABYSS lsp_change: [ @Lsp ls | @JNode params ]
  | IF [ text == NULL ]
  |  | RET
  |  \_
- | (str_deinit)[ @(d.text) ]
- | (str_init_cstr)[ @(d.text) | text ]
+ | (d.text.deinit)[]
+ | (d.text.init_cstr)[ text ]
  | (lsp_analyse)[ ls | d ]
  \_
 
@@ -694,7 +694,7 @@ ABYSS lsp_close: [ @Lsp ls | @JNode params ]
  |  |  | (none.deinit)[]
  |  |  | (lsp_drop_facts)[ @(d.facts) ]
  |  |  | (d.facts.deinit)[]
- |  |  | (str_deinit)[ @(d.text) ]
+ |  |  | (d.text.deinit)[]
  |  |  | (free)[ d.uri AS @ABYSS ]
  |  |  | (free)[ d AS @ABYSS ]
  |  |  | (ls.docs.remove)[ i ]
@@ -735,11 +735,11 @@ ABYSS lsp_definition: [ @Lsp ls | @JNode id | @JNode params ]
  |  \_
  | String o
  | (lsp_reply)[ @o | id ]
- | (str_append_str)[ @o | "{\"uri\":" ]
+ | (o.append)[ "{\"uri\":" ]
  | (jw_uri)[ @o | f.to_file ]
- | (str_append_str)[ @o | ",\"range\":" ]
+ | (o.append)[ ",\"range\":" ]
  | (jw_range)[ @o | line | from | to ]
- | (str_append)[ @o | '}' ]
+ | (o.push)[ '}' ]
  | (lsp_finish)[ @o ]
  \_
 
@@ -759,11 +759,11 @@ ABYSS lsp_hover: [ @Lsp ls | @JNode id | @JNode params ]
  | I32 line = f.line - 1
  | String o
  | (lsp_reply)[ @o | id ]
- | (str_append_str)[ @o | "{\"contents\":{\"kind\":\"plaintext\",\"value\":" ]
+ | (o.append)[ "{\"contents\":{\"kind\":\"plaintext\",\"value\":" ]
  | (jw_str)[ @o | f.hover ]
- | (str_append_str)[ @o | "},\"range\":" ]
+ | (o.append)[ "},\"range\":" ]
  | (jw_range)[ @o | line | (doc_from_byte)[ ls | d | line | col ] | (doc_from_byte)[ ls | d | line | col + len ] ]
- | (str_append)[ @o | '}' ]
+ | (o.push)[ '}' ]
  | (lsp_finish)[ @o ]
  \_
 

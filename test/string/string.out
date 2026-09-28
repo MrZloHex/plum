@@ -9,5 +9,5 @@ substr(7,5)=`world`
 substr clamped=`world!`
 get(0)=h get(4)=o oob=0
 grown size=200 cap=256 first=x last=x
-file size=1984 head=`; Exercises pl`
+file size=1823 head=`; Exercises pl`
 [exit 0]

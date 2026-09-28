@@ -125,48 +125,48 @@ I32 list_len: [ @ASTNode l ]
 ABYSS append_type_name: [ @String s | @ASTNode tn ]
  | U64 i = 0
  | WHILE [ i < tn.as.type.ptrs ]
- |  | (str_append)[ s | '@' ]
+ |  | (s.push)[ '@' ]
  |  | i = i + 1
  |  \_
  | IF [ tn.as.type.kind == TT_BASE_TYPE ]
- |  | (str_append_str)[ s | (base_type_name)[ tn.as.type.type.as.base_type ] ]
+ |  | (s.append)[ (base_type_name)[ tn.as.type.type.as.base_type ] ]
  | ELIF [ tn.as.type.kind == TT_FN_TYPE ]
- |  | (str_append_str)[ s | "FN " ]
+ |  | (s.append)[ "FN " ]
  |  | (append_type_name)[ s | tn.as.type.type ]
- |  | (str_append_str)[ s | " [" ]
+ |  | (s.append)[ " [" ]
  |  | @ASTNode p = tn.as.type.args
  |  | WHILE [ p != 0 ]
- |  |  | (str_append)[ s | ' ' ]
+ |  |  | (s.push)[ ' ' ]
  |  |  | IF [ p.as.list.item == 0 ]
- |  |  |  | (str_append_str)[ s | "..." ]
+ |  |  |  | (s.append)[ "..." ]
  |  |  | ELSE
  |  |  |  | (append_type_name)[ s | p.as.list.item ]
  |  |  |  \_
  |  |  | IF [ p.as.list.next != 0 ]
- |  |  |  | (str_append_str)[ s | " |" ]
+ |  |  |  | (s.append)[ " |" ]
  |  |  |  \_
  |  |  | p = p.as.list.next
  |  |  \_
- |  | (str_append_str)[ s | " ]" ]
+ |  | (s.append)[ " ]" ]
  | ELSE
- |  | (str_append_str)[ s | tn.as.type.type.as.ident ]
+ |  | (s.append)[ tn.as.type.type.as.ident ]
  |  \_
  | RET
  \_
 
 @C1 instance_name: [ @C1 tmpl | @ASTNode args ]
  | String s
- | (str_init_cstr)[ @s | tmpl ]
- | (str_append)[ @s | '<' ]
+ | (s.init_cstr)[ tmpl ]
+ | (s.push)[ '<' ]
  | @ASTNode a = args
  | WHILE [ a != 0 ]
  |  | (append_type_name)[ @s | a.as.list.item ]
  |  | IF [ a.as.list.next != 0 ]
- |  |  | (str_append_str)[ @s | ", " ]
+ |  |  | (s.append)[ ", " ]
  |  |  \_
  |  | a = a.as.list.next
  |  \_
- | (str_append)[ @s | '>' ]
+ | (s.push)[ '>' ]
  | RET [ s.data ]
  \_
 
@@ -453,7 +453,7 @@ ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref ]
  |  \_
  | IF [ !fits ]
  |  | String want
- |  | (str_init_cstr)[ @want | "" ]
+ |  | (want.init_cstr)[ "" ]
  |  | (append_type_name)[ @want | rt ]
  |  | (gn_error)[ fref | "`%s` works on `%s`, which this CLASS does not hold" | fname | want.data ]
  |  \_
@@ -472,8 +472,16 @@ ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref ]
  |  | decl.as.fn_decl.ident = (gn_ident)[ g | mname | decl.as.fn_decl.ident ]
  |  | decl.as.fn_decl.owner = cls
  |  | decl.as.fn_decl.is_private = m.as.method.is_private
+ |  | decl.as.fn_decl.is_anon = m.as.method.is_anon
  |  |
- |  | ; every method takes `@Cls me` ahead of its declared parameters
+ |  | ; an ANONYMOUS method is a plain function in the class's name
+ |  | IF [ m.as.method.is_anon ]
+ |  |  | (emit)[ g | TUST_FN_DEF | def ]
+ |  |  | m = m.as.method.next
+ |  |  | CONTINUE
+ |  |  \_
+ |  |
+ |  | ; every other method takes `@Cls me` ahead of its declared parameters
  |  | @ASTNode ty = (ast_node_new)[ g.ast ]
  |  | ty.kind = NT_TYPE
  |  | ty.loc = recv.loc

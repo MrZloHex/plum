@@ -1,0 +1,2 @@
+error: an ANONYMOUS method has no `me`: it is called on the type, not on an object
+  --> anon_me.pl:13:7

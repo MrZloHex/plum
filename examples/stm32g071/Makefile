@@ -11,13 +11,10 @@ CPU      = cortex-m0plus
 
 all: blink.bin
 
-blink.ll: blink.pl startup.pl $(PLC)
-	$(PLC) --target=$(TRIPLE) $< -o $@
-
 # -O0: PLUM has no VOLATILE yet, so an optimiser would drop register writes.
-# -fdata-sections: every global in its own section, for the vector table.
-blink.o: blink.ll
-	clang --target=$(TRIPLE) -mcpu=$(CPU) -O0 -fdata-sections -c $< -o $@
+# --data-sections: every global in its own section, for the vector table.
+blink.o: blink.pl startup.pl $(PLC)
+	$(PLC) --emit=OBJ --target=$(TRIPLE) --cpu=$(CPU) -O0 --data-sections $< -o $@
 
 blink.elf: blink.o g071.ld
 	arm-none-eabi-ld --no-warn-rwx-segments -T g071.ld blink.o -o $@
@@ -30,6 +27,6 @@ flash: blink.bin
 	st-flash --reset write blink.bin 0x08000000
 
 clean:
-	rm -f blink.ll blink.o blink.elf blink.bin
+	rm -f blink.o blink.elf blink.bin
 
 .PHONY: all flash clean

@@ -7,7 +7,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 LLVM_LIBS=$(llvm-config --ldflags --libs core analysis target)
-link() { llvm-as "$1" -o "${1%.ll}.bc"; clang "${1%.ll}.bc" -o "$2" $LLVM_LIBS 2>/dev/null; }
+link() { llc -O0 -relocation-model=pic -filetype=obj "$1" -o "${1%.ll}.o"; clang "${1%.ll}.o" -o "$2" $LLVM_LIBS 2>/dev/null; }
 
 echo "stage 1: C plc compiles the PLUM compiler"
 bin/plc-bootstrap src/main.pl -o stage1.ll --emit=IR 2>/dev/null

@@ -31,7 +31,6 @@ ABYSS Default_Handler: []
  |  \_
  \_
 
-; Copy the initial values of globals from flash, clear the rest, run main.
 ABYSS Reset_Handler: []
  | @U32 src = _sidata AS @U32
  | @U32 dst = _sdata AS @U32
@@ -52,9 +51,6 @@ ABYSS Reset_Handler: []
  |  \_
  \_
 
-; The Cortex-M0+ system exceptions; the G071's 32 interrupts are not wired
-; to anything yet. A reserved entry is never used, so it may hold anything
-; but zero -- a zero would put it in .bss instead of the table.
 U32         vector_00_sp       = 0x20009000     ; the top of the 36 KB of RAM
 FN ABYSS [] vector_01_reset    = Reset_Handler
 FN ABYSS [] vector_02_nmi      = NMI_Handler

@@ -39,14 +39,14 @@ B1 diag_color: []
  |
  | IF [ !diag_loaded || (strcmp)[ diag_file | file ] != 0 ]
  |  | IF [ diag_loaded ]
- |  |  | (str_deinit)[ @diag_text ]
+ |  |  | (diag_text.deinit)[]
  |  |  | diag_loaded = FALSE
  |  |  \_
  |  | @ABYSS f = (fopen)[ file | "r" ]
  |  | IF [ f == NULL ]
  |  |  | RET [ NULL ]
  |  |  \_
- |  | (str_init_file)[ @diag_text | f ]
+ |  | (diag_text.init_file)[ f ]
  |  | (fclose)[ f ]
  |  | diag_file = (strdup)[ file ]
  |  | diag_loaded = TRUE
@@ -68,7 +68,7 @@ B1 diag_color: []
  | WHILE [ end < diag_text.size && diag_text.data{end} != '\n' && diag_text.data{end} != '\r' ]
  |  | end += 1
  |  \_
- | RET [ (str_substr)[ @diag_text | i | end - i ] ]
+ | RET [ (diag_text.substr)[ i | end - i ] ]
  \_
 
 I32 diag_digits: [ I32 n ]

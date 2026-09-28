@@ -8,5 +8,6 @@ I32    strncmp: [ @C1 a | @C1 b | U64 n ]
 @C1    strdup:  [ @C1 s ]
 @C1    strndup: [ @C1 s | U64 n ]
 @C1    strrchr: [ @C1 s | I32 c ]
+@C1    strstr:  [ @C1 hay | @C1 needle ]
 
 @ABYSS memset: [ @ABYSS s | I32 c | U64 n ]

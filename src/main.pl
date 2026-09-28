@@ -10,15 +10,20 @@
 !USES <meta.pl>
 !USES <check.pl>
 !USES <index.pl>
+!USES <dump.pl>
 !USES <codegen.pl>
 !USES <lsp.pl>
 !USES <../extern/unistd.pl>
 
 ABYSS usage: [ @C1 progname ]
- | (printf)[ "Usage: %s [--emit=<AST|IR|INDEX>] [--target=triple] [--stdin] [-o output] file1 [file2 ...]\n" | progname ]
+ | (printf)[ "Usage: %s [--emit=<AST|IR|ASM|OBJ|INDEX>] [-O0..3] [--target=triple] [--cpu=name] [--data-sections] [--stdin] [-o output] file1 [file2 ...]\n" | progname ]
  | (printf)[ "       %s --lsp\n" | progname ]
- | (printf)[ "  --emit=<AST|IR|INDEX>  Specify the output type to emit (AST, IR, or the index for --lsp)\n" ]
+ | (printf)[ "  --emit=<AST|IR|ASM|OBJ|INDEX>  What to write: LLVM IR (the default), assembly, an object file,\n" ]
+ | (printf)[ "                   the syntax tree as parsed, or the index for --lsp\n" ]
+ | (printf)[ "  -O0 .. -O3       Optimise, as clang does; -O0, the default, keeps every load and store\n" ]
  | (printf)[ "  --target=triple  Generate code for another machine, as thumbv6m-none-eabi\n" ]
+ | (printf)[ "  --cpu=name       A particular CPU of that machine, as cortex-m0plus\n" ]
+ | (printf)[ "  --data-sections  Put each global in a section of its own, .data.<name>\n" ]
  | (printf)[ "  --stdin          Read the file's text from stdin; its name still resolves USES\n" ]
  | (printf)[ "  --lsp            Serve the Language Server Protocol on stdin and stdout\n" ]
  | (printf)[ "  -o output        Specify the output filename\n" ]
@@ -65,6 +70,16 @@ I32 main: [ I32 argc | @@C1 argv ]
  |  |  | emit = a + 7
  |  | ELIF [ (strncmp)[ a | "--target=" | 9 ] == 0 ]
  |  |  | cg_triple = a + 9
+ |  | ELIF [ (strncmp)[ a | "--cpu=" | 6 ] == 0 ]
+ |  |  | cg_cpu = a + 6
+ |  | ELIF [ (strcmp)[ a | "--data-sections" ] == 0 ]
+ |  |  | cg_data_sections = TRUE
+ |  | ELIF [ (strncmp)[ a | "-O" | 2 ] == 0 ]
+ |  |  | IF [ a{2} < '0' || a{2} > '3' || a{3} != '\0' ]
+ |  |  |  | (diag_at2)[ (no_loc)[] | "`%s`: the optimisation levels are -O0, -O1, -O2 and -O3%s" | a | "" ]
+ |  |  |  | RET [ 1 ]
+ |  |  |  \_
+ |  |  | cg_opt = (a{2} AS I32) - 48
  |  | ELIF [ (strcmp)[ a | "--lsp" ] == 0 ]
  |  |  | RET [ (lsp_main)[] ]
  |  | ELIF [ (strcmp)[ a | "--stdin" ] == 0 ]
@@ -95,17 +110,23 @@ I32 main: [ I32 argc | @@C1 argv ]
  |  \_
  |
  | ; IR is the default; the AST dump is a debugging aid
- | B1 emit_ir = TRUE
+ | B1 gen_code = TRUE
+ | B1 emit_ast = FALSE
  | B1 emit_index = FALSE
  | IF [ emit != 0 ]
  |  | IF [ (strcmp)[ emit | "AST" ] == 0 ]
- |  |  | emit_ir = FALSE
+ |  |  | gen_code = FALSE
+ |  |  | emit_ast = TRUE
  |  | ELIF [ (strcmp)[ emit | "INDEX" ] == 0 ]
- |  |  | emit_ir = FALSE
+ |  |  | gen_code = FALSE
  |  |  | emit_index = TRUE
  |  |  | diag_machine = TRUE
+ |  | ELIF [ (strcmp)[ emit | "ASM" ] == 0 ]
+ |  |  | cg_emit = CG_ASM
+ |  | ELIF [ (strcmp)[ emit | "OBJ" ] == 0 ]
+ |  |  | cg_emit = CG_OBJ
  |  | ELIF [ (strcmp)[ emit | "IR" ] != 0 ]
- |  |  | (diag_at2)[ (no_loc)[] | "--emit takes AST, IR or INDEX, not `%s`%s" | emit | "" ]
+ |  |  | (diag_at2)[ (no_loc)[] | "--emit takes AST, IR, ASM, OBJ or INDEX, not `%s`%s" | emit | "" ]
  |  |  | RET [ 1 ]
  |  |  \_
  |  \_
@@ -122,14 +143,14 @@ I32 main: [ I32 argc | @@C1 argv ]
  |
  | String src
  | IF [ stdin_src ]
- |  | (str_init_fd)[ @src | 0 ]
+ |  | (src.init_fd)[ 0 ]
  | ELSE
  |  | @ABYSS f = (fopen)[ full | "r" ]
  |  | IF [ f == 0 ]
  |  |  | (diag_at2)[ (no_loc)[] | "cannot open `%s`%s" | source | "" ]
  |  |  | RET [ 1 ]
  |  |  \_
- |  | (str_init_file)[ @src | f ]
+ |  | (src.init_file)[ f ]
  |  | (fclose)[ f ]
  |  \_
  |
@@ -141,6 +162,13 @@ I32 main: [ I32 argc | @@C1 argv ]
  | AST ast
  | (ast_init)[ @ast ]
  | (parse_file)[ @ast | @src | source ]
+ |
+ | ; the tree as the parser left it: before generics, and before any check
+ | IF [ emit_ast ]
+ |  | (dump_ast)[ ast.root ]
+ |  | RET [ 0 ]
+ |  \_
+ |
  | (generics_pass)[ @ast ]
  |
  | Meta meta
@@ -171,7 +199,7 @@ I32 main: [ I32 argc | @@C1 argv ]
  |  \_
  | (check_deinit)[ @ck ]
  |
- | IF [ emit_ir ]
+ | IF [ gen_code ]
  |  | CodegenContext cg
  |  | (codegen_init)[ @cg | (module_name_of)[ full ] | @meta ]
  |  | (codegen_generate)[ ast.root | @cg ]
@@ -182,19 +210,10 @@ I32 main: [ I32 argc | @@C1 argv ]
  |  | IF [ !(codegen_deinit)[ @cg | dest ] ]
  |  |  | RET [ 1 ]
  |  |  \_
- | ELSE
- |  | ; the AST dump lives in the C driver; here we report the shape
- |  | I32 n = 0
- |  | @ASTNode ts = ast.root.as.tu.tu_stmt
- |  | WHILE [ ts != 0 ]
- |  |  | n += 1
- |  |  | ts = ts.as.tu_stmt.next_tu_stmt
- |  |  \_
- |  | (printf)[ "%d top-level statements\n" | n ]
  |  \_
  |
  | (meta_deinit)[ @meta ]
  | (ast_deinit)[ @ast ]
- | (str_deinit)[ @src ]
+ | (src.deinit)[]
  | RET [ 0 ]
  \_

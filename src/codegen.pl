@@ -49,8 +49,19 @@ TYPE CGStr: STRUCT
  | @ABYSS global
  \_
 
-; The target, from --target=; 0 for the machine plc runs on.
+; What the driver asked for. The triple is 0 for the machine plc runs on;
+; the CPU 0 for the triple's generic one.
 @C1 cg_triple
+@C1 cg_cpu
+I32 cg_opt             ; -O0 .. -O3
+I32 cg_emit            ; CG_IR, CG_ASM or CG_OBJ
+B1  cg_data_sections   ; every global in a section of its own, .data.<name>
+
+TYPE CgEmit: ENUM
+ | CG_IR
+ | CG_ASM
+ | CG_OBJ
+ \_
 
 TYPE CodegenContext: STRUCT
  | @ABYSS   ctx
@@ -65,6 +76,7 @@ TYPE CodegenContext: STRUCT
  | @ABYSS   ret_type
  | @ABYSS   loop_break
  | @ABYSS   loop_continue
+ | @ABYSS   tm          ; the target machine: layout, passes, machine code
  \_
 
 ; A declared type plus how many pointer levels survive derefs and refs.
@@ -864,6 +876,24 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  | RET [ s ]
  \_
 
+; The class an ANONYMOUS call names, as check.pl finds it: a type written
+; in the expression, or a name that is no variable but a TYPE. 0 for an
+; object.
+@C1 static_owner: [ @CodegenContext c | @ASTNode recv ]
+ | IF [ recv == 0 ]
+ |  | RET [ NULL ]
+ |  \_
+ | @ASTNode r = (strip)[ recv ]
+ | IF [ r.kind == NT_TYPE && r.as.type.kind == TT_USER_TYPE && r.as.type.ptrs == 0 ]
+ |  | RET [ r.as.type.type.as.ident ]
+ |  \_
+ | @ABYSS d = 0
+ | IF [ r.kind == NT_IDENT && (scope_lookup)[ c | r.as.ident ] == 0 && (map_get)[ @(c.meta.types) | r.as.ident | @d AS @@ABYSS ] == 1 ]
+ |  | RET [ r.as.ident ]
+ |  \_
+ | RET [ NULL ]
+ \_
+
 ; The signature a call goes through, as check.pl resolves it: a variable
 ; holding a function pointer before a function of that name, and a method
 ; before a pointer field of that name.
@@ -872,6 +902,13 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | RET [ (fn_type_of)[ c | n.as.fn_call.target ] ]
  |  \_
  | @ABYSS d = 0
+ | @C1 cls = (static_owner)[ c | n.as.fn_call.recv ]
+ | IF [ cls != NULL ]
+ |  | IF [ (map_get)[ @(c.meta.func_decls) | (method_name)[ cls | n.as.fn_call.ident.as.ident ] | @d AS @@ABYSS ] == 1 ]
+ |  |  | RET [ d AS @ASTNode ]
+ |  |  \_
+ |  | RET [ 0 ]
+ |  \_
  | IF [ n.as.fn_call.recv != 0 ]
  |  | U64 rp = 0
  |  | @C1 mname = (method_fn)[ c | n | @rp ]
@@ -923,6 +960,10 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | IF [ ftn != 0 ]
  |  |  | callee = (gen_expr)[ c | call.as.fn_call.target ]
  |  |  \_
+ | ELIF [ (static_owner)[ c | call.as.fn_call.recv ] != NULL ]
+ |  | ; (Type.name)[ ... ]: an ANONYMOUS method, called like a function
+ |  | name = (method_name)[ (static_owner)[ c | call.as.fn_call.recv ] | call.as.fn_call.ident.as.ident ]
+ |  | callee = (LLVMGetNamedFunction)[ c.mod | name ]
  | ELIF [ call.as.fn_call.recv != 0 ]
  |  | ; (obj.name)[ ... ]: a method, else a function pointer in a field
  |  | name = call.as.fn_call.ident.as.ident
@@ -1960,6 +2001,20 @@ ABYSS gen_global: [ @CodegenContext c | @ASTNode d ]
  |  \_
  |
  | (LLVMSetInitializer)[ g | init ]
+ |
+ | ; what C compilers call -fdata-sections: the linker can then place or
+ | ; drop each global by name, as the STM32 vector table needs
+ | IF [ cg_data_sections ]
+ |  | U64 sn = (strlen)[ nm ] + 8
+ |  | @C1 sec = (malloc)[ sn ] AS @C1
+ |  | IF [ (LLVMIsNull)[ init ] != 0 ]
+ |  |  | (snprintf)[ sec | sn | ".bss.%s" | nm ]
+ |  | ELSE
+ |  |  | (snprintf)[ sec | sn | ".data.%s" | nm ]
+ |  |  \_
+ |  | (LLVMSetSection)[ g | sec ]
+ |  | (free)[ sec AS @ABYSS ]
+ |  \_
  | (scope_define)[ c | nm | g | ty | d.as.var_decl.type ]
  | RET
  \_
@@ -1974,6 +2029,7 @@ ABYSS codegen_init: [ @CodegenContext c | @C1 module_name | @Meta meta ]
  | c.ret_type = 0
  | c.loop_break = 0
  | c.loop_continue = 0
+ | c.tm = 0
  |
  | (c.types.init)[ 16 ]
  | (c.consts.init)[ 16 ]
@@ -1995,6 +2051,9 @@ ABYSS codegen_init: [ @CodegenContext c | @C1 module_name | @Meta meta ]
  | (LLVMInitializeAVRTargetInfo)[]
  | (LLVMInitializeAVRTarget)[]
  | (LLVMInitializeAVRTargetMC)[]
+ | (LLVMInitializeARMAsmPrinter)[]
+ | (LLVMInitializeRISCVAsmPrinter)[]
+ | (LLVMInitializeAVRAsmPrinter)[]
  |
  | @C1 triple = cg_triple
  | IF [ triple == NULL ]
@@ -2011,13 +2070,23 @@ ABYSS codegen_init: [ @CodegenContext c | @C1 module_name | @Meta meta ]
  |  | none.col = 0
  |  | (diag_fatal)[ none | "plc cannot generate code for `%s`: %s" | triple | terr ]
  | ELSE
- |  | @ABYSS tm = (LLVMCreateTargetMachine)[ target | triple | "generic" | "" | LLVMCodeGenLevelDefault | LLVMRelocDefault | LLVMCodeModelDefault ]
- |  | @ABYSS tdl = (LLVMCreateTargetDataLayout)[ tm ]
+ |  | @C1 cpu = cg_cpu
+ |  | IF [ cpu == NULL ]
+ |  |  | cpu = "generic"
+ |  |  \_
+ |  | ; a hosted program is linked as a position-independent executable;
+ |  | ; bare metal (-none-, and AVR) puts code at fixed addresses
+ |  | I32 reloc = LLVMRelocPIC
+ |  | IF [ (strstr)[ triple | "-none" ] != NULL || (strncmp)[ triple | "avr" | 3 ] == 0 ]
+ |  |  | reloc = LLVMRelocDefault
+ |  |  \_
+ |  | ; the -O levels and LLVMCodeGenOptLevel number alike: None .. Aggressive
+ |  | c.tm = (LLVMCreateTargetMachine)[ target | triple | cpu | "" | cg_opt | reloc | LLVMCodeModelDefault ]
+ |  | @ABYSS tdl = (LLVMCreateTargetDataLayout)[ c.tm ]
  |  | @C1 dl = (LLVMCopyStringRepOfTargetData)[ tdl ]
  |  | (LLVMSetDataLayout)[ c.mod | dl ]
  |  | (LLVMDisposeMessage)[ dl ]
  |  | (LLVMDisposeTargetData)[ tdl ]
- |  | (LLVMDisposeTargetMachine)[ tm ]
  |  \_
  | IF [ cg_triple == NULL ]
  |  | (LLVMDisposeMessage)[ triple ]
@@ -2090,10 +2159,37 @@ B1 codegen_deinit: [ @CodegenContext c | @C1 filename ]
  |  | ok = FALSE
  |  \_
  |
+ | ; LLVM's standard pipeline, the one clang -O2 runs
+ | IF [ ok && cg_opt > 0 ]
+ |  | C1 pipeline{16}
+ |  | (snprintf)[ pipeline | 16 | "default<O%d>" | cg_opt ]
+ |  | @ABYSS opts = (LLVMCreatePassBuilderOptions)[]
+ |  | @ABYSS perr = (LLVMRunPasses)[ c.mod | pipeline | c.tm | opts ]
+ |  | (LLVMDisposePassBuilderOptions)[ opts ]
+ |  | IF [ perr != NULL ]
+ |  |  | @C1 pm = (LLVMGetErrorMessage)[ perr ]
+ |  |  | (dprintf)[ 2 | "internal compiler error: the optimiser failed: %s\n" | pm ]
+ |  |  | (LLVMDisposeErrorMessage)[ pm ]
+ |  |  | ok = FALSE
+ |  |  \_
+ |  \_
+ |
  | err = 0
- | IF [ (LLVMPrintModuleToFile)[ c.mod | filename | @err AS @@C1 ] != 0 ]
- |  | (dprintf)[ 2 | "error: cannot write `%s`\n" | filename ]
- |  | ok = FALSE
+ | ; invalid IR is still written: it is what a compiler bug is debugged from
+ | IF [ cg_emit == CG_IR ]
+ |  | IF [ (LLVMPrintModuleToFile)[ c.mod | filename | @err AS @@C1 ] != 0 ]
+ |  |  | (dprintf)[ 2 | "error: cannot write `%s`\n" | filename ]
+ |  |  | ok = FALSE
+ |  |  \_
+ | ELIF [ ok ]
+ |  | I32 kind = LLVMObjectFile
+ |  | IF [ cg_emit == CG_ASM ]
+ |  |  | kind = LLVMAssemblyFile
+ |  |  \_
+ |  | IF [ (LLVMTargetMachineEmitToFile)[ c.tm | c.mod | filename | kind | @err AS @@C1 ] != 0 ]
+ |  |  | (dprintf)[ 2 | "error: cannot write `%s`: %s\n" | filename | err ]
+ |  |  | ok = FALSE
+ |  |  \_
  |  \_
  |
  | WHILE [ c.scope != 0 ]
@@ -2105,6 +2201,9 @@ B1 codegen_deinit: [ @CodegenContext c | @C1 filename ]
  | (c.strs.deinit)[]
  |
  | (LLVMDisposeBuilder)[ c.builder ]
+ | IF [ c.tm != NULL ]
+ |  | (LLVMDisposeTargetMachine)[ c.tm ]
+ |  \_
  | (LLVMDisposeModule)[ c.mod ]
  | (LLVMContextDispose)[ c.ctx ]
  | RET [ ok ]

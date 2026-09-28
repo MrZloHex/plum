@@ -1,0 +1,2 @@
+error: `at` is ANONYMOUS: call it on the type, as (Point.method)[ ... ]
+  --> anon_on_object.pl:21:4

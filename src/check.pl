@@ -65,6 +65,7 @@ TYPE Checker: STRUCT
  | I32       loops        ; how many loops enclose the statement being checked
  | I32       errors
  | @Index    ix           ; where resolved names are noted, or 0
+ | B1        anon         ; in an ANONYMOUS method, which has no `me`
  \_
 
 ; --- the index ------------------------------------------------------------
@@ -149,42 +150,42 @@ ABYSS append_sig: [ @String s | @ASTNode sig ]
 ; A declared type as written, for diagnostics.
 ABYSS append_tn: [ @String s | @ASTNode tn ]
  | IF [ tn == 0 ]
- |  | (str_append_str)[ s | "?" ]
+ |  | (s.append)[ "?" ]
  |  | RET
  |  \_
  | U64 i = 0
  | WHILE [ i < tn.as.type.ptrs ]
- |  | (str_append)[ s | '@' ]
+ |  | (s.push)[ '@' ]
  |  | i = i + 1
  |  \_
  | IF [ tn.as.type.kind == TT_BASE_TYPE ]
- |  | (str_append_str)[ s | (base_type_name)[ tn.as.type.type.as.base_type ] ]
+ |  | (s.append)[ (base_type_name)[ tn.as.type.type.as.base_type ] ]
  | ELIF [ tn.as.type.kind == TT_FN_TYPE ]
  |  | (append_sig)[ s | tn ]
  | ELSE
- |  | (str_append_str)[ s | tn.as.type.type.as.ident ]
+ |  | (s.append)[ tn.as.type.type.as.ident ]
  |  \_
  | RET
  \_
 
 ABYSS append_sig: [ @String s | @ASTNode sig ]
- | (str_append_str)[ s | "FN " ]
+ | (s.append)[ "FN " ]
  | (append_tn)[ s | (sig_ret)[ sig ] ]
- | (str_append_str)[ s | " [" ]
+ | (s.append)[ " [" ]
  | @ASTNode p = (sig_params)[ sig ]
  | WHILE [ p != 0 ]
- |  | (str_append)[ s | ' ' ]
+ |  | (s.push)[ ' ' ]
  |  | IF [ (sig_is_va)[ p ] ]
- |  |  | (str_append_str)[ s | "..." ]
+ |  |  | (s.append)[ "..." ]
  |  | ELSE
  |  |  | (append_tn)[ s | (sig_ptype)[ p ] ]
  |  |  \_
  |  | p = (sig_next)[ p ]
  |  | IF [ p != 0 ]
- |  |  | (str_append_str)[ s | " |" ]
+ |  |  | (s.append)[ " |" ]
  |  |  \_
  |  \_
- | (str_append_str)[ s | " ]" ]
+ | (s.append)[ " ]" ]
  | RET
  \_
 
@@ -209,7 +210,7 @@ ABYSS append_sig: [ @String s | @ASTNode sig ]
  | ELIF [ t.kind == TY_FN ]
  |  | ; the whole signature: FN I32 [ I32 | @C1 ]
  |  | String sig
- |  | (str_init_cstr)[ @sig | "" ]
+ |  | (sig.init_cstr)[ "" ]
  |  | (append_sig)[ @sig | t.decl ]
  |  | base = sig.data
  | ELIF [ t.kind == TY_UNKNOWN ]
@@ -612,6 +613,22 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode use ]
  | RET [ t.decl ]
  \_
 
+; The class an ANONYMOUS call names: (Option<I32>.some) parses its type as
+; a type; (Point.origin) is a name that is no variable but a TYPE. 0 when
+; the receiver is an object.
+@C1 ck_static_owner: [ @Checker c | @ASTNode recv ]
+ | @ASTNode r = (ck_strip)[ recv ]
+ | IF [ r.kind == NT_TYPE && r.as.type.kind == TT_USER_TYPE && r.as.type.ptrs == 0 ]
+ |  | RET [ r.as.type.type.as.ident ]
+ |  \_
+ | @ABYSS d = 0
+ | IF [ r.kind == NT_IDENT && (ck_find)[ c | r.as.ident ] == NULL && (map_get)[ @(c.meta.types) | r.as.ident | @d AS @@ABYSS ] == 1 ]
+ |  | (ck_ref)[ c | r | d AS @ASTNode | 0 ]
+ |  | RET [ r.as.ident ]
+ |  \_
+ | RET [ NULL ]
+ \_
+
 ; What a call goes through -- an NT_FN_DECL or an FN type -- or 0 once an
 ; error is reported. skip_me is set for a method, whose `me` the call
 ; supplies itself.
@@ -642,6 +659,23 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode use ]
  |  | RET [ d AS @ASTNode ]
  |  \_
  |
+ | ; (Type.name)[ ... ]: an ANONYMOUS method, which takes no object
+ | @C1 cls = (ck_static_owner)[ c | n.as.fn_call.recv ]
+ | IF [ cls != NULL ]
+ |  | @ABYSS sd = 0
+ |  | IF [ (map_get)[ @(c.meta.func_decls) | (method_name)[ cls | m ] | @sd AS @@ABYSS ] != 1 ]
+ |  |  | (ck_error2)[ c | n | "`%s` has no ANONYMOUS method `%s`" | cls | m ]
+ |  |  | RET [ 0 ]
+ |  |  \_
+ |  | @ASTNode sdecl = sd AS @ASTNode
+ |  | IF [ !(sdecl.as.fn_decl.is_anon) ]
+ |  |  | (ck_error2)[ c | n | "`%s` works on an object, as (x.%s)[ ... ], not on the type" | m | m ]
+ |  |  | RET [ 0 ]
+ |  |  \_
+ |  | (ck_ref)[ c | n.as.fn_call.ident | sdecl | 0 ]
+ |  | RET [ sdecl ]
+ |  \_
+ |
  | Type rt = (ck_expr)[ c | n.as.fn_call.recv ]
  | IF [ rt.kind == TY_UNKNOWN ]
  |  | RET [ 0 ]
@@ -656,6 +690,10 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode use ]
  | @ABYSS d = 0
  | IF [ (map_get)[ @(c.meta.func_decls) | (method_name)[ rt.name | m ] | @d AS @@ABYSS ] == 1 ]
  |  | @ASTNode decl = d AS @ASTNode
+ |  | IF [ decl.as.fn_decl.is_anon ]
+ |  |  | (ck_error2)[ c | n | "`%s` is ANONYMOUS: call it on the type, as (%s.method)[ ... ]" | m | rt.name ]
+ |  |  | RET [ 0 ]
+ |  |  \_
  |  | IF [ decl.as.fn_decl.is_private ]
  |  |  | IF [ c.owner == 0 || (strcmp)[ c.owner | decl.as.fn_decl.owner ] != 0 ]
  |  |  |  | (ck_error2)[ c | n | "`%s` is PRIVATE to `%s`" | m | decl.as.fn_decl.owner ]
@@ -968,12 +1006,26 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  |  |  | ft.decl = fd AS @ASTNode
  |  |  | RET [ ft ]
  |  |  \_
+ |  | IF [ c.anon && (strcmp)[ n.as.ident | "me" ] == 0 ]
+ |  |  | (ck_error)[ c | n | "an ANONYMOUS method has no `me`: it is called on the type, not on an object" ]
+ |  |  | RET [ (ty_unknown)[] ]
+ |  |  \_
+ |  | @ABYSS td = 0
+ |  | IF [ (map_get)[ @(c.meta.types) | n.as.ident | @td AS @@ABYSS ] == 1 ]
+ |  |  | (ck_error2)[ c | n | "`%s` is a type, not a value; a type is followed by an ANONYMOUS call, as (%s.method)[ ... ]" | n.as.ident | n.as.ident ]
+ |  |  | RET [ (ty_unknown)[] ]
+ |  |  \_
  |  | (ck_error2)[ c | n | "unknown identifier `%s`%s" | n.as.ident | "" ]
  |  | RET [ (ty_unknown)[] ]
  |  \_
  |
  | IF [ n.kind == NT_BIN_OP ]
  |  | RET [ (ck_binop)[ c | n ] ]
+ |  \_
+ |
+ | IF [ n.kind == NT_TYPE ]
+ |  | (ck_error2)[ c | n | "`%s` is a type, not a value; a type is followed by an ANONYMOUS call, as (%s.method)[ ... ]" | n.as.type.type.as.ident | n.as.type.type.as.ident ]
+ |  | RET [ (ty_unknown)[] ]
  |  \_
  |
  | IF [ n.kind == NT_FN_CALL ]
@@ -1329,6 +1381,7 @@ ABYSS ck_fn: [ @Checker c | @ASTNode def ]
  | @ASTNode decl = def.as.fn_def.decl
  | c.ret_type = (ty_resolve)[ c | decl.as.fn_decl.type ]
  | c.owner = decl.as.fn_decl.owner
+ | c.anon = decl.as.fn_decl.is_anon
  |
  | (ck_push)[ c ]
  | @ASTNode p = decl.as.fn_decl.params
@@ -1363,6 +1416,7 @@ ABYSS check_init: [ @Checker c | @Meta m ]
  | c.owner = 0
  | c.loops = 0
  | c.ix = 0
+ | c.anon = FALSE
  | c.ret_type = (ty_void)[]
  | RET
  \_

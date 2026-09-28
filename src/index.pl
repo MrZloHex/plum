@@ -164,6 +164,11 @@ ABYSS ix_walk: [ @Index ix | @Meta m | @ASTNode n ]
  |  | (ix_type)[ ix | m | n.as.builtin.size ]
  |  | RET
  |  \_
+ | ; the class of an ANONYMOUS call, (Option<I32>.some)
+ | IF [ k == NT_TYPE ]
+ |  | (ix_type)[ ix | m | n ]
+ |  | RET
+ |  \_
  | IF [ k == NT_BIN_OP ]
  |  | (ix_walk)[ ix | m | n.as.bin_op.left ]
  |  | (ix_walk)[ ix | m | n.as.bin_op.right ]
@@ -212,12 +217,12 @@ ABYSS ix_walk: [ @Index ix | @Meta m | @ASTNode n ]
 ; `T name`, with `{N}` for an array.
 ABYSS ix_typed_name: [ @String s | @ASTNode tn | @C1 name ]
  | (append_tn)[ s | tn ]
- | (str_append)[ s | ' ' ]
- | (str_append_str)[ s | name ]
+ | (s.push)[ ' ' ]
+ | (s.append)[ name ]
  | IF [ tn != 0 && tn.as.type.arr > 0 ]
  |  | C1 buf{24}
  |  | (snprintf)[ buf | 24 | "{%u}" | tn.as.type.arr ]
- |  | (str_append_str)[ s | buf ]
+ |  | (s.append)[ buf ]
  |  \_
  | RET
  \_
@@ -235,34 +240,34 @@ ABYSS ix_hover: [ @String s | @ASTNode d | @ASTNode owner ]
  |  | (ix_typed_name)[ s | d.as.rcrd_flds.type | name ]
  | ELIF [ k == NT_FN_DECL ]
  |  | (append_tn)[ s | d.as.fn_decl.type ]
- |  | (str_append)[ s | ' ' ]
- |  | (str_append_str)[ s | name ]
- |  | (str_append_str)[ s | ": [" ]
+ |  | (s.push)[ ' ' ]
+ |  | (s.append)[ name ]
+ |  | (s.append)[ ": [" ]
  |  | @ASTNode p = d.as.fn_decl.params
  |  | WHILE [ p != 0 ]
- |  |  | (str_append)[ s | ' ' ]
+ |  |  | (s.push)[ ' ' ]
  |  |  | IF [ p.as.parametre.vaarg ]
- |  |  |  | (str_append_str)[ s | "..." ]
+ |  |  |  | (s.append)[ "..." ]
  |  |  | ELSE
  |  |  |  | (ix_typed_name)[ s | p.as.parametre.type | p.as.parametre.ident.as.ident ]
  |  |  |  \_
  |  |  | p = p.as.parametre.next_param
  |  |  | IF [ p != 0 ]
- |  |  |  | (str_append_str)[ s | " |" ]
+ |  |  |  | (s.append)[ " |" ]
  |  |  |  \_
  |  |  \_
- |  | (str_append_str)[ s | " ]" ]
+ |  | (s.append)[ " ]" ]
  | ELIF [ k == NT_TYPE_DEF ]
- |  | (str_append_str)[ s | "TYPE " ]
- |  | (str_append_str)[ s | name ]
- |  | (str_append_str)[ s | ": " ]
+ |  | (s.append)[ "TYPE " ]
+ |  | (s.append)[ name ]
+ |  | (s.append)[ ": " ]
  |  | I32 tk = d.as.type_def.kind
  |  | IF [ tk == TD_ENUM ]
- |  |  | (str_append_str)[ s | "ENUM" ]
+ |  |  | (s.append)[ "ENUM" ]
  |  | ELIF [ tk == TD_RECORD && d.as.type_def.tdef.as.record.kind == TDRT_UNION ]
- |  |  | (str_append_str)[ s | "UNION" ]
+ |  |  | (s.append)[ "UNION" ]
  |  | ELIF [ tk == TD_RECORD ]
- |  |  | (str_append_str)[ s | "STRUCT" ]
+ |  |  | (s.append)[ "STRUCT" ]
  |  | ELSE
  |  |  | (append_tn)[ s | d.as.type_def.tdef ]
  |  |  \_
@@ -278,13 +283,13 @@ ABYSS ix_hover: [ @String s | @ASTNode d | @ASTNode owner ]
  |  |  \_
  |  | C1 buf{24}
  |  | (snprintf)[ buf | 24 | " = %d" | v ]
- |  | (str_append_str)[ s | name ]
- |  | (str_append_str)[ s | buf ]
+ |  | (s.append)[ name ]
+ |  | (s.append)[ buf ]
  |  \_
  |
  | IF [ owner != 0 ]
- |  | (str_append_str)[ s | "  ; in " ]
- |  | (str_append_str)[ s | owner.as.type_def.ident.as.ident ]
+ |  | (s.append)[ "  ; in " ]
+ |  | (s.append)[ owner.as.type_def.ident.as.ident ]
  |  \_
  | RET
  \_
@@ -308,7 +313,7 @@ ABYSS ix_dump: [ @Index ix | @ASTNode root ]
  | @ABYSS unused = 0
  |
  | String hover
- | (str_init_cap)[ @hover | 128 ]
+ | (hover.init)[ 128 ]
  | U64 i = 0
  | WHILE [ i < (ix.refs.size)[] ]
  |  | @IxRef r = (ix.refs.at)[ i ]
@@ -335,13 +340,12 @@ ABYSS ix_dump: [ @Index ix | @ASTNode root ]
  |  |  \_
  |  | (map_put)[ @seen | key | NULL ]
  |  |
- |  | hover.size = 0
- |  | ?(hover.data) = '\0'
+ |  | (hover.clear)[]
  |  | (ix_hover)[ @hover | d | r.owner ]
  |  | (printf)[ "R\t%s\t%d\t%d\t%s\t%d\t%d\t%s\n" | a.file | a.line | a.col | b.file | b.line | b.col | hover.data ]
  |  \_
  |
- | (str_deinit)[ @hover ]
+ | (hover.deinit)[]
  | (map_deinit)[ @seen ]
  | (map_deinit)[ @defs ]
  | RET

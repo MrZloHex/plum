@@ -19,8 +19,8 @@ LLVM_LIBS=$(llvm-config --ldflags --libs core analysis target)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 
 echo "1/5  assembling the current seed"
-llvm-as seed/plc.ll -o "$T/seed.bc"
-clang "$T/seed.bc" -o "$T/seed" $LLVM_LIBS 2>/dev/null
+llc -O0 -relocation-model=pic -filetype=obj seed/plc.ll -o "$T/seed.o"
+clang "$T/seed.o" -o "$T/seed" $LLVM_LIBS 2>/dev/null
 
 echo "2/5  compiling src/ with it"
 if ! "$T/seed" src/main.pl -o "$T/next.ll" --emit=IR; then
@@ -30,16 +30,16 @@ if ! "$T/seed" src/main.pl -o "$T/next.ll" --emit=IR; then
     echo "Recover by reverting that use, refreshing, then reapplying it." >&2
     exit 1
 fi
-llvm-as "$T/next.ll" -o "$T/next.bc"
-clang "$T/next.bc" -o "$T/next" $LLVM_LIBS 2>/dev/null
+llc -O0 -relocation-model=pic -filetype=obj "$T/next.ll" -o "$T/next.o"
+clang "$T/next.o" -o "$T/next" $LLVM_LIBS 2>/dev/null
 
 # The old seed and the new compiler need not emit the same IR -- they
 # differ whenever codegen changed, which is often the point. What must hold
 # is that the new compiler, built by itself, reproduces itself exactly.
 echo "3/5  compiling src/ with the result"
 "$T/next" src/main.pl -o "$T/next2.ll" --emit=IR
-llvm-as "$T/next2.ll" -o "$T/next2.bc"
-clang "$T/next2.bc" -o "$T/next2" $LLVM_LIBS 2>/dev/null
+llc -O0 -relocation-model=pic -filetype=obj "$T/next2.ll" -o "$T/next2.o"
+clang "$T/next2.o" -o "$T/next2" $LLVM_LIBS 2>/dev/null
 
 echo "4/5  checking the self-built compiler reproduces itself"
 "$T/next2" src/main.pl -o "$T/next3.ll" --emit=IR

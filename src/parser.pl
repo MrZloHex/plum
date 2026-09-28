@@ -194,6 +194,21 @@ B1 at_type_args: [ @Parser pr ]
  | RET [ TRUE ]
  \_
 
+; At `Name<...>.`: a generic type in an expression, which only an ANONYMOUS
+; method call puts there, as (Option<I32>.some)[ 5 ]. The `.` after the
+; closing `>` is what no comparison can be followed by.
+B1 at_type_ref: [ @Parser pr ]
+ | Lexer lx = pr.lexer
+ | Token lt = (lexer_next)[ @lx ]
+ | IF [ !(is_op)[ lt | "<" ] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | IF [ !(scan_type_args)[ @lx ] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | RET [ (lexer_next)[ @lx ].kind == TOK_DOT ]
+ \_
+
 ; `>>` closes two lists at once: eat one `>` and leave the other.
 ABYSS expect_close_angle: [ @Parser pr ]
  | IF [ pr.curr.kind != TOK_OPERATOR || ?(pr.curr.lexeme) != '>' ]
@@ -856,6 +871,9 @@ I64 parse_int_lexeme: [ @C1 lex ]
  |  |  \_
  |  | RET [ e ]
  |  \_
+ | IF [ pr.curr.kind == TOK_IDENTIFIER && (at_type_ref)[ pr ] ]
+ |  | RET [ (parse_type)[ pr ] ]
+ |  \_
  | IF [ pr.curr.kind == TOK_IDENTIFIER ]
  |  | RET [ (parse_ident)[ pr ] ]
  |  \_
@@ -1368,6 +1386,7 @@ I32 binop_kind_of: [ Token op_tok ]
  | ifc.as.iface.recv = recv
  |
  | B1 private = FALSE
+ | B1 anon = FALSE
  | @@ASTNode tail = @(ifc.as.iface.methods)
  |
  | LOOP
@@ -1389,12 +1408,17 @@ I32 binop_kind_of: [ Token op_tok ]
  |  |  | (parser_next)[ pr ]
  |  |  | Token sec = pr.curr
  |  |  | (expect)[ pr | TOK_IDENTIFIER ]
+ |  |  | anon = FALSE
  |  |  | IF [ (strcmp)[ sec.lexeme | "PUBLIC" ] == 0 ]
  |  |  |  | private = FALSE
  |  |  | ELIF [ (strcmp)[ sec.lexeme | "PRIVATE" ] == 0 ]
  |  |  |  | private = TRUE
+ |  |  | ELIF [ (strcmp)[ sec.lexeme | "ANONYMOUS" ] == 0 ]
+ |  |  |  | ; no `me`: called on the type, as (Option<I32>.some)[ 5 ]
+ |  |  |  | private = FALSE
+ |  |  |  | anon = TRUE
  |  |  | ELSE
- |  |  |  | (diag_fatal)[ sec.loc | "expected PUBLIC or PRIVATE, found `%s`%s" | sec.lexeme | "" ]
+ |  |  |  | (diag_fatal)[ sec.loc | "expected PUBLIC, PRIVATE or ANONYMOUS, found `%s`%s" | sec.lexeme | "" ]
  |  |  |  \_
  |  |  | (expect)[ pr | TOK_COLON ]
  |  |  | CONTINUE
@@ -1404,6 +1428,7 @@ I32 binop_kind_of: [ Token op_tok ]
  |  | m.kind = NT_METHOD
  |  | (set_loc)[ m | pr.curr ]
  |  | m.as.method.is_private = private
+ |  | m.as.method.is_anon = anon
  |  |
  |  | @ASTNode decl = (parse_fn_decl)[ pr ]
  |  | ; a body is a run of `|  |` lines, or an empty `|  \_`; the IFACE's

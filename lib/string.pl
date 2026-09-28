@@ -1,211 +1,214 @@
-; string.pl -- the PLUM counterpart of inc/dynstr.h
+; string.pl -- String, a growable, NUL-terminated byte string
 ;
-; inc/dynstr.h dispatches dynstr_init through C11 _Generic; PLUM has no
-; overloading, so the three initialisers are named separately here.
+; A CLASS in the way of Vector: one buffer, the operations its methods.
+;
+;   String s
+;   (s.init)[ 64 ]
+;   (s.append)[ "hello" ]
+;   (s.push)[ '!' ]
+;   (puts)[ s.data ]
+;   (s.deinit)[]
+;
+; data is always terminated, so s.data passes straight to C. Reading
+; s.data and s.size directly is fine; change them through the methods.
 ;
 ; Note on syntax: prefix binds tighter than `.`, so dereferencing a field
-; is written ?(s.data), never ?s.data.
+; is written ?(me.data), never ?me.data.
 
 !USES <../extern/stdlib.pl>
 !USES <../extern/string.pl>
 !USES <../extern/stdio.pl>
 !USES <../extern/unistd.pl>
 
-TYPE String: STRUCT
- | @C1 data
- | U64 size
- | U64 cap
+TYPE StringStruct: STRUCT
+ | @C1   data
+ | USIZE size
+ | USIZE cap
  \_
 
-; Grow so that `need` bytes fit. Capacity doubles, as in dynstr_resize.
-I32 str_reserve: [ @String s | U64 need ]
- | IF [ s.cap >= need ]
- |  | RET [ 0 ]
- |  \_
- |
- | U64 ncap = s.cap
- | IF [ ncap == 0 ]
- |  | ncap = 16
- |  \_
- | WHILE [ ncap < need ]
- |  | ncap = ncap * 2
- |  \_
- |
- | @C1 nd = (realloc)[ s.data AS @ABYSS | ncap ] AS @C1
- | IF [ nd == 0 ]
- |  | RET [ -1 ]
- |  \_
- |
- | s.data = nd
- | s.cap  = ncap
- | RET [ 0 ]
- \_
-
-I32 str_init_cap: [ @String s | U64 cap ]
- | s.data = 0
- | s.size = 0
- | s.cap  = 0
- |
- | IF [ cap == 0 ]
- |  | cap = 16
- |  \_
- | IF [ (str_reserve)[ s | cap ] != 0 ]
- |  | RET [ -1 ]
- |  \_
- |
- | ?(s.data) = '\0'
- | RET [ 0 ]
- \_
-
-I32 str_init_cstr: [ @String s | @C1 cstr ]
- | IF [ cstr == 0 ]
- |  | RET [ -1 ]
- |  \_
- |
- | U64 n = (strlen)[ cstr ]
- | IF [ (str_init_cap)[ s | n + 1 ] != 0 ]
- |  | RET [ -1 ]
- |  \_
- |
- | (memcpy)[ s.data AS @ABYSS | cstr AS @ABYSS | n ]
- | s.size = n
- | ?(s.data + n) = '\0'
- | RET [ 0 ]
- \_
-
-; Slurp an entire open FILE*, the way the compiler reads a source file.
-I32 str_init_file: [ @String s | @ABYSS f ]
- | (fseek)[ f | 0 | 2 ]
- | I64 len = (ftell)[ f ]
- | (fseek)[ f | 0 | 0 ]
- |
- | IF [ len < 0 ]
- |  | RET [ -1 ]
- |  \_
- |
- | U64 n = len AS U64
- | IF [ (str_init_cap)[ s | n + 1 ] != 0 ]
- |  | RET [ -1 ]
- |  \_
- |
- | U64 got = (fread)[ s.data AS @ABYSS | 1 | n | f ]
- | s.size = got
- | ?(s.data + got) = '\0'
- | RET [ 0 ]
- \_
-
-; Everything a file descriptor has to give, up to end of file: a pipe,
-; which str_init_file cannot measure first.
-I32 str_init_fd: [ @String s | I32 fd ]
- | IF [ (str_init_cap)[ s | 4096 ] != 0 ]
- |  | RET [ -1 ]
- |  \_
- | LOOP
- |  | IF [ (str_reserve)[ s | s.size + 4097 ] != 0 ]
+IFACE StringOps: [ @StringStruct me ]
+ + PUBLIC:
+ | ; empty, with room for `cap` bytes; 0, or -1 when out of memory
+ | I32 init: [ USIZE cap ]
+ |  | me.data = NULL
+ |  | me.size = 0
+ |  | me.cap = 0
+ |  | IF [ cap == 0 ]
+ |  |  | cap = 16
+ |  |  \_
+ |  | IF [ (me.reserve)[ cap ] != 0 ]
  |  |  | RET [ -1 ]
  |  |  \_
- |  | I64 got = (read)[ fd | (s.data + s.size) AS @ABYSS | 4096 ]
- |  | IF [ got <= 0 ]
- |  |  | BREAK
+ |  | ?(me.data) = '\0'
+ |  | RET [ 0 ]
+ |  \_
+ |
+ | I32 init_cstr: [ @C1 cstr ]
+ |  | IF [ cstr == NULL ]
+ |  |  | RET [ -1 ]
  |  |  \_
- |  | s.size = s.size + (got AS U64)
- |  \_
- | ?(s.data + s.size) = '\0'
- | RET [ 0 ]
- \_
-
-ABYSS str_deinit: [ @String s ]
- | IF [ s.data != 0 ]
- |  | (free)[ s.data AS @ABYSS ]
- |  \_
- | s.data = 0
- | s.size = 0
- | s.cap  = 0
- | RET
- \_
-
-I32 str_append_str: [ @String s | @C1 t ]
- | IF [ t == 0 ]
- |  | RET [ -1 ]
- |  \_
- |
- | U64 n = (strlen)[ t ]
- | IF [ (str_reserve)[ s | s.size + n + 1 ] != 0 ]
- |  | RET [ -1 ]
- |  \_
- |
- | (memcpy)[ (s.data + s.size) AS @ABYSS | t AS @ABYSS | n ]
- | s.size = s.size + n
- | ?(s.data + s.size) = '\0'
- | RET [ 0 ]
- \_
-
-I32 str_append: [ @String s | C1 ch ]
- | IF [ (str_reserve)[ s | s.size + 2 ] != 0 ]
- |  | RET [ -1 ]
- |  \_
- | ?(s.data + s.size) = ch
- | s.size = s.size + 1
- | ?(s.data + s.size) = '\0'
- | RET [ 0 ]
- \_
-
-I32 str_insert_str: [ @String s | U64 at | @C1 t ]
- | IF [ at > s.size ]
- |  | RET [ -1 ]
- |  \_
- |
- | U64 n = (strlen)[ t ]
- | IF [ (str_reserve)[ s | s.size + n + 1 ] != 0 ]
- |  | RET [ -1 ]
- |  \_
- |
- | ; shift the tail right, carrying the terminator with it
- | (memmove)[ (s.data + at + n) AS @ABYSS | (s.data + at) AS @ABYSS | s.size - at + 1 ]
- | (memcpy)[ (s.data + at) AS @ABYSS | t AS @ABYSS | n ]
- | s.size = s.size + n
- | RET [ 0 ]
- \_
-
-I32 str_remove_range: [ @String s | U64 at | U64 count ]
- | IF [ at > s.size ]
- |  | RET [ -1 ]
- |  \_
- | IF [ at + count > s.size ]
- |  | count = s.size - at
- |  \_
- |
- | (memmove)[ (s.data + at) AS @ABYSS | (s.data + at + count) AS @ABYSS | s.size - at - count + 1 ]
- | s.size = s.size - count
- | RET [ 0 ]
- \_
-
-; Caller owns the returned buffer, as dynstr_substr does.
-@C1 str_substr: [ @String s | U64 at | U64 len ]
- | IF [ at > s.size ]
- |  | RET [ 0 ]
- |  \_
- | IF [ at + len > s.size ]
- |  | len = s.size - at
- |  \_
- |
- | @C1 out = (malloc)[ len + 1 ] AS @C1
- | IF [ out == 0 ]
+ |  | USIZE n = (strlen)[ cstr ]
+ |  | IF [ (me.init)[ n + 1 ] != 0 ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | (memcpy)[ me.data AS @ABYSS | cstr AS @ABYSS | n ]
+ |  | me.size = n
+ |  | ?(me.data + n) = '\0'
  |  | RET [ 0 ]
  |  \_
  |
- | (memcpy)[ out AS @ABYSS | (s.data + at) AS @ABYSS | len ]
- | ?(out + len) = '\0'
- | RET [ out ]
- \_
-
-C1 str_get: [ @String s | U64 i ]
- | IF [ i >= s.size ]
- |  | RET [ '\0' ]
+ | ; the whole of an open FILE*, the way the compiler reads a source file
+ | I32 init_file: [ @ABYSS f ]
+ |  | (fseek)[ f | 0 | 2 ]
+ |  | I64 len = (ftell)[ f ]
+ |  | (fseek)[ f | 0 | 0 ]
+ |  | IF [ len < 0 ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | USIZE n = len AS USIZE
+ |  | IF [ (me.init)[ n + 1 ] != 0 ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | USIZE got = (fread)[ me.data AS @ABYSS | 1 | n | f ]
+ |  | me.size = got
+ |  | ?(me.data + got) = '\0'
+ |  | RET [ 0 ]
  |  \_
- | RET [ ?(s.data + i) ]
+ |
+ | ; everything a file descriptor gives up to end of file: a pipe, which
+ | ; init_file cannot measure first
+ | I32 init_fd: [ I32 fd ]
+ |  | IF [ (me.init)[ 4096 ] != 0 ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | LOOP
+ |  |  | IF [ (me.reserve)[ me.size + 4097 ] != 0 ]
+ |  |  |  | RET [ -1 ]
+ |  |  |  \_
+ |  |  | I64 got = (read)[ fd | (me.data + me.size) AS @ABYSS | 4096 ]
+ |  |  | IF [ got <= 0 ]
+ |  |  |  | BREAK
+ |  |  |  \_
+ |  |  | me.size = me.size + (got AS USIZE)
+ |  |  \_
+ |  | ?(me.data + me.size) = '\0'
+ |  | RET [ 0 ]
+ |  \_
+ |
+ | ABYSS deinit: []
+ |  | IF [ me.data != NULL ]
+ |  |  | (free)[ me.data AS @ABYSS ]
+ |  |  \_
+ |  | me.data = NULL
+ |  | me.size = 0
+ |  | me.cap = 0
+ |  \_
+ |
+ | ; room for `need` bytes, the terminator included; capacity doubles
+ | I32 reserve: [ USIZE need ]
+ |  | IF [ me.cap >= need ]
+ |  |  | RET [ 0 ]
+ |  |  \_
+ |  | USIZE ncap = me.cap
+ |  | IF [ ncap == 0 ]
+ |  |  | ncap = 16
+ |  |  \_
+ |  | WHILE [ ncap < need ]
+ |  |  | ncap = ncap * 2
+ |  |  \_
+ |  | @C1 nd = (realloc)[ me.data AS @ABYSS | ncap ] AS @C1
+ |  | IF [ nd == NULL ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | me.data = nd
+ |  | me.cap = ncap
+ |  | RET [ 0 ]
+ |  \_
+ |
+ | I32 append: [ @C1 t ]
+ |  | IF [ t == NULL ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | USIZE n = (strlen)[ t ]
+ |  | IF [ (me.reserve)[ me.size + n + 1 ] != 0 ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | (memcpy)[ (me.data + me.size) AS @ABYSS | t AS @ABYSS | n ]
+ |  | me.size = me.size + n
+ |  | ?(me.data + me.size) = '\0'
+ |  | RET [ 0 ]
+ |  \_
+ |
+ | ; one byte on the end
+ | I32 push: [ C1 ch ]
+ |  | IF [ (me.reserve)[ me.size + 2 ] != 0 ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | ?(me.data + me.size) = ch
+ |  | me.size = me.size + 1
+ |  | ?(me.data + me.size) = '\0'
+ |  | RET [ 0 ]
+ |  \_
+ |
+ | I32 insert: [ USIZE at | @C1 t ]
+ |  | IF [ at > me.size ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | USIZE n = (strlen)[ t ]
+ |  | IF [ (me.reserve)[ me.size + n + 1 ] != 0 ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | ; shift the tail right, carrying the terminator with it
+ |  | (memmove)[ (me.data + at + n) AS @ABYSS | (me.data + at) AS @ABYSS | me.size - at + 1 ]
+ |  | (memcpy)[ (me.data + at) AS @ABYSS | t AS @ABYSS | n ]
+ |  | me.size = me.size + n
+ |  | RET [ 0 ]
+ |  \_
+ |
+ | ; `count` bytes from `at`, or as many as there are
+ | I32 remove: [ USIZE at | USIZE count ]
+ |  | IF [ at > me.size ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | IF [ at + count > me.size ]
+ |  |  | count = me.size - at
+ |  |  \_
+ |  | (memmove)[ (me.data + at) AS @ABYSS | (me.data + at + count) AS @ABYSS | me.size - at - count + 1 ]
+ |  | me.size = me.size - count
+ |  | RET [ 0 ]
+ |  \_
+ |
+ | ABYSS clear: []
+ |  | me.size = 0
+ |  | IF [ me.data != NULL ]
+ |  |  | ?(me.data) = '\0'
+ |  |  \_
+ |  \_
+ |
+ | ; a malloc'd copy of `len` bytes from `at`; the caller frees it
+ | @C1 substr: [ USIZE at | USIZE len ]
+ |  | IF [ at > me.size ]
+ |  |  | RET [ NULL ]
+ |  |  \_
+ |  | IF [ at + len > me.size ]
+ |  |  | len = me.size - at
+ |  |  \_
+ |  | @C1 out = (malloc)[ len + 1 ] AS @C1
+ |  | IF [ out == NULL ]
+ |  |  | RET [ NULL ]
+ |  |  \_
+ |  | (memcpy)[ out AS @ABYSS | (me.data + at) AS @ABYSS | len ]
+ |  | ?(out + len) = '\0'
+ |  | RET [ out ]
+ |  \_
+ |
+ | ; byte i, or '\0' past the end
+ | C1 get: [ USIZE i ]
+ |  | IF [ i >= me.size ]
+ |  |  | RET [ '\0' ]
+ |  |  \_
+ |  | RET [ me.data{i} ]
+ |  \_
  \_
 
-U64 str_size: [ @String s ]
- | RET [ s.size ]
- \_
+CLASS String: StringStruct IMPL [ StringOps ]

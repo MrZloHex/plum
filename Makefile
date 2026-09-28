@@ -38,6 +38,10 @@ BOOT       = $(BIN)/plc-bootstrap
 
 LLVM_LIBS  = $(shell llvm-config --ldflags --libs core analysis target --system-libs)
 
+# IR -> machine code; clang only links. -O0 is what clang did before; pic
+# because the linker makes a position-independent executable.
+LLC        = llc -O0 -relocation-model=pic -filetype=obj
+
 # --- plc, written in PLUM -----------------------------------------------
 PLUM_SRC   = $(wildcard src/*.pl lib/*.pl extern/*.pl)
 SEED       = seed/plc.ll
@@ -86,12 +90,12 @@ plc: $(PLC)
 
 $(PLC): $(SEED) $(PLUM_SRC) | $(BIN) $(OBJ)
 	@echo "  SEED     $(SEED)"
-	$(Q) llvm-as $(SEED) -o $(OBJ)/seed.bc
-	$(Q) clang $(OBJ)/seed.bc -o $(BIN)/plc-seed $(LLVM_LIBS) 2>/dev/null
+	$(Q) $(LLC) $(SEED) -o $(OBJ)/seed.o
+	$(Q) clang $(OBJ)/seed.o -o $(BIN)/plc-seed $(LLVM_LIBS) 2>/dev/null
 	@echo "  PLC      src/main.pl"
 	$(Q) $(BIN)/plc-seed src/main.pl -o $(OBJ)/plc.ll --emit=IR
-	$(Q) llvm-as $(OBJ)/plc.ll -o $(OBJ)/plc.bc
-	$(Q) clang $(OBJ)/plc.bc -o $@ $(LLVM_LIBS) 2>/dev/null
+	$(Q) $(LLC) $(OBJ)/plc.ll -o $(OBJ)/plc.o
+	$(Q) clang $(OBJ)/plc.o -o $@ $(LLVM_LIBS) 2>/dev/null
 	@echo "  CCLD     $@"
 
 # --- the C bootstrap compiler --------------------------------------------
@@ -131,6 +135,6 @@ typecheck: $(PLC)
 	$(Q) ./test/typecheck/run.sh
 
 clean:
-	$(Q) rm -rf $(OBJ) $(BIN) stage*.ll stage*.bc fromseed*.ll fromseed*.bc seed.bc
+	$(Q) rm -rf $(OBJ) $(BIN) stage*.ll stage*.bc stage*.o fromseed*.ll fromseed*.bc fromseed*.o seed.bc seed.o
 
 -include $(C_OBJECTS:.o=.d)

@@ -1,7 +1,7 @@
 ; vector.pl -- Vector<T>, a growable array of T
 ;
-; The typed successor of vec.pl: elements go in and come out as T, so there
-; is no element size to pass and no cast on the way out.
+; Elements go in and come out as T, so there is no element size to pass
+; and no cast on the way out.
 ;
 ;   Vector<CGSym> syms
 ;   (syms.init)[ 16 ]
@@ -48,7 +48,7 @@ IFACE VectorOps<T>: [ @VectorData<T> me ]
  |  | RET [ me.len == 0 ]
  |  \_
  |
- | ; the i-th element, in place; no bounds check, as with vec_at
+ | ; the i-th element, in place; no bounds check
  | @T at: [ USIZE i ]
  |  | RET [ me.data + i ]
  |  \_

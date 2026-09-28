@@ -36,7 +36,12 @@ I32 LLVMReturnStatusAction = 1
 
 I32 LLVMCodeGenLevelDefault = 2
 I32 LLVMRelocDefault        = 0
+I32 LLVMRelocPIC            = 2
 I32 LLVMCodeModelDefault    = 0
+
+; LLVMCodeGenFileType, llvm-c/TargetMachine.h
+I32 LLVMAssemblyFile = 0
+I32 LLVMObjectFile   = 1
 
 ; --- context, module, builder ---------------------------------------------
 @ABYSS LLVMContextCreate: []
@@ -63,6 +68,9 @@ ABYSS  LLVMInitializeRISCVTargetMC: []
 ABYSS  LLVMInitializeAVRTargetInfo: []
 ABYSS  LLVMInitializeAVRTarget: []
 ABYSS  LLVMInitializeAVRTargetMC: []
+ABYSS  LLVMInitializeARMAsmPrinter: []
+ABYSS  LLVMInitializeRISCVAsmPrinter: []
+ABYSS  LLVMInitializeAVRAsmPrinter: []
 @C1    LLVMGetDefaultTargetTriple: []
 ABYSS  LLVMSetTarget: [ @ABYSS m | @C1 triple ]
 I32    LLVMGetTargetFromTriple: [ @C1 triple | @@ABYSS out | @@C1 err ]
@@ -176,6 +184,17 @@ ABYSS  LLVMAddIncoming: [ @ABYSS phi | @@ABYSS vals | @@ABYSS blocks | I32 n ]
 ; --- output ---------------------------------------------------------------
 I32 LLVMVerifyModule: [ @ABYSS m | I32 action | @@C1 err ]
 I32 LLVMPrintModuleToFile: [ @ABYSS m | @C1 path | @@C1 err ]
+I32 LLVMTargetMachineEmitToFile: [ @ABYSS tm | @ABYSS m | @C1 path | I32 kind | @@C1 err ]
+ABYSS LLVMSetSection: [ @ABYSS global | @C1 section ]
+I32   LLVMIsNull: [ @ABYSS v ]
+
+; --- optimisation, llvm-c/Transforms/PassBuilder.h --------------------------
+; LLVMRunPasses gives back an LLVMErrorRef: 0 on success
+@ABYSS LLVMCreatePassBuilderOptions: []
+ABYSS  LLVMDisposePassBuilderOptions: [ @ABYSS opts ]
+@ABYSS LLVMRunPasses: [ @ABYSS m | @C1 passes | @ABYSS tm | @ABYSS opts ]
+@C1    LLVMGetErrorMessage: [ @ABYSS err ]
+ABYSS  LLVMDisposeErrorMessage: [ @C1 msg ]
 
 @ABYSS LLVMBuildUDiv: [ @ABYSS b | @ABYSS l | @ABYSS r | @C1 name ]
 @ABYSS LLVMBuildURem: [ @ABYSS b | @ABYSS l | @ABYSS r | @C1 name ]

@@ -10,7 +10,7 @@ I32 main: []
  |  | (puts)[ "cannot open sample.txt" ]
  |  | RET [ 1 ]
  |  \_
- | (str_init_file)[ @src | f ]
+ | (src.init_file)[ f ]
  | (fclose)[ f ]
  |
  | (printf)[ "before: %d bytes\n" | src.size ]
@@ -19,6 +19,6 @@ I32 main: []
  | (printf)[ "preprocess rc=%d\n" | rc ]
  | (printf)[ "after: %d bytes\n---\n%s---\n" | src.size | src.data ]
  |
- | (str_deinit)[ @src ]
+ | (src.deinit)[]
  | RET [ 0 ]
  \_

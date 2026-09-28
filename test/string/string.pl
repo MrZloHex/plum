@@ -1,4 +1,4 @@
-; Exercises plum/string.pl -- the PLUM counterpart of inc/dynstr.h
+; Exercises plum's String class, lib/string.pl -- the counterpart of inc/dynstr.h
 
 !USES <../../lib/string.pl>
 
@@ -10,51 +10,51 @@ ABYSS show: [ @C1 tag | @String s ]
 I32 main: []
  | String s
  |
- | (str_init_cstr)[ @s | "hello" ]
+ | (s.init_cstr)[ "hello" ]
  | (show)[ "init_cstr" | @s ]
  |
- | (str_append_str)[ @s | ", world" ]
+ | (s.append)[ ", world" ]
  | (show)[ "append_str" | @s ]
  |
- | (str_append)[ @s | '!' ]
+ | (s.push)[ '!' ]
  | (show)[ "append char" | @s ]
  |
  | ; insert at the front, and in the middle
- | (str_insert_str)[ @s | 0 | ">> " ]
+ | (s.insert)[ 0 | ">> " ]
  | (show)[ "insert head" | @s ]
  |
- | (str_insert_str)[ @s | 8 | "BIG " ]
+ | (s.insert)[ 8 | "BIG " ]
  | (show)[ "insert mid" | @s ]
  |
  | ; and take it back out
- | (str_remove_range)[ @s | 8 | 4 ]
+ | (s.remove)[ 8 | 4 ]
  | (show)[ "remove" | @s ]
  |
- | (str_remove_range)[ @s | 0 | 3 ]
+ | (s.remove)[ 0 | 3 ]
  | (show)[ "remove head" | @s ]
  |
  | ; substring is caller-owned
- | @C1 sub = (str_substr)[ @s | 7 | 5 ]
+ | @C1 sub = (s.substr)[ 7 | 5 ]
  | (printf)[ "substr(7,5)=`%s`\n" | sub ]
  | (free)[ sub AS @ABYSS ]
  |
  | ; clamped: asking past the end yields what is there
- | @C1 tail = (str_substr)[ @s | 7 | 999 ]
+ | @C1 tail = (s.substr)[ 7 | 999 ]
  | (printf)[ "substr clamped=`%s`\n" | tail ]
  | (free)[ tail AS @ABYSS ]
  |
  | ; indexing
- | (printf)[ "get(0)=%c get(4)=%c oob=%d\n" | (str_get)[ @s | 0 ] | (str_get)[ @s | 4 ] | (str_get)[ @s | 999 ] ]
+ | (printf)[ "get(0)=%c get(4)=%c oob=%d\n" | (s.get)[ 0 ] | (s.get)[ 4 ] | (s.get)[ 999 ] ]
  |
  | ; growth: force several reallocs
  | String g
- | (str_init_cap)[ @g | 0 ]
+ | (g.init)[ 0 ]
  | I32 i = 0
  | WHILE [ i < 200 ]
- |  | (str_append)[ @g | 'x' ]
+ |  | (g.push)[ 'x' ]
  |  | i += 1
  |  \_
- | (printf)[ "grown size=%d cap=%d first=%c last=%c\n" | g.size | g.cap | (str_get)[ @g | 0 ] | (str_get)[ @g | 199 ] ]
+ | (printf)[ "grown size=%d cap=%d first=%c last=%c\n" | g.size | g.cap | (g.get)[ 0 ] | (g.get)[ 199 ] ]
  |
  | ; read a file, the way the compiler reads its input
  | String f
@@ -63,14 +63,14 @@ I32 main: []
  |  | (puts)[ "fopen failed" ]
  |  | RET [ 1 ]
  |  \_
- | (str_init_file)[ @f | fh ]
+ | (f.init_file)[ fh ]
  | (fclose)[ fh ]
- | @C1 head = (str_substr)[ @f | 0 | 14 ]
+ | @C1 head = (f.substr)[ 0 | 14 ]
  | (printf)[ "file size=%d head=`%s`\n" | f.size | head ]
  | (free)[ head AS @ABYSS ]
  |
- | (str_deinit)[ @f ]
- | (str_deinit)[ @g ]
- | (str_deinit)[ @s ]
+ | (f.deinit)[]
+ | (g.deinit)[]
+ | (s.deinit)[]
  | RET [ 0 ]
  \_

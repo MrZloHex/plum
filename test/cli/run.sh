@@ -46,10 +46,12 @@ src crlf.pl 'I32 main: []\r\n | RET [ 0 ]\r\n \\_\r\n'
 expect no-input          1 "no input file"            -- 
 expect missing-file      1 "cannot find"         -- "$TMP/nope.pl"
 expect o-without-arg     1 "-o needs a file name"      -- -o
-expect bad-emit          1 "--emit takes AST, IR or INDEX" -- "$TMP/ok.pl" --emit=BOGUS
+expect bad-emit          1 "--emit takes AST, IR, ASM, OBJ or INDEX" -- "$TMP/ok.pl" --emit=BOGUS
+expect bad-opt           1 "the optimisation levels are"   -- "$TMP/ok.pl" -O4
 expect unwritable        1 "cannot write"           -- "$TMP/ok.pl" -o "$TMP/no/such/dir.ll"
 expect help              0 "Usage:"                    -- -h
-expect emit-ast          0 "1 top-level statements"    -- "$TMP/ok.pl" --emit=AST
+expect emit-ast          0 "FN_DEF I32 main: [ ]"      -- "$TMP/ok.pl" --emit=AST
+expect emit-ast-tree     0 "    INT 0"                 -- "$TMP/ok.pl" --emit=AST
 expect emit-ir           0 "define i32 @main"          -- "$TMP/ok.pl" --emit=IR
 expect tab               33 "a tab; PLUM is indented"      -- "$TMP/tab.pl" -o /dev/null
 expect open-string       1 "never closed with"              -- "$TMP/string.pl" -o /dev/null
@@ -87,6 +89,33 @@ if [ "$got" = "$want" ]; then
     echo ok; pass=$((pass+1))
 else
     echo "*** got:"; echo "$got" | sed 's/^/                     /'; fail=$((fail+1))
+fi
+
+# Machine code straight from plc: an object clang only has to link, the
+# same as assembly, the optimiser, and a global per section.
+src sq.pl 'I32 g = 7\nI32 z\nI32 sq: [ I32 x ]\n | I32 r = x * x\n | RET [ r ]\n \\_\nI32 main: []\n | RET [ (sq)[ g ] + z ]\n \\_\n'
+printf '%-20s ' "emit-obj"
+if "$PLC" --emit=OBJ "$TMP/sq.pl" -o "$TMP/sq.o" && clang "$TMP/sq.o" -o "$TMP/sq" 2>/dev/null; then
+    "$TMP/sq"; rc=$?
+    if [ $rc -eq 49 ]; then echo ok; pass=$((pass+1)); else echo "*** ran, exit $rc, want 49"; fail=$((fail+1)); fi
+else
+    echo "*** no object, or it did not link"; fail=$((fail+1))
+fi
+expect emit-asm-arm      0 "muls"                      -- "$TMP/sq.pl" --emit=ASM -O2 --target=thumbv6m-unknown-none-eabi --cpu=cortex-m0plus -o -
+printf '%-20s ' "opt-o2"
+got=$("$PLC" -O2 "$TMP/sq.pl" -o - | sed -n '/define.*@sq/,/^}/p')
+if grep -q 'mul i32' <<<"$got" && ! grep -q alloca <<<"$got"; then
+    echo ok; pass=$((pass+1))
+else
+    echo "*** -O2 left sq unoptimised:"; echo "$got" | sed 's/^/                     /'; fail=$((fail+1))
+fi
+printf '%-20s ' "data-sections"
+"$PLC" --emit=OBJ --data-sections --target=thumbv6m-unknown-none-eabi "$TMP/sq.pl" -o "$TMP/arm.o"
+secs=$(llvm-readelf -S "$TMP/arm.o" 2>/dev/null)
+if grep -q '\.data\.g ' <<<"$secs" && grep -q '\.bss\.z ' <<<"$secs"; then
+    echo ok; pass=$((pass+1))
+else
+    echo "*** no .data.g and .bss.z sections"; fail=$((fail+1))
 fi
 
 # --emit=INDEX, what --lsp runs: diagnostics as E lines and names as R

@@ -1,7 +1,7 @@
-; Exercises plum/{vec,stack,map,arena}.pl against the behaviour the
+; Exercises lib/{vector,stack,map,arena}.pl against the behaviour the
 ; compiler relies on from inc/{dynarray,dynstack,dynmap,arena}.h
 
-!USES <../../lib/vec.pl>
+!USES <../../lib/vector.pl>
 !USES <../../lib/stack.pl>
 !USES <../../lib/map.pl>
 !USES <../../lib/arena.pl>
@@ -14,10 +14,10 @@ TYPE Sym: STRUCT
  \_
 
 I32 main: []
- | ; ---------------- Vec of structs (Symbols / Scopes) ----------------
- | Vec v
- | (vec_init)[ @v | SIZE [ Sym ] | 0 ]
- | (printf)[ "vec esz=%d\n" | v.esz ]
+ | ; ---------------- Vector of structs (Symbols / Scopes) ----------------
+ | Vector<Sym> v
+ | (v.init)[ 0 ]
+ | (printf)[ "vec esz=%d\n" | SIZE [ Sym ] ]
  |
  | I32 i = 0
  | WHILE [ i < 20 ]
@@ -25,20 +25,19 @@ I32 main: []
  |  | s.name = "sym"
  |  | s.kind = i
  |  | s.line = i * 10
- |  | (vec_append)[ @v | @s AS @ABYSS ]
+ |  | (v.push)[ s ]
  |  | i += 1
  |  \_
- | (printf)[ "vec len=%d cap=%d\n" | (vec_size)[ @v ] | v.cap ]
+ | (printf)[ "vec len=%d cap=%d\n" | (v.size)[] | v.cap ]
  |
- | Sym got
- | (vec_get)[ @v | 7 | @got AS @ABYSS ]
+ | @Sym got = (v.at)[ 7 ]
  | (printf)[ "vec[7] kind=%d line=%d name=%s\n" | got.kind | got.line | got.name ]
  |
  | ; remove element 0, everything shifts down
- | (vec_remove)[ @v | 0 ]
- | (vec_get)[ @v | 0 | @got AS @ABYSS ]
- | (printf)[ "after remove len=%d vec[0].kind=%d\n" | (vec_size)[ @v ] | got.kind ]
- | (vec_deinit)[ @v ]
+ | (v.remove)[ 0 ]
+ | got = (v.at)[ 0 ]
+ | (printf)[ "after remove len=%d vec[0].kind=%d\n" | (v.size)[] | got.kind ]
+ | (v.deinit)[]
  |
  | ; ---------------- Stack of pointers (ASTStack) ----------------
  | Stack st

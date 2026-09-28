@@ -8,8 +8,8 @@ cd "$(dirname "$0")/.."
 
 LLVM_LIBS=$(llvm-config --ldflags --libs core analysis target)
 bin/plc-bootstrap src/main.pl -o /tmp/plum-v1.ll --emit=IR 2>/dev/null
-llvm-as /tmp/plum-v1.ll -o /tmp/plum-v1.bc
-clang /tmp/plum-v1.bc -o /tmp/plum-v1 $LLVM_LIBS 2>/dev/null
+llc -O0 -relocation-model=pic -filetype=obj /tmp/plum-v1.ll -o /tmp/plum-v1.o
+clang /tmp/plum-v1.o -o /tmp/plum-v1 $LLVM_LIBS 2>/dev/null
 /tmp/plum-v1 src/main.pl -o /tmp/plum-v2.ll --emit=IR
 
 if cmp -s /tmp/plum-v2.ll seed/plc.ll; then

@@ -8,13 +8,13 @@ cd "$(dirname "$0")/.."
 LLVM_LIBS=$(llvm-config --ldflags --libs core analysis target)
 
 echo "seed -> plc-seed"
-llvm-as seed/plc.ll -o seed.bc
-clang seed.bc -o plc-seed $LLVM_LIBS 2>/dev/null
+llc -O0 -relocation-model=pic -filetype=obj seed/plc.ll -o seed.o
+clang seed.o -o plc-seed $LLVM_LIBS 2>/dev/null
 
 echo "plc-seed compiles src/ -> plc-plum"
 ./plc-seed src/main.pl -o fromseed.ll --emit=IR
-llvm-as fromseed.ll -o fromseed.bc
-clang fromseed.bc -o plc-plum $LLVM_LIBS 2>/dev/null
+llc -O0 -relocation-model=pic -filetype=obj fromseed.ll -o fromseed.o
+clang fromseed.o -o plc-plum $LLVM_LIBS 2>/dev/null
 
 echo "plc-plum compiles src/ again"
 ./plc-plum src/main.pl -o fromseed2.ll --emit=IR

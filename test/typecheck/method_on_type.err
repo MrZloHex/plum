@@ -1,0 +1,2 @@
+error: `sum` works on an object, as (x.sum)[ ... ], not on the type
+  --> method_on_type.pl:20:12

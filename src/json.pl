@@ -336,43 +336,43 @@ I64 json_int: [ @JNode n | I64 dflt ]
 ; --- writing --------------------------------------------------------------
 
 ABYSS jw_str: [ @String o | @C1 s ]
- | (str_append)[ o | '"' ]
+ | (o.push)[ '"' ]
  | U64 i = 0
  | WHILE [ s{i} != '\0' ]
  |  | C1 c = s{i}
  |  | IF [ c == '"' ]
- |  |  | (str_append_str)[ o | "\\\"" ]
+ |  |  | (o.append)[ "\\\"" ]
  |  | ELIF [ c == '\\' ]
- |  |  | (str_append_str)[ o | "\\\\" ]
+ |  |  | (o.append)[ "\\\\" ]
  |  | ELIF [ c == '\n' ]
- |  |  | (str_append_str)[ o | "\\n" ]
+ |  |  | (o.append)[ "\\n" ]
  |  | ELIF [ c == '\r' ]
- |  |  | (str_append_str)[ o | "\\r" ]
+ |  |  | (o.append)[ "\\r" ]
  |  | ELIF [ c == '\t' ]
- |  |  | (str_append_str)[ o | "\\t" ]
+ |  |  | (o.append)[ "\\t" ]
  |  | ELIF [ c >= '\0' && c < ' ' ]
  |  |  | C1 buf{8}
  |  |  | (snprintf)[ buf | 8 | "\\u%04x" | c AS I32 ]
- |  |  | (str_append_str)[ o | buf ]
+ |  |  | (o.append)[ buf ]
  |  | ELSE
- |  |  | (str_append)[ o | c ]
+ |  |  | (o.push)[ c ]
  |  |  \_
  |  | i += 1
  |  \_
- | (str_append)[ o | '"' ]
+ | (o.push)[ '"' ]
  \_
 
 ABYSS jw_int: [ @String o | I64 v ]
  | C1 buf{24}
  | (snprintf)[ buf | 24 | "%ld" | v ]
- | (str_append_str)[ o | buf ]
+ | (o.append)[ buf ]
  \_
 
 ; `n` bytes of `s`, as they are.
 ABYSS jw_raw: [ @String o | @C1 s | U64 n ]
  | U64 i = 0
  | WHILE [ i < n ]
- |  | (str_append)[ o | s{i} ]
+ |  | (o.push)[ s{i} ]
  |  | i += 1
  |  \_
  \_

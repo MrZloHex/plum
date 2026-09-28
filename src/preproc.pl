@@ -158,13 +158,13 @@ I32 insert_file: [ @String dst | U64 at | @C1 path | I32 depth | @C1 dir | Locat
  | @C1 shown = (pp_display)[ full ]
  |
  | String buf
- | (str_init_file)[ @buf | f ]
+ | (buf.init_file)[ f ]
  | (fclose)[ f ]
  |
  | @C1 sub_dir = (dir_of)[ full ]
  | (free)[ full AS @ABYSS ]
  | IF [ sub_dir == 0 ]
- |  | (str_deinit)[ @buf ]
+ |  | (buf.deinit)[]
  |  | RET [ -1 ]
  |  \_
  |
@@ -172,22 +172,22 @@ I32 insert_file: [ @String dst | U64 at | @C1 path | I32 depth | @C1 dir | Locat
  | (free)[ sub_dir AS @ABYSS ]
  |
  | IF [ rc != 0 ]
- |  | (str_deinit)[ @buf ]
+ |  | (buf.deinit)[]
  |  | RET [ -1 ]
  |  \_
  |
  | ; bracket it for the lexer: byte 1, the name, a newline ... byte 2
  | String wrapped
- | (str_init_cap)[ @wrapped | buf.size + (strlen)[ shown ] + 8 ]
- | (str_append)[ @wrapped | 1 AS C1 ]
- | (str_append_str)[ @wrapped | shown ]
- | (str_append)[ @wrapped | '\n' ]
- | (str_append_str)[ @wrapped | buf.data ]
- | (str_append)[ @wrapped | '\n' ]
- | (str_append)[ @wrapped | 2 AS C1 ]
- | (str_insert_str)[ dst | at | wrapped.data ]
- | (str_deinit)[ @wrapped ]
- | (str_deinit)[ @buf ]
+ | (wrapped.init)[ buf.size + (strlen)[ shown ] + 8 ]
+ | (wrapped.push)[ 1 AS C1 ]
+ | (wrapped.append)[ shown ]
+ | (wrapped.push)[ '\n' ]
+ | (wrapped.append)[ buf.data ]
+ | (wrapped.push)[ '\n' ]
+ | (wrapped.push)[ 2 AS C1 ]
+ | (dst.insert)[ at | wrapped.data ]
+ | (wrapped.deinit)[]
+ | (buf.deinit)[]
  | RET [ 0 ]
  \_
 
@@ -223,7 +223,7 @@ I32 preproc_uses: [ @String s | U64 pos | I32 depth | @C1 dir | @C1 name ]
  |  \_
  |
  | U64 directive_len = (i + 1) - pos
- | (str_remove_range)[ s | pos | directive_len ]
+ | (s.remove)[ pos | directive_len ]
  |
  | IF [ (insert_file)[ s | pos | fname | depth | dir | where ] != 0 ]
  |  | (free)[ fname AS @ABYSS ]

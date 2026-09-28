@@ -42,8 +42,8 @@ ABYSS lexer_init: [ @Lexer lx | @String source ]
  | lx.frame.parent = NULL
  |
  | ; Pad with NULs so lookahead past the end is safe. The C version appends
- ; a run of them; str_append_str would stop at the first NUL, so write them.
- | (str_reserve)[ source | source.size + 16 ]
+ ; a run of them; String.append would stop at the first NUL, so write them.
+ | (source.reserve)[ source.size + 16 ]
  | U64 i = 0
  | WHILE [ i < 16 ]
  |  | ?(source.data + source.size + i) = '\0'
@@ -149,7 +149,7 @@ Token lex_string: [ @Lexer lx | C1 term | I32 kind ]
  | (lex_nextc)[ lx ]
  |
  | U64 len = lx.pos - start
- | @C1 lex = (str_substr)[ lx.src | start | len ]
+ | @C1 lex = (lx.src.substr)[ start | len ]
  | RET [ (make_tok)[ kind | lex | line | col | -1 ] ]
  \_
 
@@ -186,7 +186,7 @@ Token lex_number: [ @Lexer lx ]
  |  \_
  |
  | U64 len = lx.pos - start
- | @C1 lex = (str_substr)[ lx.src | start | len ]
+ | @C1 lex = (lx.src.substr)[ start | len ]
  |
  | I32 kind = TOK_INTEGER
  | IF [ is_float ]
@@ -255,7 +255,7 @@ Token lex_indent_or_keyword: [ @Lexer lx ]
  |  \_
  |
  | U64 len = lx.pos - start
- | @C1 lex = (str_substr)[ lx.src | start | len ]
+ | @C1 lex = (lx.src.substr)[ start | len ]
  |
  | I32 kw = (lex_keyword_kind)[ lex ]
  | IF [ kw >= 0 ]
@@ -290,7 +290,7 @@ Token lex_token: [ @Lexer lx ]
  |  |  |  | (lex_nextc)[ lx ]
  |  |  |  \_
  |  |  | @SrcFrame f = (malloc)[ SIZE [ SrcFrame ] ] AS @SrcFrame
- |  |  | f.file = (str_substr)[ lx.src | start | lx.pos - start ]
+ |  |  | f.file = (lx.src.substr)[ start | lx.pos - start ]
  |  |  | f.line = lx.line
  |  |  | f.parent = lx.frame
  |  |  | (lex_nextc)[ lx ]
@@ -385,7 +385,7 @@ Token lex_token: [ @Lexer lx ]
  |  |  | I32 col  = lx.col
  |  |  | lx.col = lx.col + 2
  |  |  | lx.pos = lx.pos + 2
- |  |  | RET [ (make_tok)[ TOK_OPERATOR | (str_substr)[ lx.src | lx.pos - 2 | 2 ] | line | col | -1 ] ]
+ |  |  | RET [ (make_tok)[ TOK_OPERATOR | (lx.src.substr)[ lx.pos - 2 | 2 ] | line | col | -1 ] ]
  |  |  \_
  |  | IF [ c == '|' ]
  |  |  | (lex_nextc)[ lx ]
@@ -396,7 +396,7 @@ Token lex_token: [ @Lexer lx ]
  |  |  | I32 col  = lx.col
  |  |  | lx.col = lx.col + 2
  |  |  | lx.pos = lx.pos + 2
- |  |  | RET [ (make_tok)[ TOK_OPERATOR | (str_substr)[ lx.src | lx.pos - 2 | 2 ] | line | col | -1 ] ]
+ |  |  | RET [ (make_tok)[ TOK_OPERATOR | (lx.src.substr)[ lx.pos - 2 | 2 ] | line | col | -1 ] ]
  |  |  \_
  |  |
  |  | IF [ c == '?' ]
@@ -444,7 +444,7 @@ Token lex_token: [ @Lexer lx ]
  |  |  |  \_
  |  |  |
  |  |  | U64 len = lx.pos - start
- |  |  | RET [ (make_tok)[ TOK_OPERATOR | (str_substr)[ lx.src | start | len ] | line | col | -1 ] ]
+ |  |  | RET [ (make_tok)[ TOK_OPERATOR | (lx.src.substr)[ start | len ] | line | col | -1 ] ]
  |  |  \_
  |  |
  |  | @C1 ch = (malloc)[ 2 ] AS @C1

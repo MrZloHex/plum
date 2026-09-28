@@ -10,7 +10,7 @@ I32 main: []
  |  | (puts)[ "cannot open sample.txt" ]
  |  | RET [ 1 ]
  |  \_
- | (str_init_file)[ @src | f ]
+ | (src.init_file)[ f ]
  | (fclose)[ f ]
  |
  | AST ast

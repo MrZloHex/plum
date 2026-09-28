@@ -142,14 +142,36 @@ I32 main: []
   temporary, like `(((make)[]).method)[]`, works too.
 * **`PRIVATE`** methods can only be called from methods of the same class,
   whichever of its interfaces they come from.
+* **`ANONYMOUS`** methods have no `me`: they belong to the type, not to an
+  object, and are called on the type. Constructors are what they are for:
+
+  ```plum
+  IFACE OptOps<T>: [ @OptData<T> me ]
+   + ANONYMOUS:
+   | Opt<T> some: [ T v ]
+   |  | Opt<T> r
+   |  | r.has = TRUE
+   |  | r.value = v
+   |  | RET [ r ]
+   |  \_
+   \_
+
+   | Opt<I32> a = (Opt<I32>.some)[ 7 ]      ; a generic class, with its arguments
+   | Point p = (Point.at)[ 2 | 3 ]          ; a plain class, by its name
+  ```
+
+  Inside an interface, `(Opt<T>.none)[]` names the class being built. An
+  `ANONYMOUS` method cannot be called on an object, nor an ordinary one on
+  the type, and `me` in one is an error. A type written in an expression
+  is only ever the left side of such a call.
 * **`NULL`** is the null pointer.
 
 This is all compile time. Every distinct use such as `Vector<I32>` is
 instantiated once, as a struct named `Vector<I32>` and functions named
 `Vector<I32>.push`; these names appear as-is in the emitted IR. An
 interface's body is only checked when some class uses it. There are no
-interface-typed values and no dynamic dispatch, since PLUM has no function
-pointers.
+interface-typed values and no dynamic dispatch built in; a struct of
+function pointers does it by hand, as `examples/interfaces.pl` shows.
 
 `src/generic.pl` does the instantiation, between parsing and `meta`;
 everything after it sees only ordinary types and functions.
@@ -404,8 +426,8 @@ the IR is unoptimised (see below).
   `get` in `examples/vector.pl` returns. Generics are in place, so this is
   the tag, the payload union and a way to take them apart.
 * **The rest of `lib/` onto generics.** `lib/vector.pl` is a typed
-  `Vector<T>` and the compiler's own tables use it; `map.pl` (still
-  `@ABYSS` values) and `stack.pl` are next, and `vec.pl` can then go.
+  `Vector<T>` and `lib/string.pl` a `String` class, and the compiler uses
+  both; `map.pl` (still `@ABYSS` values) and `stack.pl` are next.
 * **`SWITCH`** — ergonomics for the dispatch sites now written as `ELIF`
   chains.
 * **A real module system**, so `!USES` stops being textual inclusion.

@@ -176,6 +176,7 @@ TYPE N_FnDecl: STRUCT
  | @ASTNode params
  | @C1      owner       ; the class a method belongs to, 0 for a function
  | B1       is_private
+ | B1       is_anon     ; an ANONYMOUS method: no `me`, called on the type
  \_
 
 TYPE N_Parametre: STRUCT
@@ -347,6 +348,7 @@ TYPE N_Class: STRUCT
 
 TYPE N_Method: STRUCT
  | B1       is_private
+ | B1       is_anon     ; in the + ANONYMOUS: section
  | @ASTNode def         ; NT_FN_DEF
  | @ASTNode next
  \_

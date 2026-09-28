@@ -39,19 +39,34 @@ A machine with LLVM and no `plc` builds one from the checked-in seed:
 make                    # -> bin/plc
 ```
 
-That is the whole dependency list: `llvm-as`, `clang`, `llvm-config`.
-No C compiler is needed for `plc` itself.
+That is the whole dependency list: `llc`, `clang`, `llvm-config`. `llc`
+turns the IR into machine code; `clang` only links it against libc and
+LLVM, so no C is compiled for `plc` itself.
 
 ```sh
 make help               # every target
-make test               # 44 programs must print exactly their .out files,
+make test               # 45 programs must print exactly their .out files,
                         #   and the driver must fail properly on bad input
-make typecheck          # 67 programs that must be rejected, each for its .err reason
+make typecheck          # 72 programs that must be rejected, each for its .err reason
 make fuzz               # thousands of mutated programs: plc must never crash
 make bootstrap          # the frozen C compiler -> bin/plc-bootstrap
 make selfhost           # stage 1 -> 2 -> 3, and check the fixed point
 make seed-verify        # check the seed against the C compiler
 ```
+
+## Using it
+
+```sh
+bin/plc hello.pl -o hello.ll            # LLVM IR, the default
+bin/plc --emit=OBJ hello.pl -o hello.o  # machine code; --emit=ASM for assembly
+clang hello.o -o hello                  # clang only links
+bin/plc -O2 ...                         # optimise, -O0 to -O3; -O0 is the default
+```
+
+`--target=<triple>` generates code for another machine, with `--cpu=` for a
+particular chip and `--data-sections` to give every global a section of its
+own. `examples/stm32g071/` runs a PLUM program on a NUCLEO-G071RB board,
+startup code included, with no C.
 
 ## Editor support
 
@@ -78,12 +93,12 @@ it. Each file is analysed as if it were compiled on its own, so every file
 ```
 src/           plc, written in PLUM: preproc lexer parser generic meta check codegen,
                and index json lsp for the language server
-lib/           runtime: string vector (typed) vec (untyped) map stack arena
+lib/           runtime: String and Vector<T> (classes), map stack arena
 extern/        declarations of libc and the LLVM-C API
 seed/          the bootstrap seed, as LLVM IR
 bootstrap/     the C compiler that produced the first seed; frozen
 scripts/       bootstrap, seed refresh and verification
-test/          44 programs, plus typecheck/ for what must be rejected
+test/          45 programs, plus typecheck/ for what must be rejected
 editor/vim/    syntax highlighting, filetype settings
 syntax/        plum.ebnf, a grammar sketch (drifted; trust the compiler)
 examples/      sample programs, some aspirational

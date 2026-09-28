@@ -1,0 +1,2 @@
+error: `Point` has no ANONYMOUS method `nowhere`
+  --> anon_unknown.pl:20:14
