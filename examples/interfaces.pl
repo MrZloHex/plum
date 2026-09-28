@@ -10,9 +10,10 @@
 ;     and a Collector; a coin is only Named and Movable
 ;   * methods reach each other through `me`, across interfaces: Mortal
 ;     calls `say`, which comes from Named
-;
-; A missing field is a compile error at the line that needs it: give Coin
-; Mortal<CoinData>, and plc reports `no field hp` inside Mortal.
+;   * REQ says what an interface needs: Mortal needs an I32 hp, and a
+;     class that is Named too. Give Coin Mortal<CoinData>, and plc says
+;     `Coin` cannot IMPL Mortal<CoinData>: it has no field `hp` (I32),
+;     at the CLASS line.
 ;
 ;   plc --emit=OBJ interfaces.pl -o interfaces.o && clang interfaces.o -o interfaces
 
@@ -45,14 +46,14 @@ TYPE CoinData: STRUCT
 ; --- behaviour, each written once --------------------------------------------
 
 ; anything with a name
-IFACE Named<T>: [ @T me ]
+IFACE Named<T>: [ @T me ] REQ [ @C1 name ]
  | ABYSS say: [ @C1 what ]
  |  | (printf)[ "%-7s %s\n" | me.name | what ]
  |  \_
  \_
 
 ; anything with a position
-IFACE Movable<T>: [ @T me ]
+IFACE Movable<T>: [ @T me ] REQ [ I32 x | I32 y ]
  | ABYSS move_by: [ I32 dx | I32 dy ]
  |  | me.x += dx
  |  | me.y += dy
@@ -66,7 +67,7 @@ IFACE Movable<T>: [ @T me ]
 
 ; anything with hit points. It speaks through `say`, so a class that is
 ; Mortal must be Named too.
-IFACE Mortal<T>: [ @T me ]
+IFACE Mortal<T>: [ @T me ] REQ [ I32 hp | Named<T> ]
  | ABYSS hit: [ I32 damage ]
  |  | me.hp -= damage
  |  | IF [ me.hp <= 0 ]
@@ -90,7 +91,7 @@ IFACE Mortal<T>: [ @T me ]
  \_
 
 ; only a player collects, so this one is written for PlayerData alone
-IFACE Collector: [ @PlayerData me ]
+IFACE Collector: [ @PlayerData me ] REQ [ Named<PlayerData> ]
  | ABYSS collect: [ @Coin c ]
  |  | me.score += c.value
  |  | (me.say)[ "picks up a coin" ]

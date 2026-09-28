@@ -420,7 +420,81 @@ ABYSS inst_type: [ @Generics g | @ASTNode at | @ASTNode tmpl | @C1 name | @ASTNo
  \_
 
 ; One IFACE's methods, attached to the class `cls`.
-ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref ]
+; An interface as the class names it, spelled for messages: Named<CoinData>.
+; Resolves its arguments on the way.
+@C1 iface_spelling: [ @Generics g | @ASTNode ref ]
+ | @ASTNode a = ref.as.type.args
+ | WHILE [ a != 0 ]
+ |  | (resolve_type)[ g | a.as.list.item ]
+ |  | a = a.as.list.next
+ |  \_
+ | IF [ ref.as.type.args == 0 ]
+ |  | RET [ ref.as.type.type.as.ident ]
+ |  \_
+ | RET [ (instance_name)[ ref.as.type.type.as.ident | ref.as.type.args ] ]
+ \_
+
+; A type, resolved, spelled for messages and for comparing: @Vector<I32>.
+@C1 type_spelling: [ @Generics g | @ASTNode tn ]
+ | (resolve_type)[ g | tn ]
+ | String s
+ | (s.init_cstr)[ "" ]
+ | (append_type_name)[ @s | tn ]
+ | RET [ s.data ]
+ \_
+
+; What the interface's REQ asks of the class taking it: each field, with
+; exactly its type, in the struct the class holds, and each interface in
+; the class's own IMPL list. Checked before any method is, so a class
+; that does not fit is told so at its IMPL, not deep in a method body.
+ABYSS check_reqs: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @ASTNode ifc | @Subst s | @ASTNode impls ]
+ | @C1 fname = (iface_spelling)[ g | fref ]
+ | C1 msg{512}
+ | @ASTNode r = ifc.as.iface.reqs
+ | WHILE [ r != 0 ]
+ |  | @ASTNode it = r.as.list.item
+ |  | IF [ it.kind == NT_FIELD ]
+ |  |  | @C1 fld = it.as.rcrd_flds.ident.as.ident
+ |  |  | @ASTNode wt = (clone)[ g | it.as.rcrd_flds.type | s ]
+ |  |  | @C1 want = (type_spelling)[ g | wt ]
+ |  |  | @ASTNode f = base_td.as.type_def.tdef.as.record.fields
+ |  |  | WHILE [ f != 0 && (strcmp)[ f.as.rcrd_flds.ident.as.ident | fld ] != 0 ]
+ |  |  |  | f = f.as.rcrd_flds.next_field
+ |  |  |  \_
+ |  |  | IF [ f == 0 ]
+ |  |  |  | (snprintf)[ msg | 512 | "`%s` cannot IMPL %s: it has no field `%s` (%s)" | cls | fname | fld | want ]
+ |  |  |  | (gn_error)[ fref | "%s%s" | msg | "" ]
+ |  |  |  \_
+ |  |  | @ASTNode ht = (clone)[ g | f.as.rcrd_flds.type | 0 ]
+ |  |  | @C1 have = (type_spelling)[ g | ht ]
+ |  |  | IF [ (strcmp)[ have | want ] != 0 || ht.as.type.arr != wt.as.type.arr ]
+ |  |  |  | (snprintf)[ msg | 512 | "`%s` cannot IMPL %s: its field `%s` is %s, and REQ wants %s" | cls | fname | fld | have | want ]
+ |  |  |  | (gn_error)[ fref | "%s%s" | msg | "" ]
+ |  |  |  \_
+ |  | ELSE
+ |  |  | @ASTNode need = (clone)[ g | it | s ]
+ |  |  | B1 is_iface = need.as.type.kind == TT_USER_TYPE && need.as.type.ptrs == 0
+ |  |  | IF [ !is_iface || !(gn_has)[ @(g.iface_tmpls) | need.as.type.type.as.ident ] ]
+ |  |  |  | (gn_error)[ it | "REQ lists fields, as `I32 hp`, and interfaces; this is neither%s%s" | "" | "" ]
+ |  |  |  \_
+ |  |  | @C1 nn = (iface_spelling)[ g | need ]
+ |  |  | B1 found = FALSE
+ |  |  | @ASTNode c = impls
+ |  |  | WHILE [ c != 0 && !found ]
+ |  |  |  | found = (strcmp)[ (iface_spelling)[ g | c.as.list.item ] | nn ] == 0
+ |  |  |  | c = c.as.list.next
+ |  |  |  \_
+ |  |  | IF [ !found ]
+ |  |  |  | (snprintf)[ msg | 512 | "`%s` cannot IMPL %s: it must also IMPL %s" | cls | fname | nn ]
+ |  |  |  | (gn_error)[ fref | "%s%s" | msg | "" ]
+ |  |  |  \_
+ |  |  \_
+ |  | r = r.as.list.next
+ |  \_
+ \_
+
+; `impls` is every interface the class names, for check_reqs.
+ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @ASTNode impls ]
  | IF [ fref.as.type.kind != TT_USER_TYPE || fref.as.type.ptrs != 0 ]
  |  | (gn_error)[ fref | "IMPL lists interfaces, and this is a type%s%s" | "" | "" ]
  |  \_
@@ -457,6 +531,7 @@ ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref ]
  |  | (append_type_name)[ @want | rt ]
  |  | (gn_error)[ fref | "`%s` works on `%s`, which this CLASS does not hold" | fname | want.data ]
  |  \_
+ | (check_reqs)[ g | cls | base_td | fref | ifc | @s | impls ]
  |
  | @C1 me = recv.as.parametre.ident.as.ident
  | @ASTNode m = ifc.as.iface.methods
@@ -523,11 +598,23 @@ ABYSS inst_class: [ @Generics g | @ASTNode at | @ASTNode cls | @C1 name | @ASTNo
  | (map_put)[ @(g.types) | name | td AS @ABYSS ]
  | (emit)[ g | TUST_TYPE_DEF | td ]
  |
+ | ; every interface as this class names it, first: a REQ is checked
+ | ; against all of them
+ | @ASTNode impls = 0
+ | @@ASTNode itail = @impls
  | @ASTNode it = cls.as.klass.ifaces
  | WHILE [ it != 0 ]
- |  | @ASTNode fref = (clone)[ g | it.as.list.item | @s ]
- |  | (inst_iface)[ g | name | base_td | fref ]
+ |  | @ASTNode li = (ast_node_new)[ g.ast ]
+ |  | li.kind = NT_LIST
+ |  | li.as.list.item = (clone)[ g | it.as.list.item | @s ]
+ |  | ?(itail) = li
+ |  | itail = @(li.as.list.next)
  |  | it = it.as.list.next
+ |  \_
+ | @ASTNode l = impls
+ | WHILE [ l != 0 ]
+ |  | (inst_iface)[ g | name | base_td | l.as.list.item | impls ]
+ |  | l = l.as.list.next
  |  \_
  | RET
  \_

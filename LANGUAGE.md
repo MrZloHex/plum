@@ -142,6 +142,19 @@ I32 main: []
   temporary, like `(((make)[]).method)[]`, works too.
 * **`PRIVATE`** methods can only be called from methods of the same class,
   whichever of its interfaces they come from.
+* **`REQ`** says what an interface needs of the class that takes it, on
+  the header line: fields, as `Type name`, which the class's struct must
+  have with exactly that type, and other interfaces it must also take.
+
+  ```plum
+  IFACE Mortal<T>: [ @T me ] REQ [ I32 hp | Named<T> ]
+  ```
+
+  They are checked when a class takes the interface, before any method
+  body, and a class that does not fit is told so at its `IMPL`:
+  ``error: `Coin` cannot IMPL Mortal<CoinData>: it has no field `hp` (I32)``.
+  `REQ` does not yet limit the bodies to what it lists: a method using a
+  field it does not name still fails, as before, where it uses it.
 * **`ANONYMOUS`** methods have no `me`: they belong to the type, not to an
   object, and are called on the type. Constructors are what they are for:
 

@@ -337,6 +337,7 @@ TYPE N_Iface: STRUCT
  | @ASTNode gparams
  | @ASTNode recv        ; NT_PARAMETRE: the `me` every method receives
  | @ASTNode methods     ; NT_METHOD chain
+ | @ASTNode reqs        ; NT_LIST of what REQ asks: NT_FIELD `I32 hp`, or NT_TYPE `Named<T>`
  \_
 
 TYPE N_Class: STRUCT

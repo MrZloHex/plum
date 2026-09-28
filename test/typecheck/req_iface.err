@@ -1,0 +1,2 @@
+error: `C` cannot IMPL Mortal: it must also IMPL Named
+  --> req_iface.pl:16:19

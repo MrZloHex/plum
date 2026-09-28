@@ -45,9 +45,9 @@ LLVM, so no C is compiled for `plc` itself.
 
 ```sh
 make help               # every target
-make test               # 45 programs must print exactly their .out files,
+make test               # 46 programs must print exactly their .out files,
                         #   and the driver must fail properly on bad input
-make typecheck          # 72 programs that must be rejected, each for its .err reason
+make typecheck          # 76 programs that must be rejected, each for its .err reason
 make fuzz               # thousands of mutated programs: plc must never crash
 make bootstrap          # the frozen C compiler -> bin/plc-bootstrap
 make selfhost           # stage 1 -> 2 -> 3, and check the fixed point
@@ -98,7 +98,7 @@ extern/        declarations of libc and the LLVM-C API
 seed/          the bootstrap seed, as LLVM IR
 bootstrap/     the C compiler that produced the first seed; frozen
 scripts/       bootstrap, seed refresh and verification
-test/          45 programs, plus typecheck/ for what must be rejected
+test/          46 programs, plus typecheck/ for what must be rejected
 editor/vim/    syntax highlighting, filetype settings
 syntax/        plum.ebnf, a grammar sketch (drifted; trust the compiler)
 examples/      sample programs, some aspirational

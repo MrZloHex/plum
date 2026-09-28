@@ -1,0 +1,2 @@
+error: `C` cannot IMPL Mortal: its field `hp` is U32, and REQ wants I32
+  --> req_field_type.pl:16:27

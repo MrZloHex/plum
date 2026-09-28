@@ -335,6 +335,26 @@ ABYSS dump_node: [ @ASTNode n | I32 depth ]
  |  | (dump_args)[ @s | n.as.iface.gparams | TRUE ]
  |  | (s.append)[ ": " ]
  |  | (dump_params)[ @s | n.as.iface.recv ]
+ |  | IF [ n.as.iface.reqs != 0 ]
+ |  |  | (s.append)[ " REQ [" ]
+ |  |  | @ASTNode rq = n.as.iface.reqs
+ |  |  | WHILE [ rq != 0 ]
+ |  |  |  | (s.push)[ ' ' ]
+ |  |  |  | @ASTNode ri = rq.as.list.item
+ |  |  |  | IF [ ri.kind == NT_FIELD ]
+ |  |  |  |  | (dump_type)[ @s | ri.as.rcrd_flds.type ]
+ |  |  |  |  | (s.push)[ ' ' ]
+ |  |  |  |  | (s.append)[ ri.as.rcrd_flds.ident.as.ident ]
+ |  |  |  | ELSE
+ |  |  |  |  | (dump_type)[ @s | ri ]
+ |  |  |  |  \_
+ |  |  |  | rq = rq.as.list.next
+ |  |  |  | IF [ rq != 0 ]
+ |  |  |  |  | (s.append)[ " |" ]
+ |  |  |  |  \_
+ |  |  |  \_
+ |  |  | (s.append)[ " ]" ]
+ |  |  \_
  |  | (dump_line)[ depth | @s | n.as.iface.ident ]
  |  | ; the `+ PUBLIC:`, `+ PRIVATE:` and `+ ANONYMOUS:` sections, where
  |  | ; the source switches between them

@@ -1,0 +1,2 @@
+error: `C` cannot IMPL Named: it has no field `name` (@C1)
+  --> req_no_field.pl:16:19

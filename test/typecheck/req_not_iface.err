@@ -1,0 +1,2 @@
+error: REQ lists fields, as `I32 hp`, and interfaces; this is neither
+  --> req_not_iface.pl:11:40

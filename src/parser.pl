@@ -1385,6 +1385,36 @@ I32 binop_kind_of: [ Token op_tok ]
  |  \_
  | ifc.as.iface.recv = recv
  |
+ | ; REQ [ I32 hp | Named<T> ]: what a class must have to take this
+ | ; interface -- a field, as `Type name`, or another interface it takes
+ | IF [ pr.curr.kind == TOK_IDENTIFIER && (strcmp)[ pr.curr.lexeme | "REQ" ] == 0 ]
+ |  | (parser_next)[ pr ]
+ |  | (expect)[ pr | TOK_LBRACKET ]
+ |  | @@ASTNode rtail = @(ifc.as.iface.reqs)
+ |  | LOOP
+ |  |  | @ASTNode item = (ast_node_new)[ pr.ast ]
+ |  |  | item.kind = NT_LIST
+ |  |  | (set_loc)[ item | pr.curr ]
+ |  |  | @ASTNode ty = (parse_type)[ pr ]
+ |  |  | IF [ pr.curr.kind == TOK_IDENTIFIER ]
+ |  |  |  | @ASTNode f = (ast_node_new)[ pr.ast ]
+ |  |  |  | f.kind = NT_FIELD
+ |  |  |  | f.loc = ty.loc
+ |  |  |  | f.as.rcrd_flds.type = ty
+ |  |  |  | f.as.rcrd_flds.ident = (parse_ident)[ pr ]
+ |  |  |  | item.as.list.item = f
+ |  |  | ELSE
+ |  |  |  | item.as.list.item = ty
+ |  |  |  \_
+ |  |  | ?(rtail) = item
+ |  |  | rtail = @(item.as.list.next)
+ |  |  | IF [ !(match)[ pr | TOK_VBAR ] ]
+ |  |  |  | BREAK
+ |  |  |  \_
+ |  |  \_
+ |  | (expect)[ pr | TOK_RBRACKET ]
+ |  \_
+ |
  | B1 private = FALSE
  | B1 anon = FALSE
  | @@ASTNode tail = @(ifc.as.iface.methods)
