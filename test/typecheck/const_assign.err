@@ -1,0 +1,2 @@
+error: `n` is CONST, so it cannot be assigned
+ --> const_assign.pl:4:6

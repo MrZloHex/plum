@@ -1,0 +1,2 @@
+error: OFFSET goes through the fields of structs, and @Q has none to give `x`
+ --> offset_through_ptr.pl:9:25

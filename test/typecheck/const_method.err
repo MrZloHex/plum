@@ -1,0 +1,2 @@
+error: cannot call `bump` on a CONST object: its interface takes `me` as a plain pointer, not @CONST
+  --> const_method.pl:18:4

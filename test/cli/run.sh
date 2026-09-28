@@ -118,6 +118,17 @@ else
     echo "*** no .data.g and .bss.z sections"; fail=$((fail+1))
 fi
 
+# VOLATILE survives the optimiser: at -O2, two stores to the same register
+# stay two stores, and a CONST global is constant.
+src mmio.pl 'CONST @VOLATILE U32 REG = 0x40000000 AS @VOLATILE U32\nCONST I32 K = 3\nI32 main: []\n | ?REG = 1\n | ?REG = 2\n | RET [ K ]\n \\_\n'
+printf '%-20s ' "volatile-o2"
+ir=$("$PLC" -O2 "$TMP/mmio.pl" -o -)
+if [ "$(grep -c 'store volatile' <<<"$ir")" -eq 2 ] && grep -q '^@K = .*constant' <<<"$ir"; then
+    echo ok; pass=$((pass+1))
+else
+    echo "*** want 2 volatile stores and a constant K:"; echo "$ir" | grep -E 'store|@K' | sed 's/^/                     /'; fail=$((fail+1))
+fi
+
 # --emit=INDEX, what --lsp runs: diagnostics as E lines and names as R
 # lines, all on stdout, tab-separated; with --stdin the text comes from
 # stdin, and the file named need not exist.

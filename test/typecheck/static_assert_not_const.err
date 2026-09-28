@@ -1,0 +1,2 @@
+error: STATIC_ASSERT needs what the compiler can work out: literals, enum constants, SIZE, OFFSET, and operators on them
+ --> static_assert_not_const.pl:3:17

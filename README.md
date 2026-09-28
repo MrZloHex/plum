@@ -45,9 +45,9 @@ LLVM, so no C is compiled for `plc` itself.
 
 ```sh
 make help               # every target
-make test               # 46 programs must print exactly their .out files,
+make test               # 50 programs must print exactly their .out files,
                         #   and the driver must fail properly on bad input
-make typecheck          # 76 programs that must be rejected, each for its .err reason
+make typecheck          # 91 programs that must be rejected, each for its .err reason
 make fuzz               # thousands of mutated programs: plc must never crash
 make bootstrap          # the frozen C compiler -> bin/plc-bootstrap
 make selfhost           # stage 1 -> 2 -> 3, and check the fixed point
@@ -66,7 +66,9 @@ bin/plc -O2 ...                         # optimise, -O0 to -O3; -O0 is the defau
 `--target=<triple>` generates code for another machine, with `--cpu=` for a
 particular chip and `--data-sections` to give every global a section of its
 own. `examples/stm32g071/` runs a PLUM program on a NUCLEO-G071RB board,
-startup code included, with no C.
+startup code included, with no C. `examples/logger/` is a small project
+that uses every part of the language: `make check` runs it against its
+expected output, `make arm` compiles it for a Cortex-M0+.
 
 ## Editor support
 
@@ -98,7 +100,7 @@ extern/        declarations of libc and the LLVM-C API
 seed/          the bootstrap seed, as LLVM IR
 bootstrap/     the C compiler that produced the first seed; frozen
 scripts/       bootstrap, seed refresh and verification
-test/          46 programs, plus typecheck/ for what must be rejected
+test/          50 programs, plus typecheck/ for what must be rejected
 editor/vim/    syntax highlighting, filetype settings
 syntax/        plum.ebnf, a grammar sketch (drifted; trust the compiler)
 examples/      sample programs, some aspirational

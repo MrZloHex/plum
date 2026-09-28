@@ -30,6 +30,8 @@ TYPE Generics: STRUCT
  | Map        class_tmpls  ; name -> NT_CLASS with gparams
  | Map        types        ; concrete name -> NT_TYPE_DEF, instances too
  | Map        done         ; instances and methods already made
+ | Map        impls        ; class name -> NT_LIST of the interfaces it takes
+ | Map        bases        ; class name -> the name of the struct it holds
  | Vector<@ASTNode> work   ; instances still to be scanned
  | @ASTNode   out_head     ; the instances, as NT_TU_STMTs
  | @@ASTNode  out_tail
@@ -122,11 +124,23 @@ I32 list_len: [ @ASTNode l ]
 
 ; A concrete type's spelling: "@C1", "Vec<I32>". Arguments are resolved
 ; first, so a nested instance already carries its full name.
+; `CONST ` and `VOLATILE ` of one level, as written before it.
+ABYSS append_quals: [ @String s | U32 q ]
+ | IF [ (q & QUAL_CONST) != 0 ]
+ |  | (s.append)[ "CONST " ]
+ |  \_
+ | IF [ (q & QUAL_VOLATILE) != 0 ]
+ |  | (s.append)[ "VOLATILE " ]
+ |  \_
+ \_
+
 ABYSS append_type_name: [ @String s | @ASTNode tn ]
- | U64 i = 0
+ | (append_quals)[ s | (quals_at)[ tn.as.type.quals | 0 ] ]
+ | U32 i = 0
  | WHILE [ i < tn.as.type.ptrs ]
  |  | (s.push)[ '@' ]
  |  | i = i + 1
+ |  | (append_quals)[ s | (quals_at)[ tn.as.type.quals | i ] ]
  |  \_
  | IF [ tn.as.type.kind == TT_BASE_TYPE ]
  |  | (s.append)[ (base_type_name)[ tn.as.type.type.as.base_type ] ]
@@ -208,6 +222,7 @@ ABYSS append_type_name: [ @String s | @ASTNode tn ]
  |  |  |  | ; T with ptrs levels over it: @T where T = @C1 is @@C1
  |  |  |  | c.as.type.kind = a.as.type.kind
  |  |  |  | c.as.type.ptrs = n.as.type.ptrs + a.as.type.ptrs
+ |  |  |  | c.as.type.quals = (quals_compose)[ n.as.type.quals | n.as.type.ptrs | a.as.type.quals ]
  |  |  |  | c.as.type.type = (clone)[ g | a.as.type.type | 0 ]
  |  |  |  | c.as.type.args = (clone)[ g | a.as.type.args | 0 ]
  |  |  |  \_
@@ -431,7 +446,20 @@ ABYSS inst_type: [ @Generics g | @ASTNode at | @ASTNode tmpl | @C1 name | @ASTNo
  | IF [ ref.as.type.args == 0 ]
  |  | RET [ ref.as.type.type.as.ident ]
  |  \_
- | RET [ (instance_name)[ ref.as.type.type.as.ident | ref.as.type.args ] ]
+ | ; as PLUM writes it, with `|` between the arguments
+ | String sp
+ | (sp.init_cstr)[ ref.as.type.type.as.ident ]
+ | (sp.push)[ '<' ]
+ | a = ref.as.type.args
+ | WHILE [ a != 0 ]
+ |  | (append_type_name)[ @sp | a.as.list.item ]
+ |  | IF [ a.as.list.next != 0 ]
+ |  |  | (sp.append)[ " | " ]
+ |  |  \_
+ |  | a = a.as.list.next
+ |  \_
+ | (sp.push)[ '>' ]
+ | RET [ sp.data ]
  \_
 
 ; A type, resolved, spelled for messages and for comparing: @Vector<I32>.
@@ -443,11 +471,138 @@ ABYSS inst_type: [ @Generics g | @ASTNode at | @ASTNode tmpl | @C1 name | @ASTNo
  | RET [ s.data ]
  \_
 
+; Two spelled types name one implementation subject: the same type, or a
+; class and the struct it holds. Only REQ and required methods ask this;
+; everywhere else Foo<FakeBus> and Foo<FakeBusData> stay two types.
+B1 same_subject: [ @Generics g | @C1 sa | @C1 sb ]
+ | IF [ (strcmp)[ sa | sb ] == 0 ]
+ |  | RET [ TRUE ]
+ |  \_
+ | @ABYSS base = 0
+ | IF [ (map_get)[ @(g.bases) | sa | @base ] == 1 && (strcmp)[ base AS @C1 | sb ] == 0 ]
+ |  | RET [ TRUE ]
+ |  \_
+ | RET [ (map_get)[ @(g.bases) | sb | @base ] == 1 && (strcmp)[ base AS @C1 | sa ] == 0 ]
+ \_
+
+; Two interface references are the same interface with the same
+; arguments, each argument up to its implementation subject:
+; SPIBus<STM32SPI> is met by a class that takes SPIBus<STM32SPIData>.
+B1 same_iface: [ @Generics g | @ASTNode have | @ASTNode want ]
+ | IF [ (strcmp)[ have.as.type.type.as.ident | want.as.type.type.as.ident ] != 0 ]
+ |  | RET [ FALSE ]
+ |  \_
+ | @ASTNode a = have.as.type.args
+ | @ASTNode b = want.as.type.args
+ | WHILE [ a != 0 && b != 0 ]
+ |  | IF [ !(same_subject)[ g | (type_spelling)[ g | a.as.list.item ] | (type_spelling)[ g | b.as.list.item ] ] ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | a = a.as.list.next
+ |  | b = b.as.list.next
+ |  \_
+ | RET [ a == 0 && b == 0 ]
+ \_
+
+; --- required methods -------------------------------------------------------
+;
+; A method with no body in an interface is required: the interface needs
+; it, and another interface of the same class must give it, with exactly
+; its signature. Bodies still may not meet: two are an error.
+
+TYPE ReqMethod: STRUCT
+ | @ASTNode decl      ; as declared, the class's arguments in place
+ | @ASTNode fref      ; the interface needing it, as the class names it
+ | @ASTNode where     ; where to report it missing
+ | B1       anon
+ \_
+
+; `U8 transfer: [ U8 ]`: a method's signature past its `me`, for messages.
+@C1 sig_spelling: [ @Generics g | @C1 name | @ASTNode decl | B1 skip_me ]
+ | String s
+ | (s.init_cstr)[ (type_spelling)[ g | decl.as.fn_decl.type ] ]
+ | (s.push)[ ' ' ]
+ | (s.append)[ name ]
+ | (s.append)[ ": [" ]
+ | @ASTNode p = decl.as.fn_decl.params
+ | IF [ skip_me && p != 0 ]
+ |  | p = p.as.parametre.next_param
+ |  \_
+ | WHILE [ p != 0 ]
+ |  | (s.push)[ ' ' ]
+ |  | IF [ p.as.parametre.vaarg ]
+ |  |  | (s.append)[ "..." ]
+ |  | ELSE
+ |  |  | (s.append)[ (type_spelling)[ g | p.as.parametre.type ] ]
+ |  |  \_
+ |  | p = p.as.parametre.next_param
+ |  | IF [ p != 0 ]
+ |  |  | (s.append)[ " |" ]
+ |  |  \_
+ |  \_
+ | (s.append)[ " ]" ]
+ | RET [ s.data ]
+ \_
+
+; The given method has the needed one's signature exactly: return type,
+; every parameter, `...` -- each type up to its implementation subject.
+B1 sig_matches: [ @Generics g | @ASTNode want | @ASTNode have | B1 skip_me ]
+ | IF [ !(same_subject)[ g | (type_spelling)[ g | want.as.fn_decl.type ] | (type_spelling)[ g | have.as.fn_decl.type ] ] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | @ASTNode p = want.as.fn_decl.params
+ | @ASTNode q = have.as.fn_decl.params
+ | IF [ skip_me && q != 0 ]
+ |  | q = q.as.parametre.next_param
+ |  \_
+ | WHILE [ p != 0 && q != 0 ]
+ |  | IF [ p.as.parametre.vaarg != q.as.parametre.vaarg ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | IF [ !(p.as.parametre.vaarg) && !(same_subject)[ g | (type_spelling)[ g | p.as.parametre.type ] | (type_spelling)[ g | q.as.parametre.type ] ] ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | p = p.as.parametre.next_param
+ |  | q = q.as.parametre.next_param
+ |  \_
+ | RET [ p == 0 && q == 0 ]
+ \_
+
+; Every method the class's interfaces need, given by one of them.
+ABYSS check_required: [ @Generics g | @C1 cls | @Vector<ReqMethod> needs ]
+ | C1 msg{768}
+ | U64 i = 0
+ | WHILE [ i < (needs.size)[] ]
+ |  | @ReqMethod r = (needs.at)[ i ]
+ |  | i += 1
+ |  | @C1 short = r.decl.as.fn_decl.ident.as.ident
+ |  | @C1 fname = (iface_spelling)[ g | r.fref ]
+ |  | @C1 want = (sig_spelling)[ g | short | r.decl | FALSE ]
+ |  | @ABYSS d = 0
+ |  | IF [ (map_get)[ @(g.done) | (method_name)[ cls | short ] | @d ] != 1 ]
+ |  |  | (snprintf)[ msg | 768 | "`%s` cannot IMPL %s: it needs `%s`, and no interface of `%s` gives it" | cls | fname | want | cls ]
+ |  |  | (gn_error)[ r.where | "%s%s" | msg | "" ]
+ |  |  \_
+ |  | @ASTNode have = (d AS @ASTNode).as.fn_def.decl
+ |  | B1 skip = !(have.as.fn_decl.is_anon)
+ |  | IF [ have.as.fn_decl.is_anon != r.anon || !(sig_matches)[ g | r.decl | have | skip ] ]
+ |  |  | @C1 got = (sig_spelling)[ g | short | have | skip ]
+ |  |  | IF [ have.as.fn_decl.is_anon != r.anon ]
+ |  |  |  | got = "an ANONYMOUS method where an ordinary one is needed, or the other way round"
+ |  |  |  \_
+ |  |  | (snprintf)[ msg | 768 | "`%s` cannot IMPL %s: it needs `%s`, and `%s` gives `%s`" | cls | fname | want | cls | got ]
+ |  |  | (gn_error)[ r.where | "%s%s" | msg | "" ]
+ |  |  \_
+ |  \_
+ \_
+
 ; What the interface's REQ asks of the class taking it: each field, with
 ; exactly its type, in the struct the class holds, and each interface in
 ; the class's own IMPL list. Checked before any method is, so a class
 ; that does not fit is told so at its IMPL, not deep in a method body.
-ABYSS check_reqs: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @ASTNode ifc | @Subst s | @ASTNode impls ]
+; Errors point at `where`: the class's IMPL entry, or for an instance of a
+; generic class, the use that made it -- that is where the type came from.
+ABYSS check_reqs: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @ASTNode ifc | @Subst s | @ASTNode impls | @ASTNode where ]
  | @C1 fname = (iface_spelling)[ g | fref ]
  | C1 msg{512}
  | @ASTNode r = ifc.as.iface.reqs
@@ -463,13 +618,51 @@ ABYSS check_reqs: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @
  |  |  |  \_
  |  |  | IF [ f == 0 ]
  |  |  |  | (snprintf)[ msg | 512 | "`%s` cannot IMPL %s: it has no field `%s` (%s)" | cls | fname | fld | want ]
- |  |  |  | (gn_error)[ fref | "%s%s" | msg | "" ]
+ |  |  |  | (gn_error)[ where | "%s%s" | msg | "" ]
  |  |  |  \_
  |  |  | @ASTNode ht = (clone)[ g | f.as.rcrd_flds.type | 0 ]
  |  |  | @C1 have = (type_spelling)[ g | ht ]
  |  |  | IF [ (strcmp)[ have | want ] != 0 || ht.as.type.arr != wt.as.type.arr ]
  |  |  |  | (snprintf)[ msg | 512 | "`%s` cannot IMPL %s: its field `%s` is %s, and REQ wants %s" | cls | fname | fld | have | want ]
- |  |  |  | (gn_error)[ fref | "%s%s" | msg | "" ]
+ |  |  |  | (gn_error)[ where | "%s%s" | msg | "" ]
+ |  |  |  \_
+ |  | ELIF [ it.kind == NT_REQ_IMPL ]
+ |  |  | ; BUS IMPL SPIBus<BUS>: the type put for BUS, not this class
+ |  |  | @ASTNode subj = (clone)[ g | it.as.req_impl.subject | s ]
+ |  |  | @ASTNode need = (clone)[ g | it.as.req_impl.iface | s ]
+ |  |  | B1 need_iface = need.as.type.kind == TT_USER_TYPE && need.as.type.ptrs == 0
+ |  |  | IF [ !need_iface || !(gn_has)[ @(g.iface_tmpls) | need.as.type.type.as.ident ] ]
+ |  |  |  | (gn_error)[ it.as.req_impl.iface | "REQ: what follows IMPL must be an interface%s%s" | "" | "" ]
+ |  |  |  \_
+ |  |  | @C1 sn = (type_spelling)[ g | subj ]
+ |  |  | @C1 nn = (iface_spelling)[ g | need ]
+ |  |  |
+ |  |  | ; the class it names -- this one, when it names this one's struct
+ |  |  | @ASTNode list = 0
+ |  |  | @ABYSS found_list = 0
+ |  |  | B1 is_class = FALSE
+ |  |  | IF [ subj.as.type.kind == TT_USER_TYPE && subj.as.type.ptrs == 0 ]
+ |  |  |  | @C1 subn = subj.as.type.type.as.ident
+ |  |  |  | IF [ (strcmp)[ subn | cls ] == 0 || (strcmp)[ subn | base_td.as.type_def.ident.as.ident ] == 0 ]
+ |  |  |  |  | list = impls
+ |  |  |  |  | is_class = TRUE
+ |  |  |  | ELIF [ (map_get)[ @(g.impls) | subn | @found_list ] == 1 ]
+ |  |  |  |  | list = found_list AS @ASTNode
+ |  |  |  |  | is_class = TRUE
+ |  |  |  |  \_
+ |  |  |  \_
+ |  |  | IF [ !is_class ]
+ |  |  |  | (snprintf)[ msg | 512 | "`%s` cannot IMPL %s: it needs %s to IMPL %s, and %s is not a CLASS" | cls | fname | sn | nn | sn ]
+ |  |  |  | (gn_error)[ where | "%s%s" | msg | "" ]
+ |  |  |  \_
+ |  |  | B1 has = FALSE
+ |  |  | WHILE [ list != 0 && !has ]
+ |  |  |  | has = (same_iface)[ g | list.as.list.item | need ]
+ |  |  |  | list = list.as.list.next
+ |  |  |  \_
+ |  |  | IF [ !has ]
+ |  |  |  | (snprintf)[ msg | 512 | "`%s` cannot IMPL %s: it needs %s to IMPL %s, and it does not" | cls | fname | sn | nn ]
+ |  |  |  | (gn_error)[ where | "%s%s" | msg | "" ]
  |  |  |  \_
  |  | ELSE
  |  |  | @ASTNode need = (clone)[ g | it | s ]
@@ -481,12 +674,12 @@ ABYSS check_reqs: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @
  |  |  | B1 found = FALSE
  |  |  | @ASTNode c = impls
  |  |  | WHILE [ c != 0 && !found ]
- |  |  |  | found = (strcmp)[ (iface_spelling)[ g | c.as.list.item ] | nn ] == 0
+ |  |  |  | found = (same_iface)[ g | c.as.list.item | need ]
  |  |  |  | c = c.as.list.next
  |  |  |  \_
  |  |  | IF [ !found ]
  |  |  |  | (snprintf)[ msg | 512 | "`%s` cannot IMPL %s: it must also IMPL %s" | cls | fname | nn ]
- |  |  |  | (gn_error)[ fref | "%s%s" | msg | "" ]
+ |  |  |  | (gn_error)[ where | "%s%s" | msg | "" ]
  |  |  |  \_
  |  |  \_
  |  | r = r.as.list.next
@@ -494,7 +687,7 @@ ABYSS check_reqs: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @
  \_
 
 ; `impls` is every interface the class names, for check_reqs.
-ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @ASTNode impls ]
+ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @ASTNode impls | @ASTNode where | @Vector<ReqMethod> needs ]
  | IF [ fref.as.type.kind != TT_USER_TYPE || fref.as.type.ptrs != 0 ]
  |  | (gn_error)[ fref | "IMPL lists interfaces, and this is a type%s%s" | "" | "" ]
  |  \_
@@ -531,11 +724,23 @@ ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @
  |  | (append_type_name)[ @want | rt ]
  |  | (gn_error)[ fref | "`%s` works on `%s`, which this CLASS does not hold" | fname | want.data ]
  |  \_
- | (check_reqs)[ g | cls | base_td | fref | ifc | @s | impls ]
+ | (check_reqs)[ g | cls | base_td | fref | ifc | @s | impls | where ]
  |
  | @C1 me = recv.as.parametre.ident.as.ident
  | @ASTNode m = ifc.as.iface.methods
  | WHILE [ m != 0 ]
+ |  | ; a required method gives nothing: noted, to be met once every
+ |  | ; interface of the class is in
+ |  | IF [ m.as.method.is_req ]
+ |  |  | ReqMethod rq
+ |  |  | rq.decl = (clone)[ g | m.as.method.def.as.fn_def.decl | @s ]
+ |  |  | rq.fref = fref
+ |  |  | rq.where = where
+ |  |  | rq.anon = m.as.method.is_anon
+ |  |  | (needs.push)[ rq ]
+ |  |  | m = m.as.method.next
+ |  |  | CONTINUE
+ |  |  \_
  |  | @ASTNode def = (clone)[ g | m.as.method.def | @s ]
  |  | @ASTNode decl = def.as.fn_def.decl
  |  | @C1 mname = (method_name)[ cls | decl.as.fn_decl.ident.as.ident ]
@@ -562,6 +767,8 @@ ABYSS inst_iface: [ @Generics g | @C1 cls | @ASTNode base_td | @ASTNode fref | @
  |  | ty.loc = recv.loc
  |  | ty.as.type.kind = TT_USER_TYPE
  |  | ty.as.type.ptrs = 1
+ |  | ; as the interface wrote it: [ @CONST PinData me ] gives `@CONST Pin me`
+ |  | ty.as.type.quals = rt.as.type.quals
  |  | ty.as.type.type = (gn_ident)[ g | cls | recv ]
  |  |
  |  | @ASTNode self = (ast_node_new)[ g.ast ]
@@ -611,11 +818,23 @@ ABYSS inst_class: [ @Generics g | @ASTNode at | @ASTNode cls | @C1 name | @ASTNo
  |  | itail = @(li.as.list.next)
  |  | it = it.as.list.next
  |  \_
+ | Vector<ReqMethod> needs
+ | (needs.init)[ 4 ]
+ |
+ | ; before the interfaces are made: one of theirs may ask about this class
+ | (map_put)[ @(g.impls) | name | impls AS @ABYSS ]
+ | (map_put)[ @(g.bases) | name | base_td.as.type_def.ident.as.ident AS @ABYSS ]
  | @ASTNode l = impls
  | WHILE [ l != 0 ]
- |  | (inst_iface)[ g | name | base_td | l.as.list.item | impls ]
+ |  | @ASTNode where = l.as.list.item
+ |  | IF [ cls.as.klass.gparams != 0 ]
+ |  |  | where = at
+ |  |  \_
+ |  | (inst_iface)[ g | name | base_td | l.as.list.item | impls | where | @needs ]
  |  | l = l.as.list.next
  |  \_
+ | (check_required)[ g | name | @needs ]
+ | (needs.deinit)[]
  | RET
  \_
 
@@ -798,6 +1017,10 @@ ABYSS resolve: [ @Generics g | @ASTNode n ]
  |  | (resolve)[ g | n.as.builtin.size ]
  |  | RET
  |  \_
+ | IF [ k == NT_STATIC_ASSERT ]
+ |  | (resolve)[ g | n.as.assert.cond ]
+ |  | RET
+ |  \_
  | IF [ k == NT_CAST ]
  |  | (resolve)[ g | n.as.cast.type ]
  |  | (resolve)[ g | n.as.cast.expr ]
@@ -829,6 +1052,8 @@ ABYSS generics_pass: [ @AST ast ]
  | (map_init)[ @(g.class_tmpls) | 64 ]
  | (map_init)[ @(g.types) | 256 ]
  | (map_init)[ @(g.done) | 256 ]
+ | (map_init)[ @(g.impls) | 64 ]
+ | (map_init)[ @(g.bases) | 64 ]
  | (g.work.init)[ 64 ]
  | g.out_head = 0
  | g.out_tail = @(g.out_head)
@@ -874,6 +1099,18 @@ ABYSS generics_pass: [ @AST ast ]
  |  |  \_
  |  \_
  |
+ | ; what every plain class takes, before any is made: a REQ may ask about
+ | ; a class further down the file
+ | @ASTNode pr = plain
+ | WHILE [ pr != 0 ]
+ |  | @ASTNode pk = pr.as.list.item
+ |  | (map_put)[ @(g.impls) | pk.as.klass.ident.as.ident | pk.as.klass.ifaces AS @ABYSS ]
+ |  | IF [ pk.as.klass.base != 0 && pk.as.klass.base.as.type.kind == TT_USER_TYPE ]
+ |  |  | (map_put)[ @(g.bases) | pk.as.klass.ident.as.ident | pk.as.klass.base.as.type.type.as.ident AS @ABYSS ]
+ |  |  \_
+ |  | pr = pr.as.list.next
+ |  \_
+ |
  | @ASTNode pc = plain
  | WHILE [ pc != 0 ]
  |  | @ASTNode cls = pc.as.list.item
@@ -910,5 +1147,7 @@ ABYSS generics_pass: [ @AST ast ]
  | (map_deinit)[ @(g.class_tmpls) ]
  | (map_deinit)[ @(g.types) ]
  | (map_deinit)[ @(g.done) ]
+ | (map_deinit)[ @(g.impls) ]
+ | (map_deinit)[ @(g.bases) ]
  | RET
  \_

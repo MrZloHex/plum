@@ -1,0 +1,8 @@
+sensor off: no sample
+loopback echoes: 1, flash chip echoes: 0
+8 samples, mean 21.91, from 21.50 to 22.50
+saved 15 bytes at 16, checksum a5a5a478
+cannot save at 250: past the end of the flash
+loaded: 8 samples, mean 21.90, checksum ok
+unknown command `reboot`
+report: record 15 bytes, checksum at 11, flash lines 32-aligned, chip moved 36 bytes

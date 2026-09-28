@@ -5,4 +5,5 @@ widen -1->i64 = -1
 through cast = 12345
 addr nonzero = 1
 precedence = 305 (expect 305)
+widen U8 200 = 200, I8 -56 = -56
 [exit 0]

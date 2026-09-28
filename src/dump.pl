@@ -68,10 +68,12 @@ ABYSS dump_type: [ @String s | @ASTNode tn ]
  |  | (s.append)[ "?" ]
  |  | RET
  |  \_
- | U64 i = 0
+ | (append_quals)[ s | (quals_at)[ tn.as.type.quals | 0 ] ]
+ | U32 i = 0
  | WHILE [ i < tn.as.type.ptrs ]
  |  | (s.push)[ '@' ]
  |  | i += 1
+ |  | (append_quals)[ s | (quals_at)[ tn.as.type.quals | i ] ]
  |  \_
  |
  | IF [ tn.as.type.kind == TT_FN_TYPE ]
@@ -345,6 +347,10 @@ ABYSS dump_node: [ @ASTNode n | I32 depth ]
  |  |  |  |  | (dump_type)[ @s | ri.as.rcrd_flds.type ]
  |  |  |  |  | (s.push)[ ' ' ]
  |  |  |  |  | (s.append)[ ri.as.rcrd_flds.ident.as.ident ]
+ |  |  |  | ELIF [ ri.kind == NT_REQ_IMPL ]
+ |  |  |  |  | (dump_type)[ @s | ri.as.req_impl.subject ]
+ |  |  |  |  | (s.append)[ " IMPL " ]
+ |  |  |  |  | (dump_type)[ @s | ri.as.req_impl.iface ]
  |  |  |  | ELSE
  |  |  |  |  | (dump_type)[ @s | ri ]
  |  |  |  |  \_
@@ -378,7 +384,13 @@ ABYSS dump_node: [ @ASTNode n | I32 depth ]
  |  |  |  |  \_
  |  |  |  | (dump_line)[ depth + 1 | @s | 0 ]
  |  |  |  \_
- |  |  | (dump_node)[ m.as.method.def | depth + 1 ]
+ |  |  | IF [ m.as.method.is_req ]
+ |  |  |  | ; no body: needed here, given by another interface
+ |  |  |  | (dump_fn_head)[ @s | "REQUIRED" | m.as.method.def.as.fn_def.decl ]
+ |  |  |  | (dump_line)[ depth + 1 | @s | m.as.method.def.as.fn_def.decl.as.fn_decl.ident ]
+ |  |  | ELSE
+ |  |  |  | (dump_node)[ m.as.method.def | depth + 1 ]
+ |  |  |  \_
  |  |  | m = m.as.method.next
  |  |  \_
  | ELIF [ k == NT_CLASS ]
@@ -472,10 +484,28 @@ ABYSS dump_node: [ @ASTNode n | I32 depth ]
  |  | (dump_type)[ @s | n.as.cast.type ]
  |  | (dump_line)[ depth | @s | n ]
  |  | (dump_node)[ n.as.cast.expr | depth + 1 ]
+ | ELIF [ k == NT_BUILTIN && n.as.builtin.kind == BI_OFFSET ]
+ |  | (s.append)[ "OFFSET " ]
+ |  | (dump_type)[ @s | n.as.builtin.size ]
+ |  | @ASTNode step = n.as.builtin.path
+ |  | WHILE [ step != 0 ]
+ |  |  | (s.push)[ '.' ]
+ |  |  | (s.append)[ step.as.list.item.as.ident ]
+ |  |  | step = step.as.list.next
+ |  |  \_
+ |  | (dump_line)[ depth | @s | n ]
  | ELIF [ k == NT_BUILTIN ]
  |  | (s.append)[ "SIZE " ]
  |  | (dump_type)[ @s | n.as.builtin.size ]
  |  | (dump_line)[ depth | @s | n ]
+ | ELIF [ k == NT_STATIC_ASSERT ]
+ |  | (s.append)[ "STATIC_ASSERT" ]
+ |  | IF [ n.as.assert.msg != 0 ]
+ |  |  | (s.push)[ ' ' ]
+ |  |  | (s.append)[ n.as.assert.msg.as.literal.as.str_lit ]
+ |  |  \_
+ |  | (dump_line)[ depth | @s | n ]
+ |  | (dump_node)[ n.as.assert.cond | depth + 1 ]
  | ELIF [ k == NT_FN_CALL ]
  |  | ; (f)[ ... ], (obj.m)[ ... ] or (any expression)[ ... ]
  |  | @ASTNode id = n.as.fn_call.ident

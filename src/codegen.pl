@@ -37,6 +37,7 @@ TYPE CGType: STRUCT
  | @ASTNode record
  | B1       is_union
  | B1       body_set
+ | B1       packed      ; + PACKED: its fields need not be aligned
  \_
 
 TYPE CGEnumConst: STRUCT
@@ -89,6 +90,8 @@ TYPE TypeInfo: STRUCT
 TYPE LValue: STRUCT
  | @ABYSS ptr
  | @ABYSS type
+ | B1     vol       ; VOLATILE: every load and store of it stays, in order
+ | B1     unal      ; inside a PACKED struct: accessed a byte at a time's alignment
  \_
 
 ABYSS cg_fatal: [ @C1 msg ]
@@ -269,6 +272,85 @@ TypeInfo decl_info: [ @ASTNode tn ]
  |  | r.ptrs = r.ptrs + 1
  |  \_
  | RET [ r ]
+ \_
+
+; Is the object a TypeInfo describes VOLATILE? Its level in the declared
+; type is how many pointers the declaration has, less those still left;
+; an array and its elements are one object, level 0.
+B1 ti_volatile: [ TypeInfo ti ]
+ | IF [ ti.node == 0 ]
+ |  | RET [ FALSE ]
+ |  \_
+ | I64 level = (ti.node.as.type.ptrs AS I64) - (ti.ptrs AS I64)
+ | IF [ level < 0 && ti.node.as.type.arr > 0 ]
+ |  | level = 0
+ |  \_
+ | IF [ level < 0 ]
+ |  | RET [ FALSE ]
+ |  \_
+ | RET [ ((quals_at)[ ti.node.as.type.quals | level AS U32 ] & QUAL_VOLATILE) != 0 ]
+ \_
+
+; A load or store, volatile when the place is, and claiming no more than
+; byte alignment inside a PACKED struct: a Cortex-M0 faults on anything
+; misaligned, and LLVM would otherwise assume the type's alignment.
+@ABYSS vload: [ @CodegenContext c | @ABYSS ty | @ABYSS ptr | B1 vol | B1 unal | @C1 name ]
+ | @ABYSS v = (LLVMBuildLoad2)[ c.builder | ty | ptr | name ]
+ | IF [ vol ]
+ |  | (LLVMSetVolatile)[ v | 1 ]
+ |  \_
+ | IF [ unal ]
+ |  | (LLVMSetAlignment)[ v | 1 ]
+ |  \_
+ | RET [ v ]
+ \_
+
+@ABYSS vstore: [ @CodegenContext c | @ABYSS v | @ABYSS ptr | B1 vol | B1 unal ]
+ | @ABYSS st = (LLVMBuildStore)[ c.builder | v | ptr ]
+ | IF [ vol ]
+ |  | (LLVMSetVolatile)[ st | 1 ]
+ |  \_
+ | IF [ unal ]
+ |  | (LLVMSetAlignment)[ st | 1 ]
+ |  \_
+ | RET [ st ]
+ \_
+
+; Does the place e name lie inside a PACKED struct? A field of one, or of
+; a struct or array held in one; a pointer's target counts as aligned.
+B1 in_packed: [ @CodegenContext c | @ASTNode e ]
+ | @ASTNode n = (strip)[ e ]
+ | IF [ n == 0 || n.kind != NT_BIN_OP ]
+ |  | RET [ FALSE ]
+ |  \_
+ | TypeInfo ti = (infer)[ c | n.as.bin_op.left ]
+ | IF [ ti.node == 0 ]
+ |  | RET [ FALSE ]
+ |  \_
+ | IF [ n.as.bin_op.kind == BOT_MEMBER ]
+ |  | TypeInfo flat
+ |  | flat.node = ti.node
+ |  | flat.ptrs = 0
+ |  | @ABYSS sty = (llvm_of)[ c | flat ]
+ |  | IF [ sty != 0 ]
+ |  |  | @CGType ut = (type_of_struct)[ c | sty ]
+ |  |  | IF [ ut != 0 && ut.packed ]
+ |  |  |  | RET [ TRUE ]
+ |  |  |  \_
+ |  |  \_
+ |  | RET [ ti.ptrs == 0 && (in_packed)[ c | n.as.bin_op.left ] ]
+ |  \_
+ | IF [ n.as.bin_op.kind == BOT_INDEX ]
+ |  | ; the elements of an array field lie where the field does
+ |  | B1 is_array = ti.node.as.type.arr > 0 && ti.ptrs == ti.node.as.type.ptrs + 1
+ |  | RET [ is_array && (in_packed)[ c | n.as.bin_op.left ] ]
+ |  \_
+ | RET [ FALSE ]
+ \_
+
+; A declared type's own level, the thing declared, is VOLATILE.
+B1 tn_volatile: [ @ASTNode tn ]
+ | RET [ tn != 0 && ((quals_at)[ tn.as.type.quals | 0 ] & QUAL_VOLATILE) != 0 ]
  \_
 
 B1 is_float_ty: [ @ABYSS ty ]
@@ -626,6 +708,8 @@ TypeInfo infer: [ @CodegenContext c | @ASTNode e ]
  \_
 
 B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
+ | out.vol = FALSE
+ | out.unal = FALSE
  | @ASTNode n = (strip)[ e ]
  | IF [ n == 0 ]
  |  | RET [ FALSE ]
@@ -638,6 +722,7 @@ B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
  |  |  \_
  |  | out.ptr = s.value
  |  | out.type = s.type
+ |  | out.vol = (tn_volatile)[ s.ntype ]
  |  | RET [ TRUE ]
  |  \_
  |
@@ -650,6 +735,7 @@ B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
  |  |  | inner.node = ti.node
  |  |  | inner.ptrs = ti.ptrs - 1
  |  |  | pointee = (llvm_of)[ c | inner ]
+ |  |  | out.vol = (ti_volatile)[ inner ]
  |  |  \_
  |  | IF [ pointee == 0 ]
  |  |  | pointee = (LLVMInt8TypeInContext)[ c.ctx ]
@@ -687,6 +773,8 @@ B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
  |  | ?(idx) = iv
  |  | out.ptr = (LLVMBuildGEP2)[ c.builder | elem | base | idx | 1 | "elem" ]
  |  | out.type = elem
+ |  | out.vol = (ti_volatile)[ inner ]
+ |  | out.unal = (in_packed)[ c | n ]
  |  | (free)[ idx AS @ABYSS ]
  |  | RET [ TRUE ]
  |  \_
@@ -696,10 +784,12 @@ B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
  |  | LValue base
  |  | @ABYSS sty = 0
  |  | @ABYSS sptr = 0
+ |  | B1 ovol = FALSE
  |  |
  |  | IF [ (gen_lvalue)[ c | n.as.bin_op.left | @base ] ]
  |  |  | sty = base.type
  |  |  | sptr = base.ptr
+ |  |  | ovol = base.vol
  |  | ELSE
  |  |  | ; not a variable: a call's result, say. A pointer already is the
  |  |  | ; object's address; a struct by value goes through a temporary.
@@ -721,6 +811,7 @@ B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
  |  |  |  | inner.ptrs = ti.ptrs - 1
  |  |  |  | sptr = v
  |  |  |  | sty = (llvm_of)[ c | inner ]
+ |  |  |  | ovol = (ti_volatile)[ inner ]
  |  |  |  \_
  |  |  | IF [ sty == 0 ]
  |  |  |  | RET [ FALSE ]
@@ -740,8 +831,11 @@ B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
  |  |  | IF [ pointee == 0 ]
  |  |  |  | RET [ FALSE ]
  |  |  |  \_
- |  |  | sptr = (LLVMBuildLoad2)[ c.builder | sty | sptr | "objptr" ]
+ |  |  | ; the pointer is loaded as it is declared; the object is what it
+ |  |  | ; points at, volatile or not
+ |  |  | sptr = (vload)[ c | sty | sptr | ovol | base.unal | "objptr" ]
  |  |  | sty = pointee
+ |  |  | ovol = (ti_volatile)[ inner ]
  |  |  \_
  |  |
  |  | IF [ (LLVMGetTypeKind)[ sty ] != LLVMStructTypeKind ]
@@ -764,6 +858,9 @@ B1 gen_lvalue: [ @CodegenContext c | @ASTNode e | @LValue out ]
  |  |  | (diag_fatal)[ n.loc | "no field `%s` in `%s`" | fname.as.ident | ut.name ]
  |  |  \_
  |  |
+ |  | ; a field of a volatile object is volatile, and so is a VOLATILE field
+ |  | out.vol = ovol || (tn_volatile)[ ftype ]
+ |  | out.unal = (in_packed)[ c | n ]
  |  | IF [ ut.is_union ]
  |  |  | ; every member starts at the union's own address
  |  |  | out.ptr = sptr
@@ -1156,7 +1253,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | IF [ v == 0 ]
  |  |  | (diag_fatal)[ n.loc | "could not evaluate the right side of `=`%s%s" | "" | "" ]
  |  |  \_
- |  | (LLVMBuildStore)[ c.builder | v | lv.ptr ]
+ |  | (vstore)[ c | v | lv.ptr | lv.vol | lv.unal ]
  |  | RET [ v ]
  |  \_
  |
@@ -1169,7 +1266,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | IF [ (LLVMGetTypeKind)[ lv.type ] == LLVMArrayTypeKind ]
  |  |  | RET [ lv.ptr ]
  |  |  \_
- |  | RET [ (LLVMBuildLoad2)[ c.builder | lv.type | lv.ptr | "fldval" ] ]
+ |  | RET [ (vload)[ c | lv.type | lv.ptr | lv.vol | lv.unal | "fldval" ] ]
  |  \_
  |
  | IF [ k == BOT_INDEX ]
@@ -1177,7 +1274,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | IF [ !(gen_lvalue)[ c | n | @lv ] ]
  |  |  | (diag_fatal)[ n.loc | "cannot index this%s%s" | "" | "" ]
  |  |  \_
- |  | RET [ (LLVMBuildLoad2)[ c.builder | lv.type | lv.ptr | "elemval" ] ]
+ |  | RET [ (vload)[ c | lv.type | lv.ptr | lv.vol | lv.unal | "elemval" ] ]
  |  \_
  |
  | ; && and || must not evaluate the right side unless they have to
@@ -1431,7 +1528,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  |  | IF [ (LLVMGetTypeKind)[ s.type ] == LLVMArrayTypeKind ]
  |  |  |  | RET [ s.value ]
  |  |  |  \_
- |  |  | RET [ (LLVMBuildLoad2)[ c.builder | s.type | s.value | n.as.ident ] ]
+ |  |  | RET [ (vload)[ c | s.type | s.value | (tn_volatile)[ s.ntype ] | FALSE | n.as.ident ] ]
  |  |  \_
  |  | I64 ev = 0
  |  | IF [ (enum_const_get)[ c | n.as.ident | @ev ] ]
@@ -1463,7 +1560,7 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | IF [ uk == UOT_DEREF ]
  |  |  | LValue lv
  |  |  | IF [ (gen_lvalue)[ c | e | @lv ] ]
- |  |  |  | RET [ (LLVMBuildLoad2)[ c.builder | lv.type | lv.ptr | "deref" ] ]
+ |  |  |  | RET [ (vload)[ c | lv.type | lv.ptr | lv.vol | lv.unal | "deref" ] ]
  |  |  |  \_
  |  |  | RET [ 0 ]
  |  |  \_
@@ -1515,7 +1612,12 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  | I32 tk = (LLVMGetTypeKind)[ to ]
  |  |
  |  | IF [ fk == LLVMIntegerTypeKind && tk == LLVMIntegerTypeKind ]
- |  |  | RET [ (LLVMBuildIntCast2)[ c.builder | v | to | 1 | "cast" ] ]
+ |  |  | ; widening: an unsigned value with zeros, a signed one with its sign
+ |  |  | I32 signed = 1
+ |  |  | IF [ (is_unsigned_expr)[ c | n.as.cast.expr ] ]
+ |  |  |  | signed = 0
+ |  |  |  \_
+ |  |  | RET [ (LLVMBuildIntCast2)[ c.builder | v | to | signed | "cast" ] ]
  |  |  \_
  |  | IF [ fk == LLVMIntegerTypeKind && tk == LLVMPointerTypeKind ]
  |  |  | RET [ (LLVMBuildIntToPtr)[ c.builder | v | to | "cast" ] ]
@@ -1546,6 +1648,32 @@ B1 is_unsigned_expr: [ @CodegenContext c | @ASTNode e ]
  |  |
  |  | (cg_fatal)[ "cannot cast" ]
  |  | RET [ 0 ]
+ |  \_
+ |
+ | IF [ n.kind == NT_BUILTIN && n.as.builtin.kind == BI_OFFSET ]
+ |  | ; the sum of each step's offset in the struct before it, from the
+ |  | ; data layout; a union's members all start at 0
+ |  | @ABYSS layout = (LLVMGetModuleDataLayout)[ c.mod ]
+ |  | @ABYSS sty = (map_type)[ c | n.as.builtin.size ]
+ |  | U64 off = 0
+ |  | @ASTNode step = n.as.builtin.path
+ |  | WHILE [ step != 0 ]
+ |  |  | @CGType ut = (type_of_struct)[ c | sty ]
+ |  |  | IF [ ut == 0 || ut.record == 0 ]
+ |  |  |  | (cg_fatal)[ "OFFSET through something that is not a struct" ]
+ |  |  |  \_
+ |  |  | I32 idx = 0
+ |  |  | @ASTNode ftype = 0
+ |  |  | IF [ !(field_index)[ ut.record | step.as.list.item.as.ident | @idx | @ftype AS @@ASTNode ] ]
+ |  |  |  | (cg_fatal)[ "OFFSET of an unknown field" ]
+ |  |  |  \_
+ |  |  | IF [ !(ut.is_union) ]
+ |  |  |  | off = off + (LLVMOffsetOfElement)[ layout | sty | idx AS U32 ]
+ |  |  |  \_
+ |  |  | sty = (map_type)[ c | ftype ]
+ |  |  | step = step.as.list.next
+ |  |  \_
+ |  | RET [ (LLVMConstInt)[ (LLVMInt64TypeInContext)[ c.ctx ] | off | 0 ] ]
  |  \_
  |
  | IF [ n.kind == NT_BUILTIN ]
@@ -1691,7 +1819,7 @@ ABYSS gen_stmt: [ @CodegenContext c | @ASTNode st ]
  |  |  | IF [ v == 0 ]
  |  |  |  | (diag_fatal)[ d.loc | "could not evaluate the initialiser of `%s`%s" | nm | "" ]
  |  |  |  \_
- |  |  | (LLVMBuildStore)[ c.builder | v | slot ]
+ |  |  | (vstore)[ c | v | slot | (tn_volatile)[ d.as.var_decl.type ] | FALSE ]
  |  |  \_
  |  | RET
  |  \_
@@ -1844,6 +1972,7 @@ ABYSS gen_type_decl: [ @CodegenContext c | @ASTNode td ]
  | @CGType ut = (type_add)[ c | name ]
  | ut.record = td.as.type_def.tdef
  | ut.is_union = td.as.type_def.tdef.as.record.kind == TDRT_UNION
+ | ut.packed = td.as.type_def.tdef.as.record.packed
  | ut.type = (LLVMStructCreateNamed)[ c.ctx | name ]
  | RET
  \_
@@ -1914,8 +2043,36 @@ ABYSS gen_type_def: [ @CodegenContext c | @ASTNode td ]
  |  |  |  \_
  |  |  \_
  |  |
- |  | (LLVMStructSetBody)[ ut.type | ftypes | n | 0 ]
+ |  | ; + ALIGN N: an empty array of an N-byte vector at the end raises the
+ |  | ; struct's alignment to N, and its size to a multiple of N, without
+ |  | ; moving a field. Every target but one checked aligns such a vector to
+ |  | ; its size; the result is verified below.
+ |  | U32 want = rec.as.record.align
+ |  | IF [ want > 1 && rec.as.record.packed ]
+ |  |  | (diag_fatal)[ td.loc | "`%s`: PACKED and ALIGN together are not supported yet%s" | name | "" ]
+ |  |  \_
+ |  | IF [ want > 1 && n < 64 ]
+ |  |  | @ABYSS lane = (LLVMVectorType)[ (LLVMInt8TypeInContext)[ c.ctx ] | want ]
+ |  |  | ?(ftypes + n) = (LLVMArrayType)[ lane | 0 ]
+ |  |  | n = n + 1
+ |  |  \_
+ |  | I32 packed = 0
+ |  | IF [ rec.as.record.packed ]
+ |  |  | packed = 1
+ |  |  \_
+ |  | (LLVMStructSetBody)[ ut.type | ftypes | n | packed ]
  |  | (free)[ ftypes AS @ABYSS ]
+ |  |
+ |  | IF [ want > 1 ]
+ |  |  | U32 got = (LLVMABIAlignmentOfType)[ (LLVMGetModuleDataLayout)[ c.mod ] | ut.type ]
+ |  |  | IF [ got < want ]
+ |  |  |  | C1 wbuf{16}
+ |  |  |  | C1 gbuf{16}
+ |  |  |  | (snprintf)[ wbuf | 16 | "%u" | want ]
+ |  |  |  | (snprintf)[ gbuf | 16 | "%u" | got ]
+ |  |  |  | (diag_fatal)[ td.loc | "ALIGN %s cannot be given on this target yet: its data layout stops at %s here" | wbuf | gbuf ]
+ |  |  |  \_
+ |  |  \_
  |  | RET
  |  \_
  |
@@ -2002,12 +2159,19 @@ ABYSS gen_global: [ @CodegenContext c | @ASTNode d ]
  |
  | (LLVMSetInitializer)[ g | init ]
  |
+ | ; CONST: read-only memory -- .rodata, or flash on a microcontroller
+ | IF [ ((quals_at)[ d.as.var_decl.type.as.type.quals | 0 ] & QUAL_CONST) != 0 ]
+ |  | (LLVMSetGlobalConstant)[ g | 1 ]
+ |  \_
+ |
  | ; what C compilers call -fdata-sections: the linker can then place or
  | ; drop each global by name, as the STM32 vector table needs
  | IF [ cg_data_sections ]
- |  | U64 sn = (strlen)[ nm ] + 8
+ |  | U64 sn = (strlen)[ nm ] + 10
  |  | @C1 sec = (malloc)[ sn ] AS @C1
- |  | IF [ (LLVMIsNull)[ init ] != 0 ]
+ |  | IF [ ((quals_at)[ d.as.var_decl.type.as.type.quals | 0 ] & QUAL_CONST) != 0 ]
+ |  |  | (snprintf)[ sec | sn | ".rodata.%s" | nm ]
+ |  | ELIF [ (LLVMIsNull)[ init ] != 0 ]
  |  |  | (snprintf)[ sec | sn | ".bss.%s" | nm ]
  |  | ELSE
  |  |  | (snprintf)[ sec | sn | ".data.%s" | nm ]
@@ -2094,6 +2258,57 @@ ABYSS codegen_init: [ @CodegenContext c | @C1 module_name | @Meta meta ]
  | RET
  \_
 
+; The value of a STATIC_ASSERT's condition, worked out now. && || and !
+; are taken apart here, since as code they branch; the rest folds.
+B1 const_value: [ @CodegenContext c | @ASTNode e | @U64 out ]
+ | @ASTNode n = (strip)[ e ]
+ | IF [ n == 0 ]
+ |  | RET [ FALSE ]
+ |  \_
+ | U64 a = 0
+ | U64 b = 0
+ | IF [ n.kind == NT_BIN_OP && (n.as.bin_op.kind == BOT_AND || n.as.bin_op.kind == BOT_OR) ]
+ |  | IF [ !(const_value)[ c | n.as.bin_op.left | @a ] || !(const_value)[ c | n.as.bin_op.right | @b ] ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | IF [ n.as.bin_op.kind == BOT_AND ]
+ |  |  | ?(out) = (a != 0 && b != 0) AS U64
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | ?(out) = (a != 0 || b != 0) AS U64
+ |  | RET [ TRUE ]
+ |  \_
+ | IF [ n.kind == NT_UNY_OP && n.as.uny_op.kind == UOT_NOT ]
+ |  | IF [ !(const_value)[ c | n.as.uny_op.operand | @a ] ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | ?(out) = (a == 0) AS U64
+ |  | RET [ TRUE ]
+ |  \_
+ | IF [ !(is_const_expr)[ c | n ] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | @ABYSS v = (gen_expr)[ c | n ]
+ | IF [ v == 0 || (LLVMIsAConstantInt)[ v ] == NULL ]
+ |  | RET [ FALSE ]
+ |  \_
+ | ?(out) = (LLVMConstIntGetZExtValue)[ v ]
+ | RET [ TRUE ]
+ \_
+
+ABYSS gen_static_assert: [ @CodegenContext c | @ASTNode sa ]
+ | U64 v = 0
+ | IF [ !(const_value)[ c | sa.as.assert.cond | @v ] ]
+ |  | (diag_fatal)[ sa.as.assert.cond.loc | "STATIC_ASSERT needs what the compiler can work out: literals, enum constants, SIZE, OFFSET, and operators on them%s%s" | "" | "" ]
+ |  \_
+ | IF [ v == 0 ]
+ |  | IF [ sa.as.assert.msg != 0 ]
+ |  |  | (diag_fatal)[ sa.loc | "STATIC_ASSERT does not hold: %s%s" | sa.as.assert.msg.as.literal.as.str_lit | "" ]
+ |  |  \_
+ |  | (diag_fatal)[ sa.loc | "this STATIC_ASSERT does not hold%s%s" | "" | "" ]
+ |  \_
+ \_
+
 ABYSS codegen_generate: [ @ASTNode root | @CodegenContext c ]
  | ; types first, then every prototype, then the bodies
  | @ASTNode ts = root.as.tu.tu_stmt
@@ -2129,6 +2344,15 @@ ABYSS codegen_generate: [ @ASTNode root | @CodegenContext c ]
  | WHILE [ ts != 0 ]
  |  | IF [ ts.as.tu_stmt.kind == TUST_VAR_DECL ]
  |  |  | (gen_global)[ c | ts.as.tu_stmt.tu_stmt ]
+ |  |  \_
+ |  | ts = ts.as.tu_stmt.next_tu_stmt
+ |  \_
+ |
+ | ; before any body: the builder is in no function, so these fold
+ | ts = root.as.tu.tu_stmt
+ | WHILE [ ts != 0 ]
+ |  | IF [ ts.as.tu_stmt.kind == TUST_STATIC_ASSERT ]
+ |  |  | (gen_static_assert)[ c | ts.as.tu_stmt.tu_stmt ]
  |  |  \_
  |  | ts = ts.as.tu_stmt.next_tu_stmt
  |  \_

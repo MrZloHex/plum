@@ -1,0 +1,2 @@
+error: no field `b` in `P`
+ --> offset_no_field.pl:6:23

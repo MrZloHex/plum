@@ -38,6 +38,7 @@ TYPE TyKind: ENUM
 TYPE Type: STRUCT
  | I32      kind
  | U64      ptrs       ; pointer depth
+ | U32      quals      ; CONST and VOLATILE per level, as N_Type.quals
  | I32      bits       ; width for TY_INT and TY_FLOAT
  | B1       sign       ; TY_INT only
  | @C1      name       ; TY_RECORD / TY_ENUM
@@ -111,6 +112,7 @@ Type ty_make: [ I32 kind | U64 ptrs | I32 bits | B1 sign ]
  | t.name = 0
  | t.decl = 0
  | t.arr = 0
+ | t.quals = 0
  | RET [ t ]
  \_
 
@@ -153,10 +155,12 @@ ABYSS append_tn: [ @String s | @ASTNode tn ]
  |  | (s.append)[ "?" ]
  |  | RET
  |  \_
- | U64 i = 0
+ | (append_quals)[ s | (quals_at)[ tn.as.type.quals | 0 ] ]
+ | U32 i = 0
  | WHILE [ i < tn.as.type.ptrs ]
  |  | (s.push)[ '@' ]
  |  | i = i + 1
+ |  | (append_quals)[ s | (quals_at)[ tn.as.type.quals | i ] ]
  |  \_
  | IF [ tn.as.type.kind == TT_BASE_TYPE ]
  |  | (s.append)[ (base_type_name)[ tn.as.type.type.as.base_type ] ]
@@ -235,16 +239,19 @@ ABYSS append_sig: [ @String s | @ASTNode sig ]
  |  |  \_
  |  \_
  |
- | @C1 stars = ""
- | IF [ t.ptrs == 1 ]
- |  | stars = "@"
- | ELIF [ t.ptrs == 2 ]
- |  | stars = "@@"
- | ELIF [ t.ptrs >= 3 ]
- |  | stars = "@@@"
+ | ; the pointers, each level with its qualifiers: CONST @VOLATILE R
+ | String pre
+ | (pre.init)[ 32 ]
+ | (append_quals)[ @pre | (quals_at)[ t.quals | 0 ] ]
+ | U32 lv = 0
+ | WHILE [ lv < t.ptrs ]
+ |  | (pre.push)[ '@' ]
+ |  | lv += 1
+ |  | (append_quals)[ @pre | (quals_at)[ t.quals | lv ] ]
  |  \_
  |
- | (snprintf)[ buf | 256 | "%s%s" | stars | base ]
+ | (snprintf)[ buf | 256 | "%s%s" | pre.data | base ]
+ | (pre.deinit)[]
  | RET [ buf ]
  \_
 
@@ -314,6 +321,7 @@ Type ty_resolve: [ @Checker c | @ASTNode tn ]
  | IF [ tn.as.type.kind == TT_FN_TYPE ]
  |  | t = (ty_make)[ TY_FN | tn.as.type.ptrs | 64 | FALSE ]
  |  | t.decl = tn
+ |  | t.quals = tn.as.type.quals
  |  | RET [ t ]
  |  \_
  |
@@ -342,6 +350,8 @@ Type ty_resolve: [ @Checker c | @ASTNode tn ]
  |  |  \_
  |  \_
  |
+ | ; an alias's own qualifiers sit under the ones written with it
+ | t.quals = (quals_compose)[ tn.as.type.quals | tn.as.type.ptrs | t.quals ]
  | t.ptrs = t.ptrs + tn.as.type.ptrs
  | RET [ t ]
  \_
@@ -351,7 +361,9 @@ Type ty_resolve: [ @Checker c | @ASTNode tn ]
 Type ty_decl: [ @Checker c | @ASTNode tn ]
  | Type t = (ty_resolve)[ c | tn ]
  | IF [ tn != 0 && tn.as.type.arr > 0 ]
+ |  | ; used as a pointer, the elements' qualifiers are one level down
  |  | t.ptrs = t.ptrs + 1
+ |  | t.quals = t.quals << 2
  |  | t.arr = tn.as.type.arr
  |  \_
  | RET [ t ]
@@ -434,6 +446,65 @@ B1 ck_lookup: [ @Checker c | @C1 name | @Type out ]
  | RET [ TRUE ]
  \_
 
+; --- qualifiers -------------------------------------------------------------
+;
+; A pointer converted to another may gain CONST or VOLATILE at any level it
+; points through, and never lose one: through the result, a constant could
+; be written, or a register read from a cache. AS says it is meant.
+
+; The qualifier a conversion would drop, or 0.
+@C1 ck_dropped: [ Type to | Type from ]
+ | IF [ to.ptrs == 0 || from.ptrs == 0 ]
+ |  | RET [ NULL ]
+ |  \_
+ | U64 n = to.ptrs
+ | IF [ from.ptrs < n ]
+ |  | n = from.ptrs
+ |  \_
+ | U32 lv = 1
+ | WHILE [ lv <= n ]
+ |  | U32 lost = (quals_at)[ from.quals | lv ] & ~((quals_at)[ to.quals | lv ])
+ |  | IF [ (lost & QUAL_CONST) != 0 ]
+ |  |  | RET [ "CONST" ]
+ |  |  \_
+ |  | IF [ (lost & QUAL_VOLATILE) != 0 ]
+ |  |  | RET [ "VOLATILE" ]
+ |  |  \_
+ |  | lv += 1
+ |  \_
+ | RET [ NULL ]
+ \_
+
+; Report a conversion that drops a qualifier; FALSE when it does.
+B1 ck_keeps_quals: [ @Checker c | @ASTNode at | Type to | Type from ]
+ | @C1 q = (ck_dropped)[ to | from ]
+ | IF [ q == NULL ]
+ |  | RET [ TRUE ]
+ |  \_
+ | @C1 sf = (ty_str)[ from ]
+ | @C1 st = (ty_str)[ to ]
+ | C1 msg{600}
+ | (snprintf)[ msg | 600 | "%s to %s drops %s; write AS %s if that is meant" | sf | st | q | st ]
+ | (ck_error)[ c | at | msg ]
+ | (free)[ sf AS @ABYSS ]
+ | (free)[ st AS @ABYSS ]
+ | RET [ FALSE ]
+ \_
+
+; A place that is CONST cannot be assigned: the variable, or what a
+; pointer to CONST points at.
+ABYSS ck_writable: [ @Checker c | @ASTNode at | @ASTNode place | Type t ]
+ | IF [ ((quals_at)[ t.quals | 0 ] & QUAL_CONST) == 0 ]
+ |  | RET
+ |  \_
+ | @ASTNode p = (ck_strip)[ place ]
+ | IF [ p != 0 && p.kind == NT_IDENT ]
+ |  | (ck_error2)[ c | at | "`%s` is CONST, so it cannot be assigned%s" | p.as.ident | "" ]
+ | ELSE
+ |  | (ck_error)[ c | at | "this is CONST, so it cannot be assigned" ]
+ |  \_
+ \_
+
 ; --- assignability --------------------------------------------------------
 ;
 ; Deliberately permissive where PLUM's implicit coercion already is --
@@ -442,10 +513,21 @@ B1 ck_lookup: [ @Checker c | @C1 name | @Type out ]
 
 B1 ty_same: [ @Checker c | Type a | Type b ]
 
+; Past its own level, what a pointer points at must agree in CONST and
+; VOLATILE too: FN ABYSS [ @CONST C1 ] is not FN ABYSS [ @C1 ].
+B1 ty_same_quals: [ @Checker c | @ASTNode x | @ASTNode y ]
+ | Type a = (ty_resolve)[ c | x ]
+ | Type b = (ty_resolve)[ c | y ]
+ | RET [ (a.quals >> 2) == (b.quals >> 2) ]
+ \_
+
 ; Two signatures agree when their return and parameter types are the same
 ; and both or neither are variadic.
 B1 sig_same: [ @Checker c | @ASTNode a | @ASTNode b ]
  | IF [ !(ty_same)[ c | (ty_resolve)[ c | (sig_ret)[ a ] ] | (ty_resolve)[ c | (sig_ret)[ b ] ] ] ]
+ |  | RET [ FALSE ]
+ |  \_
+ | IF [ !(ty_same_quals)[ c | (sig_ret)[ a ] | (sig_ret)[ b ] ] ]
  |  | RET [ FALSE ]
  |  \_
  | @ASTNode p = (sig_params)[ a ]
@@ -455,6 +537,9 @@ B1 sig_same: [ @Checker c | @ASTNode a | @ASTNode b ]
  |  |  | RET [ (sig_is_va)[ p ] && (sig_is_va)[ q ] ]
  |  |  \_
  |  | IF [ !(ty_same)[ c | (ty_resolve)[ c | (sig_ptype)[ p ] ] | (ty_resolve)[ c | (sig_ptype)[ q ] ] ] ]
+ |  |  | RET [ FALSE ]
+ |  |  \_
+ |  | IF [ !(ty_same_quals)[ c | (sig_ptype)[ p ] | (sig_ptype)[ q ] ] ]
  |  |  | RET [ FALSE ]
  |  |  \_
  |  | p = (sig_next)[ p ]
@@ -694,6 +779,25 @@ B1 ck_field: [ @Checker c | Type base | @C1 field | @Type out | @ASTNode use ]
  |  |  | (ck_error2)[ c | n | "`%s` is ANONYMOUS: call it on the type, as (%s.method)[ ... ]" | m | rt.name ]
  |  |  | RET [ 0 ]
  |  |  \_
+ |  | ; the object's qualifiers must be `me`'s too: an interface written for
+ |  | ; [ @CONST PinData me ] can be called on a CONST Pin, and cannot write it
+ |  | U32 oq = (quals_at)[ rt.quals | 0 ]
+ |  | IF [ rt.ptrs == 1 ]
+ |  |  | oq = (quals_at)[ rt.quals | 1 ]
+ |  |  \_
+ |  | U32 mq = 0
+ |  | IF [ !(decl.as.fn_decl.is_anon) && decl.as.fn_decl.params != 0 ]
+ |  |  | mq = (quals_at)[ (ty_resolve)[ c | decl.as.fn_decl.params.as.parametre.type ].quals | 1 ]
+ |  |  \_
+ |  | U32 lost = oq & ~mq
+ |  | IF [ (lost & QUAL_CONST) != 0 ]
+ |  |  | (ck_error2)[ c | n | "cannot call `%s` on a CONST object: its interface takes `me` as a plain pointer, not @CONST%s" | m | "" ]
+ |  |  | RET [ 0 ]
+ |  |  \_
+ |  | IF [ (lost & QUAL_VOLATILE) != 0 ]
+ |  |  | (ck_error2)[ c | n | "cannot call `%s` on a VOLATILE object: its interface takes `me` as a plain pointer, not @VOLATILE%s" | m | "" ]
+ |  |  | RET [ 0 ]
+ |  |  \_
  |  | IF [ decl.as.fn_decl.is_private ]
  |  |  | IF [ c.owner == 0 || (strcmp)[ c.owner | decl.as.fn_decl.owner ] != 0 ]
  |  |  |  | (ck_error2)[ c | n | "`%s` is PRIVATE to `%s`" | m | decl.as.fn_decl.owner ]
@@ -764,6 +868,8 @@ Type ck_call: [ @Checker c | @ASTNode n ]
  |  |  |  | (ck_error2)[ c | a | "argument expects %s, got %s" | sw | sg ]
  |  |  |  | (free)[ sw AS @ABYSS ]
  |  |  |  | (free)[ sg AS @ABYSS ]
+ |  |  | ELSE
+ |  |  |  | (ck_keeps_quals)[ c | a | pt | at ]
  |  |  |  \_
  |  |  | p = (sig_next)[ p ]
  |  |  \_
@@ -803,6 +909,7 @@ Type ck_binop: [ @Checker c | @ASTNode n ]
  |  | Type obj = base
  |  | IF [ obj.ptrs == 1 ]
  |  |  | obj.ptrs = 0
+ |  |  | obj.quals = obj.quals >> 2
  |  |  \_
  |  |
  |  | IF [ !(ty_is_aggregate)[ obj ] ]
@@ -821,6 +928,12 @@ Type ck_binop: [ @Checker c | @ASTNode n ]
  |  | IF [ !(ck_field)[ c | obj | fn.as.ident | @ft | fn ] ]
  |  |  | (ck_error2)[ c | n | "no field `%s` in `%s`" | fn.as.ident | obj.name ]
  |  |  | RET [ (ty_unknown)[] ]
+ |  |  \_
+ |  | ; a field of a CONST or VOLATILE object is CONST or VOLATILE too
+ |  | IF [ ft.arr > 0 ]
+ |  |  | ft.quals = ft.quals | ((quals_at)[ obj.quals | 0 ] << 2)
+ |  | ELSE
+ |  |  | ft.quals = ft.quals | (quals_at)[ obj.quals | 0 ]
  |  |  \_
  |  | RET [ ft ]
  |  \_
@@ -849,6 +962,7 @@ Type ck_binop: [ @Checker c | @ASTNode n ]
  |  |  | RET [ (ty_unknown)[] ]
  |  |  \_
  |  | lt.ptrs = lt.ptrs - 1
+ |  | lt.quals = lt.quals >> 2
  |  | lt.arr = 0
  |  | RET [ lt ]
  |  \_
@@ -862,12 +976,15 @@ Type ck_binop: [ @Checker c | @ASTNode n ]
  |  |  | (ck_error)[ c | n | "cannot assign to a whole array; assign its elements" ]
  |  |  | RET [ lt ]
  |  |  \_
+ |  | (ck_writable)[ c | n | n.as.bin_op.left | lt ]
  |  | IF [ !(ty_assignable)[ c | lt | rt ] ]
  |  |  | @C1 sl = (ty_str)[ lt ]
  |  |  | @C1 sr = (ty_str)[ rt ]
  |  |  | (ck_error2)[ c | n | "cannot assign %s to %s" | sr | sl ]
  |  |  | (free)[ sl AS @ABYSS ]
  |  |  | (free)[ sr AS @ABYSS ]
+ |  | ELSE
+ |  |  | (ck_keeps_quals)[ c | n | lt | rt ]
  |  |  \_
  |  | RET [ lt ]
  |  \_
@@ -1041,6 +1158,33 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  |  | RET [ to ]
  |  \_
  |
+ | IF [ n.kind == NT_BUILTIN && n.as.builtin.kind == BI_OFFSET ]
+ |  | ; each step a field of the struct before it -- not through a pointer
+ |  | Type ot = (ty_resolve)[ c | n.as.builtin.size ]
+ |  | @ASTNode step = n.as.builtin.path
+ |  | WHILE [ step != 0 && ot.kind != TY_UNKNOWN ]
+ |  |  | @C1 fnm = step.as.list.item.as.ident
+ |  |  | IF [ ot.kind != TY_RECORD || ot.ptrs != 0 ]
+ |  |  |  | @C1 so = (ty_str)[ ot ]
+ |  |  |  | (ck_error2)[ c | step.as.list.item | "OFFSET goes through the fields of structs, and %s has none to give `%s`" | so | fnm ]
+ |  |  |  | RET [ (ty_int)[ 64 | FALSE ] ]
+ |  |  |  \_
+ |  |  | @ASTNode fd = (ck_field_decl)[ ot | fnm ]
+ |  |  | IF [ fd == NULL ]
+ |  |  |  | (ck_error2)[ c | step.as.list.item | "no field `%s` in `%s`" | fnm | ot.name ]
+ |  |  |  | RET [ (ty_int)[ 64 | FALSE ] ]
+ |  |  |  \_
+ |  |  | (ck_ref)[ c | step.as.list.item | fd | ot.decl ]
+ |  |  | ot = (ty_resolve)[ c | fd.as.rcrd_flds.type ]
+ |  |  | IF [ fd.as.rcrd_flds.type.as.type.arr > 0 && step.as.list.next != 0 ]
+ |  |  |  | (ck_error2)[ c | step.as.list.item | "OFFSET cannot step into the array `%s`%s" | fnm | "" ]
+ |  |  |  | RET [ (ty_int)[ 64 | FALSE ] ]
+ |  |  |  \_
+ |  |  | step = step.as.list.next
+ |  |  \_
+ |  | RET [ (ty_int)[ 64 | FALSE ] ]
+ |  \_
+ |
  | IF [ n.kind == NT_BUILTIN ]
  |  | Type st = (ty_resolve)[ c | n.as.builtin.size ]
  |  | IF [ st.kind == TY_VOID && st.ptrs == 0 ]
@@ -1068,6 +1212,7 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  |  |  |  | RET [ (ty_unknown)[] ]
  |  |  |  \_
  |  |  | t.ptrs = t.ptrs - 1
+ |  |  | t.quals = t.quals >> 2
  |  |  | t.arr = 0
  |  |  | RET [ t ]
  |  |  \_
@@ -1093,6 +1238,7 @@ Type ck_expr: [ @Checker c | @ASTNode e ]
  |  |  |  | RET [ t ]
  |  |  |  \_
  |  |  | t.ptrs = t.ptrs + 1
+ |  |  | t.quals = t.quals << 2
  |  |  | RET [ t ]
  |  |  \_
  |  |
@@ -1184,7 +1330,11 @@ ABYSS ck_stmt: [ @Checker c | @ASTNode st ]
  |  |  |  | (ck_error2)[ c | d | "cannot initialise %s from %s" | sd | si ]
  |  |  |  | (free)[ sd AS @ABYSS ]
  |  |  |  | (free)[ si AS @ABYSS ]
+ |  |  | ELSE
+ |  |  |  | (ck_keeps_quals)[ c | d | dt | it ]
  |  |  |  \_
+ |  | ELIF [ ((quals_at)[ (ty_resolve)[ c | d.as.var_decl.type ].quals | 0 ] & QUAL_CONST) != 0 ]
+ |  |  | (ck_error2)[ c | d | "`%s` is CONST, so it needs its value where it is declared%s" | nm | "" ]
  |  |  \_
  |  |
  |  | (ck_define)[ c | nm | dt | d ]
@@ -1213,6 +1363,8 @@ ABYSS ck_stmt: [ @Checker c | @ASTNode st ]
  |  |  | (ck_error2)[ c | st | "returning %s from a function declared %s" | sg | sw ]
  |  |  | (free)[ sw AS @ABYSS ]
  |  |  | (free)[ sg AS @ABYSS ]
+ |  | ELSE
+ |  |  | (ck_keeps_quals)[ c | st | c.ret_type | rt ]
  |  |  \_
  |  | RET
  |  \_
@@ -1501,6 +1653,9 @@ B1 check_unit: [ @Checker c | @ASTNode root ]
  |  |  | IF [ gt.kind == TY_VOID && gt.ptrs == 0 ]
  |  |  |  | (ck_error2)[ c | d | "`%s` cannot have type ABYSS%s" | nm | "" ]
  |  |  |  \_
+ |  |  | IF [ d.as.var_decl.init == 0 && ((quals_at)[ (ty_resolve)[ c | d.as.var_decl.type ].quals | 0 ] & QUAL_CONST) != 0 ]
+ |  |  |  | (ck_error2)[ c | d | "`%s` is CONST, so it needs its value where it is declared%s" | nm | "" ]
+ |  |  |  \_
  |  |  | (ck_define)[ c | nm | gt | d ]
  |  |  \_
  |  | ts = ts.as.tu_stmt.next_tu_stmt
@@ -1510,6 +1665,16 @@ B1 check_unit: [ @Checker c | @ASTNode root ]
  | WHILE [ ts != 0 ]
  |  | IF [ ts.as.tu_stmt.kind == TUST_FN_DEF ]
  |  |  | (ck_fn)[ c | ts.as.tu_stmt.tu_stmt ]
+ |  |  \_
+ |  | ; its truth needs the target's layout: codegen decides it; here, only
+ |  | ; that it is a condition at all
+ |  | IF [ ts.as.tu_stmt.kind == TUST_STATIC_ASSERT ]
+ |  |  | @ASTNode sa = ts.as.tu_stmt.tu_stmt
+ |  |  | Type at = (ck_value)[ c | sa.as.assert.cond ]
+ |  |  | IF [ at.kind != TY_UNKNOWN && !(ty_is_integral)[ at ] ]
+ |  |  |  | @C1 sat = (ty_str)[ at ]
+ |  |  |  | (ck_error2)[ c | sa.as.assert.cond | "STATIC_ASSERT needs an integer or B1 condition, not %s%s" | sat | "" ]
+ |  |  |  \_
  |  |  \_
  |  | ts = ts.as.tu_stmt.next_tu_stmt
  |  \_

@@ -1,0 +1,2 @@
+error: this is CONST, so it cannot be assigned
+ --> const_through_ptr.pl:5:7

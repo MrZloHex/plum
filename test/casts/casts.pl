@@ -39,6 +39,11 @@ I32 main: []
  | I32 r = big AS I32 + 5
  | (printf)[ "precedence = %d (expect 305)\n" | r ]
  |
+ | ; widening by AS keeps an unsigned value's value, a signed one's sign
+ | U8 ub = 200
+ | I8 sb = -56
+ | (printf)[ "widen U8 200 = %d, I8 -56 = %d\n" | ub AS I32 | sb AS I32 ]
+ |
  | (free)[ raw ]
  | RET [ 0 ]
  \_

@@ -1,0 +1,2 @@
+error: ALIGN takes a power of two from 1 to 4096, not 3
+ --> align_not_power.pl:3:10

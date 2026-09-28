@@ -45,6 +45,8 @@ TYPE ASTNodeType: ENUM
  | NT_IFACE
  | NT_CLASS
  | NT_METHOD
+ | NT_REQ_IMPL
+ | NT_STATIC_ASSERT
  \_
 
 TYPE TUStmtKind: ENUM
@@ -54,6 +56,7 @@ TYPE TUStmtKind: ENUM
  | TUST_VAR_DECL
  | TUST_IFACE
  | TUST_CLASS
+ | TUST_STATIC_ASSERT
  \_
 
 TYPE TypeDefKind: ENUM
@@ -155,6 +158,7 @@ TYPE LiteralKind: ENUM
 
 TYPE BuiltInKind: ENUM
  | BI_SIZE
+ | BI_OFFSET
  \_
 
 ; --- payloads -------------------------------------------------------------
@@ -209,6 +213,8 @@ TYPE N_EnumField: STRUCT
 
 TYPE N_Record: STRUCT
  | I32      kind
+ | B1       packed      ; + PACKED: no padding between fields
+ | U32      align       ; + ALIGN N: at least N-byte aligned; 0 when not given
  | @ASTNode fields
  \_
 
@@ -218,11 +224,17 @@ TYPE N_Field: STRUCT
  | @ASTNode next_field
  \_
 
-; arr sits beside kind so that `written` costs no space: ASTNode stays 64
+; Small fields in pairs, so ASTNode stays 64 bytes.
+;
+; quals holds CONST and VOLATILE, two bits per level: level 0 is what is
+; declared, level i what the i-th `@` points at. `CONST @VOLATILE R p` is
+; a constant pointer (level 0) to volatile R (level 1), C's
+; `volatile R *const p`.
 TYPE N_Type: STRUCT
  | I32      kind
  | U32      arr         ; element count of `T name{N}`, 0 unless an array
- | U64      ptrs
+ | U32      ptrs
+ | U32      quals       ; QUAL_CONST / QUAL_VOLATILE << 2 * level
  | @ASTNode type
  | @ASTNode args        ; NT_LIST of NT_TYPE, 0 unless generic
  | @ASTNode written     ; the args as written, kept once generics resolves them
@@ -318,7 +330,14 @@ TYPE N_Literal: STRUCT
 
 TYPE N_BuiltIn: STRUCT
  | I32      kind
- | @ASTNode size
+ | @ASTNode size        ; the type: SIZE [ T ], OFFSET [ T.f ]
+ | @ASTNode path        ; OFFSET: NT_LIST of NT_IDENT, the fields after the type
+ \_
+
+; STATIC_ASSERT [ cond ] or [ cond | "message" ], at the top level.
+TYPE N_Assert: STRUCT
+ | @ASTNode cond
+ | @ASTNode msg         ; NT_LITERAL, or 0
  \_
 
 TYPE N_Cast: STRUCT
@@ -337,7 +356,13 @@ TYPE N_Iface: STRUCT
  | @ASTNode gparams
  | @ASTNode recv        ; NT_PARAMETRE: the `me` every method receives
  | @ASTNode methods     ; NT_METHOD chain
- | @ASTNode reqs        ; NT_LIST of what REQ asks: NT_FIELD `I32 hp`, or NT_TYPE `Named<T>`
+ | @ASTNode reqs        ; NT_LIST of what REQ asks: NT_FIELD `I32 hp`, NT_TYPE `Named<T>`, NT_REQ_IMPL
+ \_
+
+; In a REQ, `BUS IMPL SPIBus<BUS>`: the type put for BUS must take SPIBus.
+TYPE N_ReqImpl: STRUCT
+ | @ASTNode subject     ; NT_TYPE
+ | @ASTNode iface       ; NT_TYPE
  \_
 
 TYPE N_Class: STRUCT
@@ -350,6 +375,7 @@ TYPE N_Class: STRUCT
 TYPE N_Method: STRUCT
  | B1       is_private
  | B1       is_anon     ; in the + ANONYMOUS: section
+ | B1       is_req      ; no body: the interface needs it, another gives it
  | @ASTNode def         ; NT_FN_DEF
  | @ASTNode next
  \_
@@ -391,6 +417,8 @@ TYPE NodeAs: UNION
  | N_Iface     iface
  | N_Class     klass
  | N_Method    method
+ | N_ReqImpl   req_impl
+ | N_Assert    assert
  \_
 
 TYPE ASTNode: STRUCT
@@ -413,6 +441,31 @@ TYPE AST: STRUCT
  | ; arena memory is not zeroed, and every consumer assumes NULL children
  | (memset)[ n AS @ABYSS | 0 | SIZE [ ASTNode ] ]
  | RET [ n ]
+ \_
+
+; --- qualifiers -----------------------------------------------------------
+
+U32 QUAL_CONST    = 1
+U32 QUAL_VOLATILE = 2
+
+; The qualifiers of one level, as QUAL_ bits.
+U32 quals_at: [ U32 quals | U32 level ]
+ | IF [ level > 15 ]
+ |  | RET [ 0 ]
+ |  \_
+ | RET [ (quals >> (level * 2)) & 3 ]
+ \_
+
+; `outer` with `inner` put at its base: @T with T = VOLATILE U32 is
+; @VOLATILE U32. The base level's own bits join inner's level 0.
+U32 quals_compose: [ U32 outer | U32 optrs | U32 inner ]
+ | IF [ optrs > 15 ]
+ |  | RET [ outer ]
+ |  \_
+ | U32 shift = optrs * 2
+ | U32 low = outer & ((1 << shift) - 1)
+ | U32 base = (outer >> shift) & 3
+ | RET [ low | ((inner | base) << shift) ]
  \_
 
 ; --- signatures -----------------------------------------------------------

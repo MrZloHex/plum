@@ -1,0 +1,2 @@
+error: @CONST I32 to @I32 drops CONST; write AS @I32 if that is meant
+ --> drop_const_arg.pl:7:11

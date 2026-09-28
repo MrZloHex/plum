@@ -1,0 +1,2 @@
+error: `P`: PACKED and ALIGN together are not supported yet
+ --> packed_and_align.pl:2:1

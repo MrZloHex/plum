@@ -1,0 +1,2 @@
+error: `n` is CONST, so it needs its value where it is declared
+ --> const_no_init.pl:3:4

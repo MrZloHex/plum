@@ -1,0 +1,2 @@
+error: `Dev<I32>` cannot IMPL DevOps<DevData<I32> | I32>: it needs I32 to IMPL SPIBus<I32>, and I32 is not a CLASS
+  --> req_impl_not_class.pl:26:4

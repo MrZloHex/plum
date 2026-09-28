@@ -164,6 +164,10 @@ ABYSS ix_walk: [ @Index ix | @Meta m | @ASTNode n ]
  |  | (ix_type)[ ix | m | n.as.builtin.size ]
  |  | RET
  |  \_
+ | IF [ k == NT_STATIC_ASSERT ]
+ |  | (ix_walk)[ ix | m | n.as.assert.cond ]
+ |  | RET
+ |  \_
  | ; the class of an ANONYMOUS call, (Option<I32>.some)
  | IF [ k == NT_TYPE ]
  |  | (ix_type)[ ix | m | n ]

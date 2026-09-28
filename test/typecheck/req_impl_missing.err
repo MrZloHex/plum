@@ -1,0 +1,2 @@
+error: `Dev<Other>` cannot IMPL DevOps<DevData<Other> | Other>: it needs Other to IMPL SPIBus<Other>, and it does not
+  --> req_impl_missing.pl:26:4

@@ -1,8 +1,9 @@
 # PLUM — the language
 
 What the compiler accepts today, what it does not, and what could come next.
-Everything here was checked against `bootstrap/src/` and `src/`, not against the
+Everything here was checked against `src/` and the tests, not against the
 grammar sketch in `syntax/plum.ebnf`, which has drifted.
+`examples/logger/` uses nearly all of it in one small project.
 
 ---
 
@@ -76,6 +77,73 @@ A whole array cannot be assigned or given an initialiser; assign its
 elements. Array parameters are written as pointers. There is no bounds
 checking.
 
+### CONST and VOLATILE
+
+A qualifier belongs to the level it is written at, as in C: before the
+type it qualifies what is declared; after an `@`, what that pointer points
+at.
+
+| PLUM | C |
+|---|---|
+| `VOLATILE U32 x` | `volatile uint32_t x` |
+| `@VOLATILE U32 p` | `volatile uint32_t *p` |
+| `VOLATILE @U32 p` | `uint32_t *volatile p` |
+| `CONST @VOLATILE Regs r` | `volatile Regs *const r` |
+
+```plum
+CONST @VOLATILE GPIORegs GPIOA = 0x50000000 AS @VOLATILE GPIORegs
+ | GPIOA.ODR = GPIOA.ODR ^ (1 << 5)        ; two volatile accesses, kept at -O2
+```
+
+* **`VOLATILE`**: every load and store through that level is a volatile
+  LLVM access, so the optimiser keeps each one, in order. A field of a
+  volatile struct is volatile. Memory-mapped registers need it.
+* **`CONST`**: the level cannot be assigned. A `CONST` variable needs its
+  value where it is declared; a `CONST` global is read-only memory
+  (`.rodata`, or flash). `@x` of a `CONST x` is a `@CONST` pointer.
+* **Neither is dropped silently.** `@CONST T` and `@VOLATILE T` do not
+  convert to `@T`; adding a qualifier is always fine. `AS` drops one on
+  purpose.
+* **Methods** take the object's qualifiers from their interface's
+  receiver. An interface written for `[ @CONST PinData me ]` cannot write
+  through `me`, and its methods can be called on a `CONST Pin`; one
+  written for a plain `me` cannot be. `VOLATILE` likewise.
+
+### Layout: PACKED, ALIGN, OFFSET, STATIC_ASSERT
+
+```plum
+TYPE PersistentHeader: STRUCT
+ + PACKED                         ; no padding: 11 bytes
+ | U32 magic
+ | U16 version
+ | U8  flags
+ | U32 crc
+ \_
+
+TYPE DMABlock: STRUCT
+ + ALIGN 32                       ; 32-aligned, and a multiple of 32 long
+ | U8 data{64}
+ \_
+
+STATIC_ASSERT [ SIZE [ PersistentHeader ] == 11 ]
+STATIC_ASSERT [ OFFSET [ PersistentHeader.crc ] == 7 | "crc right after flags" ]
+```
+
+* **`+ PACKED`** and **`+ ALIGN N`** are lines of a `STRUCT` or `UNION`
+  body. A packed struct's fields are read and written a byte at a time's
+  alignment, so an odd offset is safe even where the CPU faults on
+  misalignment (Cortex-M0). `ALIGN` takes a power of two up to 4096 and
+  holds wherever the type is: global, local, array element, field.
+  Together they are not supported yet, nor `ALIGN 16` on ARM, whose data
+  layout gives the padding LLVM would use only 8 -- both are errors.
+* **`OFFSET [ Type.field ]`** is the byte offset of a field, a `USIZE`
+  constant like `SIZE`; the path may go through nested structs,
+  `OFFSET [ Outer.inner.x ]`, but not through pointers.
+* **`STATIC_ASSERT [ condition ]`**, or `[ condition | "message" ]`, at
+  the top level: checked while compiling, with the target's real layout,
+  and gone afterwards. The condition is made of literals, enum
+  constants, `SIZE`, `OFFSET`, and operators on them.
+
 ### Floats
 
 `+ - * / %` and every comparison work on `F32` and `F64`, as do unary `-`
@@ -132,8 +200,9 @@ I32 main: []
   nested: `Vector<Vector<I32>>` (a `>>` closes both lists).
 * **An `IFACE`** is a set of methods written against one receiver, named
   in its header: `[ @VectorType<T> me ]`. Every method gets `me` as a
-  pointer. Sections start with `+ PUBLIC:` or `+ PRIVATE:`; methods before
-  any section are public.
+  pointer. Sections start with `+ PUBLIC:`, `+ PRIVATE:` or
+  `+ ANONYMOUS:`; methods before any section are public. A `REQ [ ... ]`
+  may follow the header, described below.
 * **A `CLASS`** is a new struct with its base's fields, plus the methods
   of every `IFACE` it lists after `IMPL`. The base must be the struct each
   interface names as its receiver.
@@ -142,19 +211,54 @@ I32 main: []
   temporary, like `(((make)[]).method)[]`, works too.
 * **`PRIVATE`** methods can only be called from methods of the same class,
   whichever of its interfaces they come from.
-* **`REQ`** says what an interface needs of the class that takes it, on
-  the header line: fields, as `Type name`, which the class's struct must
-  have with exactly that type, and other interfaces it must also take.
+* **`REQ`** says what an interface needs, on the header line or on the
+  lines under it; the list may span lines. Three kinds of item:
+
+  | item | means |
+  |---|---|
+  | `I32 hp` | the class's struct has field `hp`, of exactly that type |
+  | `Named<T>` | the class taking this interface also takes `Named<T>` |
+  | `BUS IMPL SPIBus<BUS>` | the type put for `BUS` is a class taking `SPIBus<BUS>` |
 
   ```plum
-  IFACE Mortal<T>: [ @T me ] REQ [ I32 hp | Named<T> ]
+  IFACE MRAMOps<T | BUS>: [ @T me ]
+      REQ [
+          @BUS bus |
+          Named<T> |
+          BUS IMPL SPIBus<BUS>
+      ]
   ```
 
   They are checked when a class takes the interface, before any method
-  body, and a class that does not fit is told so at its `IMPL`:
+  body. A plain class is told so at its `IMPL`, an instance of a generic
+  class at the use that made it:
   ``error: `Coin` cannot IMPL Mortal<CoinData>: it has no field `hp` (I32)``.
+  A class and the struct it holds count as one: `SPIBus<FakeBus>` is met
+  by a class that takes `SPIBus<FakeBusData>`.
   `REQ` does not yet limit the bodies to what it lists: a method using a
   field it does not name still fails, as before, where it uses it.
+* **Required methods.** A method written with no body is required: the
+  interface needs it, and another interface of the same class must give
+  it, with exactly that signature -- return type, parameters, `...` and
+  `ANONYMOUS` alike. Methods with bodies may call it through `me`.
+
+  ```plum
+  IFACE SPIBus<T>: [ @T me ]
+   | U8 transfer: [ U8 value ]              ; required: no body
+   | U8 ping: []                            ; given, and built on it
+   |  | RET [ (me.transfer)[ 0 ] ]
+   |  \_
+   \_
+
+  CLASS LoopBus: LoopData IMPL [ SPIBus<LoopData> | LoopOps<LoopData> ]
+  ```
+
+  So one contract has many implementations, each chosen at compile time;
+  with `REQ [ BUS IMPL SPIBus<BUS> ]`, a driver works on any of them.
+  There is no overriding: a body is an implementation, and two bodies for
+  one method are still an error. A class that leaves a requirement unmet
+  is told so at its `IMPL`, or a generic one at the use that made it.
+  A class and the struct it holds count as one here as in `REQ`.
 * **`ANONYMOUS`** methods have no `me`: they belong to the type, not to an
   object, and are called on the type. Constructors are what they are for:
 
@@ -198,7 +302,8 @@ I32 puts: [ @C1 str ]                 ; declaration only = extern C function
 I32 printf: [ @C1 fmt | ... ]         ; varargs
 I32 counter = 0                       ; global; initialised by a constant
 I32 MASK = (1 << 4) - 1               ;   expression: literals, enum constants,
-FN I32 [ I32 | I32 ] OP = add         ;   SIZE, function names, arithmetic
+FN I32 [ I32 | I32 ] OP = add         ;   SIZE, OFFSET, function names, arithmetic
+CONST I32 LIMIT = 10                  ; read-only: .rodata, or flash
 
 I32 add: [ I32 a | I32 b ]            ; declaration + block = definition
  | RET [ a + b ]
@@ -207,7 +312,7 @@ I32 add: [ I32 a | I32 b ]            ; declaration + block = definition
 
 Structs pass and return **by value**. Recursion works. Everything lives at
 the top level — no nested functions and no modules. Methods live in an
-`IFACE`, described below.
+`IFACE`, described above.
 
 ### Function pointers
 
@@ -296,6 +401,7 @@ Unsigned integers widen with zeros, signed ones with their sign.
 | Calls | `(name)[ arg \| arg ]`, methods `(obj.name)[ arg ]` |
 | Casts | `expr AS T` |
 | Size | `SIZE [ T ]`, any type: `SIZE [ @C1 ]`, `SIZE [ Pair<I32 \| I8> ]` |
+| Offset | `OFFSET [ T.field ]`, through nested structs: `OFFSET [ Outer.in.x ]` |
 
 Member chains go as deep as needed, through pointers and unions alike:
 `n.as.bin_op.left.as.literal.as.int_lit`.
@@ -308,28 +414,32 @@ makes a `malloc` result usable as a typed pointer.
 
 ```
 prefix  ? @ - ! ~
-.
+.  {}
 AS
 * / %
 + -
 << >>
 < <= > >=
-== !=
 &
 ^
+== !=
+|
 &&
 ||
-|
 =
 ```
 
-Two consequences worth memorising:
+Three consequences worth memorising:
 
 * **Prefix binds tighter than `.`**, the opposite of C. `@s.f` groups as
   `(@s).f`, so a field's address is written `@(s.f)`. Dereference works out
   in your favour: `?p.f` is `(?p).f`, which is C's `p->f`.
+* **`&`, `^` and `|` bind tighter than comparisons and `&&`**, unlike C:
+  `x & MASK == 0` is `(x & MASK) == 0`, which is usually what is meant,
+  and `a | b && c` is `(a | b) && c`.
 * **Inside an argument list a bare `|` separates arguments.** A bitwise-or
-  there needs parentheses: `(f)[ (a | b) ]`. Everywhere else — initialisers,
+  there needs parentheses: `(f)[ (a | b) ]`. Every other operator, `&&`
+  and `||` included, works as usual. Everywhere else — initialisers,
   `IF`, `RET`, `WHILE` — `|` is the operator.
 
 ---
@@ -384,7 +494,17 @@ It catches, with a line and column:
 * `BREAK` or `CONTINUE` outside a loop
 * a TYPE, function or global defined twice, or a function declared
   twice with different signatures
-* everything about `IFACE`, `CLASS` and generics listed in their section
+* assigning to something `CONST`, a `CONST` without its value, a pointer
+  dropping `CONST` or `VOLATILE`, and a method called on a `CONST` or
+  `VOLATILE` object whose interface's `me` is not
+* `OFFSET` of a field that is not there or behind a pointer, and a
+  `STATIC_ASSERT` condition that is not an integer or `B1`
+* everything about `IFACE`, `CLASS` and generics listed in their section:
+  unmet `REQ`s and required methods, `ANONYMOUS` misuse, `PRIVATE` calls
+
+Some layout errors need the target's data layout, so codegen reports
+them: a `STATIC_ASSERT` that does not hold, `ALIGN` the target cannot
+give, and `PACKED` with `ALIGN` on one type.
 
 It deliberately does *not* flag mixing signed and unsigned, or narrowing
 an integer, since PLUM's implicit coercion already defines those.
@@ -403,9 +523,13 @@ once accepted silently.
 | `for` | `WHILE` |
 | `++` / `--` | `+= 1` |
 | `va_arg` (consuming varargs) | none — callers format first, as `src/trace.pl` does |
-| Generic functions | a method of a generic `CLASS` |
-| Interface-typed values, dynamic dispatch | none; an `IFACE` is compile time only |
-| Sum types, `Option<T>` | a generic struct with a tag, or a `B1` result plus an out-pointer |
+| Generic functions | an `ANONYMOUS` method of a generic `CLASS`: `(Conv<I32>.from)[ x ]` |
+| Interface-typed values, dynamic dispatch | a struct of function pointers, as `examples/interfaces.pl`; at compile time, required methods and `REQ` |
+| Sum types, pattern matching | a generic class with a tag: `Option` and `Result` in `examples/` |
+| Struct and array constants, `CONST Pin LED = [ ... ]` | a function returning the value; array elements assigned one by one |
+| `SECTION`, `USED`, `WEAK`, `NORETURN`, `INLINE` | `--data-sections` and a linker script, as `examples/stm32g071/` does |
+| `&=` `\|=` `^=` `<<=` `>>=` | `x = x & m` |
+| Compile-time evaluation (`COMPTIME`) | `STATIC_ASSERT` for checks; tables computed at start-up |
 | Modules, namespaces | none |
 | Closures, exceptions | none |
 
@@ -417,17 +541,20 @@ Calling a variadic function works; only *consuming* varargs is absent.
 ## What it is good for
 
 The shape PLUM fits is a systems program built from tagged unions and
-explicit memory, calling out to C for whatever it does not implement.
+explicit memory, calling out to C for whatever it does not implement --
+and, with `VOLATILE`, `PACKED`, `ALIGN` and `--target`, firmware.
 
-That is not a guess. It is the load the language already carries: a
-5188-line self-hosting compiler with a self-referential AST, arena
-allocation, hash maps and a complete LLVM binding.
+That is not a guess. It is the load the language already carries: an
+11,500-line self-hosting compiler with a self-referential AST, arena
+allocation, hash maps, a complete LLVM binding and a language server;
+and STM32 firmware, startup code included, with no C at all
+(`examples/stm32g071/`).
 
 **Suits it:** interpreters, compilers, parsers, serialisers, CLI tools,
-data-structure libraries, anything driving a C API.
+data-structure libraries, drivers and firmware, anything driving a C API.
 
-**Does not yet:** heavy numerics, because every local lives in memory and
-the IR is unoptimised (see below).
+**Does not yet:** large code bases, which want modules; debugging, which
+wants debug info (see below).
 
 ---
 
@@ -435,23 +562,33 @@ the IR is unoptimised (see below).
 
 ### The language
 
-* **Sum types** — `ENUM Option<T>` with payloads, which is what the
-  `get` in `examples/vector.pl` returns. Generics are in place, so this is
-  the tag, the payload union and a way to take them apart.
+`examples/future.pl` sketches the direction; in rough order:
+
+* **Attributes** — `SECTION`, `USED`, `WEAK`, `NORETURN`, `INLINE` — and
+  **struct and array initialisers**: with them a vector table is written
+  as data, and `examples/stm32g071/startup.pl` loses its last hacks.
+* **Generic functions**, with `REQ` on their type parameters.
+* **`COMPTIME`**: ordinary PLUM run by the compiler, for tables.
+* **A real module system**, `!USES <gpio.pl> AS gpio`, so `!USES` stops
+  being textual inclusion.
 * **The rest of `lib/` onto generics.** `lib/vector.pl` is a typed
   `Vector<T>` and `lib/string.pl` a `String` class, and the compiler uses
   both; `map.pl` (still `@ABYSS` values) and `stack.pl` are next.
 * **`SWITCH`** — ergonomics for the dispatch sites now written as `ELIF`
   chains.
-* **A real module system**, so `!USES` stops being textual inclusion.
+
+Deliberately not planned: garbage collection, a borrow checker,
+exceptions, runtime interfaces, and sum types with pattern matching.
 
 ### And the compiler itself
 
-* The emitted IR is unoptimised, with every local in memory. Running
-  `mem2reg` alone would transform it.
+* `-O0` is the default, with every local in memory; `-O1` to `-O3` run
+  LLVM's standard pipeline. `--emit=OBJ` writes machine code, for any
+  `--target`, but linking is still the system linker's job.
 * Diagnostics show the file, line, column and the source line with a
   caret, on stderr. The parser still stops at its first error; the type
-  checker reports them all.
+  checker reports them all. `plc --lsp` serves them to an editor, with
+  go to definition and hover.
 * No incremental compilation, no debug info.
 * The C compiler is frozen, and PLUM has since diverged from it (literal
   widths, truth values, generics and the rest), so the two no longer emit

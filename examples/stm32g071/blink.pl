@@ -1,27 +1,38 @@
 !USES <startup.pl>
 
-U32 RCC_IOPENR  = 0x40021034     ; I/O port clocks, bit 0 = GPIOA
-U32 GPIOA_MODER = 0x50000000     ; two bits of mode per pin
-U32 GPIOA_ODR   = 0x50000014     ; output levels
+; The registers, as C would write them:
+;   volatile uint32_t *const RCC_IOPENR = (volatile uint32_t *)0x40021034;
+; CONST: the address never changes, so -O2 folds it into the code.
+; VOLATILE: every read and write reaches the hardware, in order.
 
+TYPE GPIORegs: STRUCT
+ | U32 MODER      ; two bits of mode per pin
+ | U32 OTYPER
+ | U32 OSPEEDR
+ | U32 PUPDR
+ | U32 IDR
+ | U32 ODR        ; output levels
+ \_
+
+CONST @VOLATILE U32      RCC_IOPENR = 0x40021034 AS @VOLATILE U32    ; bit 0: GPIOA's clock
+CONST @VOLATILE GPIORegs GPIOA      = 0x50000000 AS @VOLATILE GPIORegs
+
+; VOLATILE, or the optimiser sees a loop that does nothing and drops it
 ABYSS delay: [ U32 n ]
- | U32 i = 0
+ | VOLATILE U32 i = 0
  | WHILE [ i < n ]
  |  | i += 1
  |  \_
  \_
 
 I32 main: []
- | @U32 iopenr = RCC_IOPENR AS @U32
- | @U32 moder = GPIOA_MODER AS @U32
- | @U32 odr = GPIOA_ODR AS @U32
+ | ?RCC_IOPENR = ?RCC_IOPENR | 1
  |
- | ?iopenr = ?iopenr | 1
- |
- | ?moder = (?moder & ~(3 << 10)) | (1 << 10)
+ | ; PA5 resets to analog (11); output is 01
+ | GPIOA.MODER = (GPIOA.MODER & ~(3 << 10)) | (1 << 10)
  |
  | LOOP
- |  | ?odr = ?odr ^ (1 << 5)
- |  | (delay)[ 200000 ]
+ |  | GPIOA.ODR = GPIOA.ODR ^ (1 << 5)
+ |  | (delay)[ 400000 ]
  |  \_
  \_

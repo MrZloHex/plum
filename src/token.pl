@@ -48,6 +48,10 @@ TYPE TokenType: ENUM
  | TOK_LBRACE
  | TOK_RBRACE
  | TOK_FN
+ | TOK_CONST
+ | TOK_VOLATILE
+ | TOK_OFFSET
+ | TOK_STATIC_ASSERT
  \_
 
 TYPE Location: STRUCT
@@ -148,6 +152,14 @@ TYPE Token: STRUCT
  |  | RET [ "RBRACE" ]
  | ELIF [ t == TOK_FN ]
  |  | RET [ "FN" ]
+ | ELIF [ t == TOK_CONST ]
+ |  | RET [ "CONST" ]
+ | ELIF [ t == TOK_VOLATILE ]
+ |  | RET [ "VOLATILE" ]
+ | ELIF [ t == TOK_OFFSET ]
+ |  | RET [ "OFFSET" ]
+ | ELIF [ t == TOK_STATIC_ASSERT ]
+ |  | RET [ "STATIC_ASSERT" ]
  | ELSE
  |  | RET [ "SIZE" ]
  |  \_

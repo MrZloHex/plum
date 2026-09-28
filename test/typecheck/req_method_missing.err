@@ -1,0 +1,2 @@
+error: `C` cannot IMPL F: it needs `I32 g: [ ]`, and no interface of `C` gives it
+ --> req_method_missing.pl:9:19

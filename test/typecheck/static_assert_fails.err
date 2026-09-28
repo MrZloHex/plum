@@ -1,0 +1,2 @@
+error: STATIC_ASSERT does not hold: "b must be 4-aligned"
+ --> static_assert_fails.pl:7:1

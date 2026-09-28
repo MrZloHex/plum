@@ -11,10 +11,10 @@ CPU      = cortex-m0plus
 
 all: blink.bin
 
-# -O0: PLUM has no VOLATILE yet, so an optimiser would drop register writes.
+# -O2 is safe: the registers are VOLATILE, so every access stays.
 # --data-sections: every global in its own section, for the vector table.
 blink.o: blink.pl startup.pl $(PLC)
-	$(PLC) --emit=OBJ --target=$(TRIPLE) --cpu=$(CPU) -O0 --data-sections $< -o $@
+	$(PLC) --emit=OBJ --target=$(TRIPLE) --cpu=$(CPU) -O2 --data-sections $< -o $@
 
 blink.elf: blink.o g071.ld
 	arm-none-eabi-ld --no-warn-rwx-segments -T g071.ld blink.o -o $@

@@ -1,0 +1,2 @@
+error: @VOLATILE U32 to @U32 drops VOLATILE; write AS @U32 if that is meant
+ --> drop_volatile.pl:4:4
