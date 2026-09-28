@@ -839,8 +839,11 @@ ABYSS inst_class: [ @Generics g | @ASTNode at | @ASTNode cls | @C1 name | @ASTNo
  \_
 
 ABYSS instantiate: [ @Generics g | @ASTNode at | @C1 tmpl | @C1 name | @ASTNode args ]
+ | ; a template that instantiates itself with a bigger argument never
+ | ; ends; its names grow with every round, which gives it away long
+ | ; before the count does -- and the work is quadratic in that length
  | g.count += 1
- | IF [ g.count > 10000 ]
+ | IF [ g.count > 10000 || (strlen)[ name ] > 1000 ]
  |  | (gn_error)[ at | "too many instances of `%s`; is it generic in itself, as in X<@T> inside X<T>?%s" | tmpl | "" ]
  |  \_
  | (map_put)[ @(g.done) | name | at AS @ABYSS ]

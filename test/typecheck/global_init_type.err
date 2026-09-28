@@ -1,0 +1,2 @@
+error: cannot initialise P from I32
+ --> global_init_type.pl:5:1

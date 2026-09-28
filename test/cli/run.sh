@@ -129,6 +129,10 @@ else
     echo "*** want 2 volatile stores and a constant K:"; echo "$ir" | grep -E 'store|@K' | sed 's/^/                     /'; fail=$((fail+1))
 fi
 
+# Limits instead of crashes: an expression nested past 1000 levels, and a
+# language server fed a message no editor sends.
+python3 -c "print('I32 main: []\n | RET [ ' + '('*2000 + '1' + ')'*2000 + ' ]\n \\\\_')" > "$TMP/deep.pl"
+expect deep-nesting      1 "nests more than 1000 deep"     -- "$TMP/deep.pl" -o /dev/null
 # --emit=INDEX, what --lsp runs: diagnostics as E lines and names as R
 # lines, all on stdout, tab-separated; with --stdin the text comes from
 # stdin, and the file named need not exist.
@@ -175,6 +179,15 @@ lsp_check lsp-diagnostic '"diagnostics":[{"range":{"start":{"line":2,"character"
 lsp_check lsp-definition '"id":2,"result":{"uri":"file://'"$TMP"'/inc.pl","range":{"start":{"line":0,"character":4},"end":{"line":0,"character":8}}}'
 lsp_check lsp-hover      '"id":"h","result":{"contents":{"kind":"plaintext","value":"I32 fine"}'
 lsp_check lsp-shutdown   '"id":3,"result":null'
+
+# the server survives a message nested deeper than it will parse
+printf '%-20s ' "lsp-limits"
+lim=$( { printf 'Content-Length: 20002\r\n\r\n'; python3 -c "print('['*10001 + ']'*10001, end='')"; frame '{"jsonrpc":"2.0","id":7,"method":"shutdown"}'; frame '{"jsonrpc":"2.0","method":"exit"}'; } | "$PLC" --lsp )
+if grep -qF -- '-32700' <<<"$lim" && grep -qF -- '"id":7,"result":null' <<<"$lim"; then
+    echo ok; pass=$((pass+1))
+else
+    echo "*** deep JSON: want a parse error, then an answered shutdown"; fail=$((fail+1))
+fi
 
 echo
 echo "passed $pass, failed $fail"

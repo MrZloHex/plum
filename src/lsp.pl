@@ -112,7 +112,15 @@ I32 lsp_getc: []
  |  |  \_
  |  \_
  |
+ | ; no editor sends a message this large; reading one would only fail
+ | IF [ want > 67108864 ]
+ |  | (dprintf)[ 2 | "plc --lsp: a %ld-byte message is past the 64 MB limit; stopping\n" | want ]
+ |  | RET [ NULL ]
+ |  \_
  | @C1 body = (malloc)[ (want AS U64) + 1 ] AS @C1
+ | IF [ body == NULL ]
+ |  | RET [ NULL ]
+ |  \_
  | I64 i = 0
  | WHILE [ i < want ]
  |  | I32 c = (lsp_getc)[]
@@ -833,6 +841,22 @@ I32 lsp_main: []
  |  |  | BREAK
  |  |  \_
  |  \_
+ |
+ | ; everything goes back, so a leak checker sees only real leaks
+ | U64 i = 0
+ | WHILE [ i < (ls.docs.size)[] ]
+ |  | @Doc d = ?((ls.docs.at)[ i ])
+ |  | (lsp_drop_facts)[ @(d.facts) ]
+ |  | (d.facts.deinit)[]
+ |  | (d.text.deinit)[]
+ |  | (free)[ d.uri AS @ABYSS ]
+ |  | (free)[ d AS @ABYSS ]
+ |  | i += 1
+ |  \_
+ | (ls.docs.deinit)[]
+ | (map_deinit)[ @(ls.interned) ]
+ | (map_deinit)[ @(ls.canon) ]
+ | (arena_destroy)[ @(ls.arena) ]
  |
  | ; the protocol's convention: exit without shutdown is an error
  | IF [ ls.shut ]

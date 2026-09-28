@@ -1,0 +1,2 @@
+error: `é` is not part of PLUM
+ --> non_ascii.pl:3:8

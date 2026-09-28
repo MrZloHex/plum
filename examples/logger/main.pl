@@ -106,7 +106,30 @@ Option<I32> find_command: [ @Command table | I32 count | @C1 name ]
 
 ; --- the program ---------------------------------------------------------------
 
+
+TYPE FooType: STRUCT
+ | I32 x
+ \_
+
+IFACE FooFace: [ @FooType me ]
+ + PUBLIC:
+ | ABYSS bar: []
+ |  | (printf)[ "Foo: %d\n" | me.x ]
+ |  \_
+ + ANONYMOUS:
+ | ABYSS baz: []
+ |  | (printf)[ "No me anon\n" ]
+ |  \_
+ \_
+
+CLASS Foo: FooType IMPL [ FooFace ]
+
 I32 main: []
+;| Foo f
+;| f.x = 32
+;| FN ABYSS [] fn = f.bar
+;| FN ABYSS [] fn = Foo.baz
+;| (fn)[]
  | ; the driver never changes, only the chip does: it can be CONST
  | CONST SensorDriver sensor = (SensorDriver.on)[ (sensor_regs)[] ]
  |

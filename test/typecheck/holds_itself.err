@@ -1,0 +1,2 @@
+error: `Node` holds itself by value, through `next`, and would never end; a pointer, @Node, would
+ --> holds_itself.pl:4:9

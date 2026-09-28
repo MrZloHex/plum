@@ -17,6 +17,7 @@ TYPE Parser: STRUCT
  | I32   indent
  | B1    in_cast      ; parsing the type after AS
  | B1    in_list      ; in [ a | b ]: a bare `|` separates, it is no operator
+ | I32   depth        ; how deep the expression being parsed nests
  \_
 
 ABYSS parser_next: [ @Parser pr ]
@@ -1051,6 +1052,12 @@ I32 binop_kind_of: [ Token op_tok ]
  \_
 
 @ASTNode parse_expression: [ @Parser pr | I32 min_prec ]
+ | ; each level of nesting is a level of this recursion, and of the
+ | ; checker's and codegen's after it: past this, the stack would give out
+ | pr.depth += 1
+ | IF [ pr.depth > 1000 ]
+ |  | (diag_fatal)[ pr.curr.loc | "this expression nests more than %s deep%s" | "1000" | "" ]
+ |  \_
  | @ASTNode lhs = 0
  |
  | I32 pfx = (prefix_precendence)[ pr ]
@@ -1164,6 +1171,7 @@ I32 binop_kind_of: [ Token op_tok ]
  |  | lhs = node
  |  \_
  |
+ | pr.depth -= 1
  | RET [ lhs ]
  \_
 
@@ -1741,6 +1749,7 @@ ABYSS parse_file: [ @AST ast | @String source | @C1 name ]
  | parser.indent = 1
  | parser.in_cast = FALSE
  | parser.in_list = FALSE
+ | parser.depth = 0
  | (lexer_init)[ @(parser.lexer) | source ]
  | (lexer_set_file)[ @(parser.lexer) | name ]
  |

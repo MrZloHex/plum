@@ -40,6 +40,13 @@ STATIC_ASSERT [ OFFSET [ Outer.in.b ] == 8 | "Inner is 4-aligned, and b 4 into i
 STATIC_ASSERT [ SIZE [ Block ] == 32 && OFFSET [ Holder.b ] == 32 && SIZE [ Holder ] == 64 ]
 STATIC_ASSERT [ OFFSET [ Bytes.raw ] == 0 ]
 
+; a union is as aligned as its most aligned member, and rounded up to it
+TYPE Mixed: UNION
+ | U8  bytes{9}
+ | U64 word
+ \_
+STATIC_ASSERT [ SIZE [ Mixed ] == 16 | "9 bytes, rounded up to the U64's 8" ]
+
 Header saved
 
 I32 main: []

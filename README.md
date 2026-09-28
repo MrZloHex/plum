@@ -47,7 +47,7 @@ LLVM, so no C is compiled for `plc` itself.
 make help               # every target
 make test               # 50 programs must print exactly their .out files,
                         #   and the driver must fail properly on bad input
-make typecheck          # 91 programs that must be rejected, each for its .err reason
+make typecheck          # 100 programs that must be rejected, each for its .err reason
 make fuzz               # thousands of mutated programs: plc must never crash
 make bootstrap          # the frozen C compiler -> bin/plc-bootstrap
 make selfhost           # stage 1 -> 2 -> 3, and check the fixed point

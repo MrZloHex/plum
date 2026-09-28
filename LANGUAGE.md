@@ -493,7 +493,12 @@ It catches, with a line and column:
   (`main` is exempt and returns 0, as in C)
 * `BREAK` or `CONTINUE` outside a loop
 * a TYPE, function or global defined twice, or a function declared
-  twice with different signatures
+  twice with different signatures; a field, parameter or enum constant
+  named twice
+* an alias of itself (`TYPE A: B` with `TYPE B: A`), and a struct that
+  holds itself by value, directly or through another
+* an integer divided by a literal `0`
+* global initialisers, checked as a local's are
 * assigning to something `CONST`, a `CONST` without its value, a pointer
   dropping `CONST` or `VOLATILE`, and a method called on a `CONST` or
   `VOLATILE` object whose interface's `me` is not

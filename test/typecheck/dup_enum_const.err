@@ -1,0 +1,2 @@
+error: enum constant `Y` is defined twice
+ --> dup_enum_const.pl:7:4

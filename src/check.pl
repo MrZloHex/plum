@@ -67,6 +67,7 @@ TYPE Checker: STRUCT
  | I32       errors
  | @Index    ix           ; where resolved names are noted, or 0
  | B1        anon         ; in an ANONYMOUS method, which has no `me`
+ | I32       depth        ; aliases being resolved inside one another
  \_
 
 ; --- the index ------------------------------------------------------------
@@ -337,7 +338,13 @@ Type ty_resolve: [ @Checker c | @ASTNode tn ]
  |  |  | ELIF [ td.as.type_def.kind == TD_RECORD ]
  |  |  |  | t = (ty_make)[ TY_RECORD | 0 | 0 | FALSE ]
  |  |  | ELSE
- |  |  |  | t = (ty_resolve)[ c | td.as.type_def.tdef ]
+ |  |  |  | ; a cycle of aliases is reported by ck_type_cycles; never follow
+ |  |  |  | ; one down to the bottom of the stack
+ |  |  |  | c.depth += 1
+ |  |  |  | IF [ c.depth < 64 ]
+ |  |  |  |  | t = (ty_resolve)[ c | td.as.type_def.tdef ]
+ |  |  |  |  \_
+ |  |  |  | c.depth -= 1
  |  |  |  \_
  |  |  | ; an alias of a struct is that struct: keep the definition that
  |  |  | ; has the fields, and the name its methods are filed under
@@ -941,6 +948,14 @@ Type ck_binop: [ @Checker c | @ASTNode n ]
  | Type lt = (ck_value)[ c | n.as.bin_op.left ]
  | Type rt = (ck_value)[ c | n.as.bin_op.right ]
  |
+ | ; an integer divided by a literal 0 is undefined; LLVM makes it poison
+ | IF [ k == BOT_DIV || k == BOT_MOD ]
+ |  | @ASTNode dz = (ck_strip)[ n.as.bin_op.right ]
+ |  | IF [ dz != 0 && dz.kind == NT_LITERAL && dz.as.literal.kind == LT_INTEGER && dz.as.literal.as.int_lit == 0 ]
+ |  |  | (ck_error)[ c | n | "division by zero" ]
+ |  |  \_
+ |  \_
+ |
  | ; x{i}: x an array or a pointer, i an integer
  | IF [ k == BOT_INDEX ]
  |  | IF [ rt.kind != TY_UNKNOWN && !(ty_is_integral)[ rt ] ]
@@ -1540,6 +1555,9 @@ ABYSS ck_fn: [ @Checker c | @ASTNode def ]
  | WHILE [ p != 0 ]
  |  | IF [ !(p.as.parametre.vaarg) ]
  |  |  | @C1 pn = p.as.parametre.ident.as.ident
+ |  |  | IF [ (ck_declared_here)[ c | pn ] ]
+ |  |  |  | (ck_error2)[ c | p.as.parametre.ident | "parameter `%s` is named twice%s" | pn | "" ]
+ |  |  |  \_
  |  |  | (ck_define)[ c | pn | (ty_resolve)[ c | p.as.parametre.type ] | p ]
  |  |  \_
  |  | p = p.as.parametre.next_param
@@ -1569,6 +1587,7 @@ ABYSS check_init: [ @Checker c | @Meta m ]
  | c.loops = 0
  | c.ix = 0
  | c.anon = FALSE
+ | c.depth = 0
  | c.ret_type = (ty_void)[]
  | RET
  \_
@@ -1638,10 +1657,131 @@ ABYSS ck_duplicates: [ @Checker c | @ASTNode root ]
  | RET
  \_
 
+; --- types that cannot be -------------------------------------------------
+;
+; An alias of itself, through however many others; a struct holding
+; itself by value, which would be infinitely large; a field or an enum
+; constant named twice. Pointers are what break a cycle, so they are
+; where the search stops.
+
+; The type definition a declared type names, through aliases that are
+; not pointers; 0 for a base type, a pointer, or an unknown name.
+@ASTNode ck_held_def: [ @Checker c | @ASTNode tn ]
+ | I32 hops = 0
+ | WHILE [ tn != 0 && tn.as.type.kind == TT_USER_TYPE && tn.as.type.ptrs == 0 && hops < 64 ]
+ |  | @ABYSS d = 0
+ |  | IF [ (map_get)[ @(c.meta.types) | tn.as.type.type.as.ident | @d AS @@ABYSS ] != 1 ]
+ |  |  | RET [ NULL ]
+ |  |  \_
+ |  | @ASTNode td = d AS @ASTNode
+ |  | IF [ td.as.type_def.kind != TD_ALIAS ]
+ |  |  | RET [ td ]
+ |  |  \_
+ |  | tn = td.as.type_def.tdef
+ |  | hops += 1
+ |  \_
+ | RET [ NULL ]
+ \_
+
+; Does the record `td` hold `target` by value, anywhere inside it?
+B1 ck_holds: [ @Checker c | @ASTNode td | @ASTNode target | I32 depth ]
+ | IF [ td == 0 || td.as.type_def.kind != TD_RECORD || depth > 32 ]
+ |  | RET [ FALSE ]
+ |  \_
+ | @ASTNode f = td.as.type_def.tdef.as.record.fields
+ | WHILE [ f != 0 ]
+ |  | @ASTNode inner = (ck_held_def)[ c | f.as.rcrd_flds.type ]
+ |  | IF [ inner == target ]
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | IF [ inner != 0 && (ck_holds)[ c | inner | target | depth + 1 ] ]
+ |  |  | RET [ TRUE ]
+ |  |  \_
+ |  | f = f.as.rcrd_flds.next_field
+ |  \_
+ | RET [ FALSE ]
+ \_
+
+ABYSS ck_type_cycles: [ @Checker c | @ASTNode root ]
+ | Map consts
+ | (map_init)[ @consts | 128 ]
+ | @ABYSS seen = 0
+ |
+ | @ASTNode ts = root.as.tu.tu_stmt
+ | WHILE [ ts != 0 ]
+ |  | IF [ ts.as.tu_stmt.kind == TUST_TYPE_DEF ]
+ |  |  | @ASTNode td = ts.as.tu_stmt.tu_stmt
+ |  |  | @C1 nm = td.as.type_def.ident.as.ident
+ |  |  | I32 tk = td.as.type_def.kind
+ |  |  |
+ |  |  | IF [ tk == TD_ALIAS ]
+ |  |  |  | ; follow the chain, pointers and all: TYPE A: @A never ends either
+ |  |  |  | @ASTNode tn = td.as.type_def.tdef
+ |  |  |  | I32 hops = 0
+ |  |  |  | WHILE [ tn != 0 && tn.as.type.kind == TT_USER_TYPE && hops < 64 ]
+ |  |  |  |  | @ABYSS nd = 0
+ |  |  |  |  | IF [ (map_get)[ @(c.meta.types) | tn.as.type.type.as.ident | @nd AS @@ABYSS ] != 1 ]
+ |  |  |  |  |  | BREAK
+ |  |  |  |  |  \_
+ |  |  |  |  | @ASTNode next = nd AS @ASTNode
+ |  |  |  |  | IF [ next == td ]
+ |  |  |  |  |  | (ck_error2)[ c | td.as.type_def.ident | "`%s` is an alias of itself%s" | nm | "" ]
+ |  |  |  |  |  | BREAK
+ |  |  |  |  |  \_
+ |  |  |  |  | IF [ next.as.type_def.kind != TD_ALIAS ]
+ |  |  |  |  |  | BREAK
+ |  |  |  |  |  \_
+ |  |  |  |  | tn = next.as.type_def.tdef
+ |  |  |  |  | hops += 1
+ |  |  |  |  \_
+ |  |  |  \_
+ |  |  |
+ |  |  | IF [ tk == TD_RECORD ]
+ |  |  |  | @ASTNode f = td.as.type_def.tdef.as.record.fields
+ |  |  |  | WHILE [ f != 0 ]
+ |  |  |  |  | @C1 fnm = f.as.rcrd_flds.ident.as.ident
+ |  |  |  |  | ; named twice: against every field before it
+ |  |  |  |  | @ASTNode g = td.as.type_def.tdef.as.record.fields
+ |  |  |  |  | WHILE [ g != f ]
+ |  |  |  |  |  | IF [ (strcmp)[ g.as.rcrd_flds.ident.as.ident | fnm ] == 0 ]
+ |  |  |  |  |  |  | (ck_error2)[ c | f.as.rcrd_flds.ident | "`%s` has two fields named `%s`" | nm | fnm ]
+ |  |  |  |  |  |  | BREAK
+ |  |  |  |  |  |  \_
+ |  |  |  |  |  | g = g.as.rcrd_flds.next_field
+ |  |  |  |  |  \_
+ |  |  |  |  | ; held by value: its own type, or one that holds it
+ |  |  |  |  | @ASTNode inner = (ck_held_def)[ c | f.as.rcrd_flds.type ]
+ |  |  |  |  | IF [ inner == td || (inner != 0 && (ck_holds)[ c | inner | td | 0 ]) ]
+ |  |  |  |  |  | C1 msg{300}
+ |  |  |  |  |  | (snprintf)[ msg | 300 | "`%s` holds itself by value, through `%s`, and would never end; a pointer, @%s, would" | nm | fnm | nm ]
+ |  |  |  |  |  | (ck_error)[ c | f.as.rcrd_flds.ident | msg ]
+ |  |  |  |  |  \_
+ |  |  |  |  | f = f.as.rcrd_flds.next_field
+ |  |  |  |  \_
+ |  |  |  \_
+ |  |  |
+ |  |  | IF [ tk == TD_ENUM ]
+ |  |  |  | @ASTNode e = td.as.type_def.tdef.as.enumeration.fields
+ |  |  |  | WHILE [ e != 0 ]
+ |  |  |  |  | @C1 en = e.as.enum_flds.ident.as.ident
+ |  |  |  |  | IF [ (map_get)[ @consts | en | @seen ] == 1 ]
+ |  |  |  |  |  | (ck_error2)[ c | e.as.enum_flds.ident | "enum constant `%s` is defined twice%s" | en | "" ]
+ |  |  |  |  |  \_
+ |  |  |  |  | (map_put)[ @consts | en | NULL ]
+ |  |  |  |  | e = e.as.enum_flds.next_field
+ |  |  |  |  \_
+ |  |  |  \_
+ |  |  \_
+ |  | ts = ts.as.tu_stmt.next_tu_stmt
+ |  \_
+ | (map_deinit)[ @consts ]
+ \_
+
 B1 check_unit: [ @Checker c | @ASTNode root ]
  | c.tu = root
  | (ck_push)[ c ]
  | (ck_duplicates)[ c | root ]
+ | (ck_type_cycles)[ c | root ]
  |
  | ; globals first, so every function can see them
  | @ASTNode ts = root.as.tu.tu_stmt
@@ -1655,6 +1795,18 @@ B1 check_unit: [ @Checker c | @ASTNode root ]
  |  |  |  \_
  |  |  | IF [ d.as.var_decl.init == 0 && ((quals_at)[ (ty_resolve)[ c | d.as.var_decl.type ].quals | 0 ] & QUAL_CONST) != 0 ]
  |  |  |  | (ck_error2)[ c | d | "`%s` is CONST, so it needs its value where it is declared%s" | nm | "" ]
+ |  |  |  \_
+ |  |  | ; the initialiser is checked like a local's; whether it is constant
+ |  |  | ; enough is for codegen, which has to fold it
+ |  |  | IF [ d.as.var_decl.init != 0 ]
+ |  |  |  | Type git = (ck_expr)[ c | d.as.var_decl.init ]
+ |  |  |  | IF [ !(ty_assignable)[ c | gt | git ] ]
+ |  |  |  |  | @C1 sd = (ty_str)[ gt ]
+ |  |  |  |  | @C1 si = (ty_str)[ git ]
+ |  |  |  |  | (ck_error2)[ c | d | "cannot initialise %s from %s" | sd | si ]
+ |  |  |  | ELSE
+ |  |  |  |  | (ck_keeps_quals)[ c | d | gt | git ]
+ |  |  |  |  \_
  |  |  |  \_
  |  |  | (ck_define)[ c | nm | gt | d ]
  |  |  \_

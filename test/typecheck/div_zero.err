@@ -1,0 +1,2 @@
+error: division by zero
+ --> div_zero.pl:4:12

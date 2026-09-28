@@ -1,0 +1,2 @@
+error: `P` has two fields named `x`
+ --> dup_field.pl:4:8

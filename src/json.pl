@@ -38,6 +38,7 @@ TYPE JParser: STRUCT
  | U64    len
  | @Arena arena
  | B1     bad
+ | I32    depth       ; arrays and objects open around this point
  \_
 
 ; --- reading --------------------------------------------------------------
@@ -196,6 +197,12 @@ U64 utf8_put: [ @C1 out | I32 cp ]
  | C1 c = (jp_peek)[ p ]
  |
  | IF [ c == '{' || c == '[' ]
+ |  | ; each level is a level of recursion here: past this, not JSON we take
+ |  | p.depth += 1
+ |  | IF [ p.depth > 512 ]
+ |  |  | p.bad = TRUE
+ |  |  | RET [ n ]
+ |  |  \_
  |  | C1 close = ']'
  |  | n.kind = J_ARR
  |  | IF [ c == '{' ]
@@ -245,6 +252,7 @@ U64 utf8_put: [ @C1 out | I32 cp ]
  |  |  |  \_
  |  |  \_
  |  | n.raw_len = p.pos - start
+ |  | p.depth -= 1
  |  | RET [ n ]
  |  \_
  |
@@ -294,6 +302,7 @@ U64 utf8_put: [ @C1 out | I32 cp ]
  | p.len = len
  | p.arena = a
  | p.bad = FALSE
+ | p.depth = 0
  | @JNode root = (jp_value)[ @p ]
  | IF [ p.bad ]
  |  | RET [ NULL ]
@@ -335,6 +344,37 @@ I64 json_int: [ @JNode n | I64 dflt ]
 
 ; --- writing --------------------------------------------------------------
 
+; How many bytes the UTF-8 sequence at s takes, or 0 when it is not one:
+; no overlong forms, no UTF-16 surrogates, nothing past U+10FFFF.
+U64 utf8_len: [ @C1 s ]
+ | I32 b = (s{0} AS I32) & 255
+ | I32 b1 = (s{1} AS I32) & 255
+ | U64 n = 0
+ | IF [ b >= 194 && b < 224 ]
+ |  | n = 2
+ | ELIF [ b >= 224 && b < 240 ]
+ |  | n = 3
+ |  | IF [ (b == 224 && b1 < 160) || (b == 237 && b1 >= 160) ]
+ |  |  | RET [ 0 ]
+ |  |  \_
+ | ELIF [ b >= 240 && b < 245 ]
+ |  | n = 4
+ |  | IF [ (b == 240 && b1 < 144) || (b == 244 && b1 >= 144) ]
+ |  |  | RET [ 0 ]
+ |  |  \_
+ | ELSE
+ |  | RET [ 0 ]
+ |  \_
+ | U64 k = 1
+ | WHILE [ k < n ]
+ |  | IF [ ((s{k} AS I32) & 192) != 128 ]
+ |  |  | RET [ 0 ]
+ |  |  \_
+ |  | k += 1
+ |  \_
+ | RET [ n ]
+ \_
+
 ABYSS jw_str: [ @String o | @C1 s ]
  | (o.push)[ '"' ]
  | U64 i = 0
@@ -354,8 +394,19 @@ ABYSS jw_str: [ @String o | @C1 s ]
  |  |  | C1 buf{8}
  |  |  | (snprintf)[ buf | 8 | "\\u%04x" | c AS I32 ]
  |  |  | (o.append)[ buf ]
- |  | ELSE
+ |  | ELIF [ c >= '\0' ]
  |  |  | (o.push)[ c ]
+ |  | ELSE
+ |  |  | ; JSON is UTF-8: what is not becomes U+FFFD, so no byte from a
+ |  |  | ; file name or a string literal can break the message
+ |  |  | U64 n = (utf8_len)[ s + i ]
+ |  |  | IF [ n == 0 ]
+ |  |  |  | (o.append)[ "\\ufffd" ]
+ |  |  |  | n = 1
+ |  |  | ELSE
+ |  |  |  | (jw_raw)[ o | s + i | n ]
+ |  |  |  \_
+ |  |  | i += n - 1
  |  |  \_
  |  | i += 1
  |  \_

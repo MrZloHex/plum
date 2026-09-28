@@ -124,6 +124,33 @@ B1 pp_first_visit: [ @C1 path ]
 I32 preproc_internal: [ @String src | I32 depth | @C1 dir | @C1 name ]
 
 ; `at` is where the directive was, for diagnostics.
+; Bytes 1 and 2 mark where an included file begins and ends; one in a
+; file itself would throw every location after it. 0, or -1 once said.
+I32 pp_no_markers: [ @String s | @C1 name ]
+ | Location l
+ | l.file = name
+ | l.line = 1
+ | l.col = 1
+ | U64 i = 0
+ | WHILE [ i < s.size ]
+ |  | C1 b = s.data{i}
+ |  | IF [ b == '\x01' || b == '\x02' ]
+ |  |  | C1 code{8}
+ |  |  | (snprintf)[ code | 8 | "\\x%02x" | b AS I32 ]
+ |  |  | (diag_at2)[ l | "a control character, `%s`, is not part of PLUM%s" | code | "" ]
+ |  |  | RET [ -1 ]
+ |  |  \_
+ |  | IF [ b == '\n' ]
+ |  |  | l.line += 1
+ |  |  | l.col = 1
+ |  | ELSE
+ |  |  | l.col += 1
+ |  |  \_
+ |  | i += 1
+ |  \_
+ | RET [ 0 ]
+ \_
+
 I32 insert_file: [ @String dst | U64 at | @C1 path | I32 depth | @C1 dir | Location where ]
  | IF [ depth > MAX_INCLUDE_DEPTH ]
  |  | (diag_at2)[ where | "USES nested more than %s deep, including `%s`; do files include each other?" | "32" | path ]
@@ -160,6 +187,11 @@ I32 insert_file: [ @String dst | U64 at | @C1 path | I32 depth | @C1 dir | Locat
  | String buf
  | (buf.init_file)[ f ]
  | (fclose)[ f ]
+ | IF [ (pp_no_markers)[ @buf | shown ] != 0 ]
+ |  | (free)[ full AS @ABYSS ]
+ |  | (buf.deinit)[]
+ |  | RET [ -1 ]
+ |  \_
  |
  | @C1 sub_dir = (dir_of)[ full ]
  | (free)[ full AS @ABYSS ]
@@ -290,6 +322,11 @@ I32 preprocess_named: [ @String src | @C1 path | @C1 name ]
  |
  | @C1 dir = (dir_of)[ path ]
  | IF [ dir == 0 ]
+ |  | RET [ -1 ]
+ |  \_
+ |
+ | IF [ (pp_no_markers)[ src | name ] != 0 ]
+ |  | (free)[ dir AS @ABYSS ]
  |  | RET [ -1 ]
  |  \_
  |

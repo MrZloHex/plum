@@ -455,9 +455,31 @@ Token lex_token: [ @Lexer lx ]
  |  |  | RET [ (make_tok)[ TOK_OPERATOR | (lx.src.substr)[ start | len ] | line | col | -1 ] ]
  |  |  \_
  |  |
- |  | @C1 ch = (malloc)[ 2 ] AS @C1
- |  | ch{0} = c
- |  | ch{1} = '\0'
- |  | (diag_fatal)[ (lex_here)[ lx ] | "`%s` is not part of PLUM%s" | ch | "" ]
+ |  | ; the whole character, when UTF-8 takes several bytes for it; a
+ |  | ; control character or a stray byte, by its code
+ |  | Location bad_at = (lex_here)[ lx ]
+ |  | @C1 ch = (malloc)[ 8 ] AS @C1
+ |  | I32 b = (c AS I32) & 255
+ |  | IF [ b < 32 || b == 127 || (b >= 128 && b < 192) || b >= 248 ]
+ |  |  | (snprintf)[ ch | 8 | "\\x%02x" | b ]
+ |  | ELSE
+ |  |  | I32 more = 0
+ |  |  | IF [ b >= 240 ]
+ |  |  |  | more = 3
+ |  |  | ELIF [ b >= 224 ]
+ |  |  |  | more = 2
+ |  |  | ELIF [ b >= 192 ]
+ |  |  |  | more = 1
+ |  |  |  \_
+ |  |  | ch{0} = c
+ |  |  | (lex_nextc)[ lx ]
+ |  |  | I32 k = 0
+ |  |  | WHILE [ k < more && (((lex_peek)[ lx ] AS I32) & 192) == 128 ]
+ |  |  |  | ch{k + 1} = (lex_nextc)[ lx ]
+ |  |  |  | k += 1
+ |  |  |  \_
+ |  |  | ch{k + 1} = '\0'
+ |  |  \_
+ |  | (diag_fatal)[ bad_at | "`%s` is not part of PLUM%s" | ch | "" ]
  |  \_
  \_

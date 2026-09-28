@@ -1,0 +1,2 @@
+error: a control character, `\x02`, is not part of PLUM
+ --> control_char.pl:3:14

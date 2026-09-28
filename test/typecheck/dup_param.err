@@ -1,0 +1,2 @@
+error: parameter `a` is named twice
+ --> dup_param.pl:2:22

@@ -1,0 +1,2 @@
+error: `A` is an alias of itself
+ --> alias_cycle.pl:2:6

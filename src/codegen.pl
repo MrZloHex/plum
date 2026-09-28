@@ -2016,24 +2016,40 @@ ABYSS gen_type_def: [ @CodegenContext c | @ASTNode td ]
  |  | I32 n = 0
  |  |
  |  | IF [ ut.is_union ]
- |  |  | ; LLVM has no union: reserve the largest member and let member
- |  |  | ; access reinterpret the same address.
+ |  |  | ; LLVM has no union. As C lays one out: as aligned as its most
+ |  |  | ; aligned member, as large as its largest, rounded up to that
+ |  |  | ; alignment. So: the most aligned member, then bytes to fill.
  |  |  | @ABYSS td_layout = (LLVMGetModuleDataLayout)[ c.mod ]
  |  |  | U64 biggest = 0
- |  |  | @ABYSS widest = (LLVMInt8TypeInContext)[ c.ctx ]
+ |  |  | U32 most = 1
+ |  |  | @ABYSS aligned = (LLVMInt8TypeInContext)[ c.ctx ]
  |  |  |
  |  |  | @ASTNode f = rec.as.record.fields
  |  |  | WHILE [ f != 0 ]
  |  |  |  | @ABYSS ft = (map_type)[ c | f.as.rcrd_flds.type ]
  |  |  |  | U64 sz = (LLVMABISizeOfType)[ td_layout | ft ]
+ |  |  |  | U32 al = (LLVMABIAlignmentOfType)[ td_layout | ft ]
  |  |  |  | IF [ sz > biggest ]
  |  |  |  |  | biggest = sz
- |  |  |  |  | widest = ft
+ |  |  |  |  \_
+ |  |  |  | IF [ al > most ]
+ |  |  |  |  | most = al
+ |  |  |  |  | aligned = ft
  |  |  |  |  \_
  |  |  |  | f = f.as.rcrd_flds.next_field
  |  |  |  \_
- |  |  | ?(ftypes) = widest
+ |  |  | IF [ rec.as.record.packed ]
+ |  |  |  | most = 1
+ |  |  |  | aligned = (LLVMInt8TypeInContext)[ c.ctx ]
+ |  |  |  \_
+ |  |  | U64 whole = ((biggest + (most AS U64) - 1) / (most AS U64)) * (most AS U64)
+ |  |  | ?(ftypes) = aligned
  |  |  | n = 1
+ |  |  | U64 base = (LLVMABISizeOfType)[ td_layout | aligned ]
+ |  |  | IF [ whole > base ]
+ |  |  |  | ?(ftypes + 1) = (LLVMArrayType)[ (LLVMInt8TypeInContext)[ c.ctx ] | (whole - base) AS U32 ]
+ |  |  |  | n = 2
+ |  |  |  \_
  |  | ELSE
  |  |  | @ASTNode f = rec.as.record.fields
  |  |  | WHILE [ f != 0 && n < 64 ]
